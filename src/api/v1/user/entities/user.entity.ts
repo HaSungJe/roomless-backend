@@ -30,7 +30,7 @@ export class UserEntity {
     @Column({name: 'sns_user_id', length: 255, nullable: true, comment: 'SNS 사용자 ID'})
     sns_user_id: string | null;
 
-    @Column({name: 'login_id', length: 30, nullable: false, comment: '로그인 ID'})
+    @Column({name: 'login_id', length: 100, nullable: false, comment: '로그인 ID'})
     login_id: string;
 
     @Column({name: 'login_pw', length: 100, nullable: false, comment: '비밀번호'})

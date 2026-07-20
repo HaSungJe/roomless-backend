@@ -29,8 +29,7 @@ export const STATE_SEED_DATA: StateEntity[] = [
 export const SNS_SEED_DATA: SnsEntity[] = [
     {sns_id: 'NAVER', sns_name: '네이버'},
     {sns_id: 'KAKAO', sns_name: '카카오'},
-    {sns_id: 'GOOGLE', sns_name: '구글'},
-    {sns_id: 'EMAIL', sns_name: '이메일'},
+    {sns_id: 'GOOGLE', sns_name: '구글'}
 ];
 
 /**
