@@ -1,0 +1,19 @@
+# 회원가입
+sign:
+  age_restriction: 入力された情報ではサービスのご利用が制限されます。生年月日をご確認ください。
+# 로그인
+login:
+  invalid_login: ログイン情報が正しくありません。
+  account_blocked: このアカウントは利用が制限されています。
+# 토큰 재발급
+token_refresh:
+  invalid_refresh_token: 無効なトークンです。
+  unauthorized_user: 無効なトークンです。
+# 회원 탈퇴 신청
+leave:
+  member_not_found: 一致する会員が見つかりません。
+  invalid_state: 退会を申請できない状態です。
+# 회원 탈퇴 철회
+cancel_leave:
+  member_not_found: 一致する会員が見つかりません。
+  invalid_state: 退会を撤回できない状態です。

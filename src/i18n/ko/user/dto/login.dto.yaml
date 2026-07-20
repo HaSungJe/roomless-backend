@@ -1,0 +1,10 @@
+# 로그인 - DTO
+
+sns_id_required: SNS 유형을 입력해주세요.
+sns_id_invalid: 유효하지 않은 SNS 유형입니다.
+sns_user_id_required: SNS 사용자 ID를 입력해주세요.
+sns_user_id_max_length: SNS 사용자 ID는 255자 이하여야 합니다.
+device_os_required_with_token: device_token 입력 시 device_os 도 입력해야 합니다.
+device_token_required_with_os: device_os 입력 시 device_token 도 입력해야 합니다.
+device_os_max_length: device_os 는 20자 이하여야 합니다.
+device_token_max_length: device_token 은 255자 이하여야 합니다.

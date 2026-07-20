@@ -1,0 +1,19 @@
+# 회원 등록
+insert_user:
+  login_id_duplicate: 이미 존재하는 로그인 ID입니다.
+  user_search_code_duplicate: 이미 존재하는 검색 코드입니다.
+  sns_account_duplicate: 이미 가입된 SNS 계정입니다.
+  phone_duplicate: 이미 가입된 번호입니다.
+  auth_not_found: 존재하지 않는 권한입니다.
+  state_not_found: 존재하지 않는 상태입니다.
+  sns_type_not_found: 존재하지 않는 SNS 유형입니다.
+# 회원 설정 등록
+insert_user_setting:
+  user_not_found: 존재하지 않는 회원입니다.
+# 세션 등록
+insert_session:
+  user_not_found: 존재하지 않는 회원입니다.
+# 리프레시 토큰 등록
+insert_session_refresh:
+  refresh_token_duplicate: 이미 존재하는 Refresh Token입니다.
+  session_not_found: 존재하지 않는 세션입니다.

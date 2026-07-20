@@ -1,0 +1,19 @@
+# 회원가입
+sign:
+  age_restriction: 입력하신 정보로는 서비스 이용이 제한됩니다. 생년월일을 다시 확인해 주세요.
+# 로그인
+login:
+  invalid_login: 잘못된 로그인 정보입니다.
+  account_blocked: 이용이 제한된 계정입니다.
+# 토큰 재발급
+token_refresh:
+  invalid_refresh_token: 유효하지 않은 토큰입니다.
+  unauthorized_user: 유효하지 않은 토큰입니다.
+# 회원 탈퇴 신청
+leave:
+  member_not_found: 일치하는 회원이 없습니다.
+  invalid_state: 탈퇴를 신청할 수 없는 상태입니다.
+# 회원 탈퇴 철회
+cancel_leave:
+  member_not_found: 일치하는 회원이 없습니다.
+  invalid_state: 탈퇴 철회를 할 수 없는 상태입니다.

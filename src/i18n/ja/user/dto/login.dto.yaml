@@ -1,0 +1,10 @@
+# 로그인 - DTO
+
+sns_id_required: SNS種別を入力してください。
+sns_id_invalid: 無効なSNS種別です。
+sns_user_id_required: SNSユーザーIDを入力してください。
+sns_user_id_max_length: SNSユーザーIDは255文字以下にしてください。
+device_os_required_with_token: device_token を入力する場合は device_os も必須です。
+device_token_required_with_os: device_os を入力する場合は device_token も必須です。
+device_os_max_length: device_os は20文字以下にしてください。
+device_token_max_length: device_token は255文字以下にしてください。

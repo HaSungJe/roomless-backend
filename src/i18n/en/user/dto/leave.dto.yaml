@@ -1,0 +1,2 @@
+# 회원 탈퇴 신청 DTO
+leave_comment_max: The withdrawal reason can be up to 255 characters.

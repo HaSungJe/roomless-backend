@@ -1,0 +1,20 @@
+# 회원가입
+sign:
+  age_restriction: Service access is restricted with the provided information.
+    Please verify your date of birth.
+# 로그인
+login:
+  invalid_login: Invalid login credentials.
+  account_blocked: This account has been restricted.
+# 토큰 재발급
+token_refresh:
+  invalid_refresh_token: Invalid refresh token.
+  unauthorized_user: Invalid refresh token.
+# 회원 탈퇴 신청
+leave:
+  member_not_found: No matching member found.
+  invalid_state: This account cannot request withdrawal.
+# 회원 탈퇴 철회
+cancel_leave:
+  member_not_found: No matching member found.
+  invalid_state: This account cannot cancel the withdrawal.

@@ -1,0 +1,18 @@
+{
+  "project_name": "roomless-backend",
+  "stack": ["nestjs", "typeorm", "mysql"],
+  "commands": {
+    "test": "npm test",
+    "test_one": "npm test -- --testPathPatterns=$NAME",
+    "build": "npm run build",
+    "lint": "npm run lint"
+  },
+  "paths": {
+    "source_root": "src",
+    "test_glob": "**/*.spec.ts"
+  },
+  "branch": {
+    "stick_prefix": "stick"
+  },
+  "auto_approve": true
+}
