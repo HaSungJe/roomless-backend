@@ -5,8 +5,6 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import type { createBullBoard } from '@bull-board/api';
 import { queueProcessingContext } from './queue-processing.context';
 import { setGlobalQueueRegistry, getRegisteredConsumerKeys } from './use-queue.decorator';
-import { I18nContext } from 'nestjs-i18n';
-import { fallbackLangStore } from '@root/common/i18n/translate';
 
 type BullBoardInstance = ReturnType<typeof createBullBoard>;
 
@@ -71,15 +69,9 @@ export class WriteQueueRegistry implements OnModuleInit, OnModuleDestroy {
                     throw new Error(`[WriteQueueRegistry] No handler for job: ${job.name} in consumer: ${consumerKey}`);
                 }
 
-                // 요청 언어 컨텍스트 복원 — repository/service throw 메시지 다국어 보장
-                // (Worker는 HTTP 스레드와 다른 async 컨텍스트라 dispatch 시점 언어를 job.data로 전달받음)
-                const lang = job.data.lang ?? 'ko';
-
                 try {
-                    return await fallbackLangStore.run(lang, () =>
-                        queueProcessingContext.run(true, () =>
-                            handler.originalFn.apply(handler.serviceInstance, job.data.args),
-                        ),
+                    return await queueProcessingContext.run(true, () =>
+                        handler.originalFn.apply(handler.serviceInstance, job.data.args),
                     );
                 } catch (e) {
                     // 에러 정보를 JSON으로 직렬화 후 throw → job "실패" 처리
@@ -138,7 +130,7 @@ export class WriteQueueRegistry implements OnModuleInit, OnModuleDestroy {
     ): Promise<T> {
         try {
             const { queue, queueEvents } = await this.getOrCreate(consumerKey, jobKey, serviceInstance, originalFn);
-            const job = await queue.add(jobKey, { args, lang: I18nContext.current()?.lang ?? 'ko' }, {
+            const job = await queue.add(jobKey, { args }, {
                 removeOnComplete: { count: 100 },  // 완료 job 최대 100개 보존
                 removeOnFail: { count: 100 },       // 실패 job 최대 100개 보존
             });

@@ -1,11 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty } from 'class-validator';
-import { i18nMsg } from '@root/common/i18n/translate';
 
 export class UserTokenRefreshDto {
-    // 리프레시 토큰을 입력해주세요.
     @ApiProperty({description: '리프레시 토큰'})
-    @IsNotEmpty({message: i18nMsg('user.dto.token_refresh.refresh_token_required')})
+    @IsNotEmpty({message: '리프레시 토큰을 입력해주세요.'})
     refresh_token: string;
 }
 

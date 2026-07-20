@@ -39,13 +39,11 @@ DTO 필드·entity 컬럼·path/query param·JWT payload 키 모두 snake_case. 
 
 - **사용 데코레이터**: `@IsNotEmpty`, `@IsOptional`, `@IsIn`, `@Matches`, `@MaxLength` (+ 짝 필드 조건부 `@ValidateIf`).
 - **미사용(금지)**: `@IsString`/`@IsNumber`/`@Type`/`@Transform` — 존재+형식/길이+enum 만 검증, 타입 강제 안 함.
-- **모든 제약 데코레이터에 `message: i18nMsg('<key>')` 필수**(문자열 리터럴 ❌). `@IsOptional()` 만 `message` 없음.
+- **모든 제약 데코레이터에 `message: '<한국어 문자열>'` 리터럴 필수**. `@IsOptional()` 만 `message` 없음.
 - **데코레이터 순서**:
   - 필수 필드: `@ApiProperty` → 제약(`@IsIn`/`@MaxLength`/`@Matches`) → `@IsNotEmpty` **맨 마지막(필드 바로 위)**.
   - optional 필드: `@ApiProperty` → `@IsOptional()` → 제약.
   - `@ValidateIf` 짝 필드: `@ApiProperty` → `@ValidateIf` → 제약 → `@IsNotEmpty`.
-- **i18n 키 = `<domain>.dto.<feature>.<field>_<rule>`** (예: `user.dto.sign.sns_id_invalid`). 호출 줄에 ko 메시지 한글 주석 병기.
-- `i18nMsg` 는 lazy(`() => translate(key) ?? ''`)라 검증 시점에 언어가 해석된다.
 
 근거: [user-sign.dto.ts](../src/api/v1/user/dto/user-sign.dto.ts), [user-login.dto.ts](../src/api/v1/user/dto/user-login.dto.ts).
 
@@ -53,7 +51,7 @@ DTO 필드·entity 컬럼·path/query param·JWT payload 키 모두 snake_case. 
 
 - **public 메서드 1개 = controller 핸들러 1개 = API 1개**. 실측 예외: controller 없는 스케줄러 전용 service(`UserLeaveCleanupService.processLeaveWait`).
 - **엔티티는 `new XEntity()` + 필드 할당으로 생성**(insert/update 모두) — 객체 리터럴 ❌. update 도 `new`+할당으로 `@BeforeUpdate` 트리거.
-- 비즈니스 규칙 위반은 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw. body 는 `{message: translate('<key>')}`.
+- 비즈니스 규칙 위반은 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw. body 는 `{message: '<한국어 문자열>'}`.
 - **다중 쓰기 메서드에 `@Transactional()`** (단건 쓰기에도 부착 가능).
 - **service 내부 private 헬퍼 금지** — 재사용·순수 변환은 util 로 추출.
 

@@ -6,8 +6,8 @@
 
 | 계층 | 던지는 형태 |
 |---|---|
-| **repository** | 모든 메서드 try/catch. 최종 실패는 통일 500 `InternalServerErrorException({message: translate('common.internal_server_error')})`. insert/update 의 errno `1062`/`1452` 는 제약명별 `if` 분기로 `BadRequestException` 매핑 |
-| **service** | 비즈니스 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw. body 는 `{message: translate('<key>')}` |
+| **repository** | 모든 메서드 try/catch. 최종 실패는 통일 500 `InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'})`. insert/update 의 errno `1062`/`1452` 는 제약명별 `if` 분기로 `BadRequestException` 매핑 |
+| **service** | 비즈니스 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw. body 는 `{message: '<한국어 문자열>'}` |
 | **controller** | throw 하지 않음 (라우팅·위임만) |
 
 ## validationErrors 포함 기준
@@ -18,11 +18,11 @@
 
 ```ts
 // service — 입력 필드 귀속 오류 (validationErrors 동봉)
-const message = translate('user.service.sign.age_restriction');  // 생년월일 재확인 안내
+const message = '입력하신 정보로는 서비스 이용이 제한됩니다. 생년월일을 다시 확인해 주세요.';
 throw new BadRequestException({ message, validationErrors: createValidationError('birth', message) });
 
 // service — 비즈니스/내부 오류 (message 단독)
-throw new NotFoundException({ message: translate('user.service.login.invalid_login') });  // 잘못된 로그인 정보
+throw new NotFoundException({ message: '잘못된 로그인 정보입니다.' });
 ```
 
 `createValidationError(property, message)` 는 `[{type, property, message}]` 형태를 반환([common/utils/validation.ts](../src/common/utils/validation.ts)).

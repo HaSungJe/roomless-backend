@@ -13,12 +13,6 @@ import { UserController } from '../user.controller';
 import { UserService } from '../user.service';
 import { USER_REPOSITORY } from '../user.symbols';
 import { PassportJwtAuthGuard } from '@root/guards/passport.jwt.auth/passport.jwt.auth.guard';
-import { I18nModule } from 'nestjs-i18n';
-import { buildI18nOptions } from '@root/common/i18n/i18n.config';
-import { loadKoPack } from '@root/common/i18n/test-utils/load-ko-pack';
-const userKo = loadKoPack('user');
-const leaveDtoKo = userKo['leave'].dto;
-const leaveServiceKo = userKo['leave'];
 import { ValidationErrorDto } from '@root/common/dto/global.result.dto';
 import { CustomErrorFilter } from '@root/exception/exception';
 
@@ -37,7 +31,6 @@ describe('UserService - leave (회원 탈퇴 신청)', () => {
         };
 
         const module: TestingModule = await Test.createTestingModule({
-            imports: [I18nModule.forRoot(buildI18nOptions())],
             controllers: [UserController],
             providers: [
                 UserService,
@@ -111,7 +104,7 @@ describe('UserService - leave (회원 탈퇴 신청)', () => {
     describe('[FAIL:validation]', () => {
         it('leave_comment 256자 → 400 max, updateUser 미호출', async () => {
             const res = await del({leave_comment: 'a'.repeat(256)}).expect(400);
-            expect(res.body.message).toBe(leaveDtoKo.leave_comment_max);
+            expect(res.body.message).toBe('탈퇴 사유는 최대 255자까지 입력할 수 있습니다.');
             expect(userRepository.updateUser).not.toHaveBeenCalled();
         });
     });
@@ -120,14 +113,14 @@ describe('UserService - leave (회원 탈퇴 신청)', () => {
         it('이미 LEAVE_WAIT 상태 → 400 invalid_state, updateUser 미호출', async () => {
             userRepository.findUser.mockResolvedValueOnce({user_id: USER, state_id: 'LEAVE_WAIT'});
             const res = await del({}).expect(400);
-            expect(res.body.message).toBe(leaveServiceKo.invalid_state);
+            expect(res.body.message).toBe('탈퇴를 신청할 수 없는 상태입니다.');
             expect(userRepository.updateUser).not.toHaveBeenCalled();
         });
 
         it('회원 미존재 → 404 member_not_found, updateUser 미호출', async () => {
             userRepository.findUser.mockResolvedValueOnce(null);
             const res = await del({}).expect(404);
-            expect(res.body.message).toBe(leaveServiceKo.member_not_found);
+            expect(res.body.message).toBe('일치하는 회원이 없습니다.');
             expect(userRepository.updateUser).not.toHaveBeenCalled();
         });
     });

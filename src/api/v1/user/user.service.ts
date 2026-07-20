@@ -15,7 +15,6 @@ import { UserLeaveDto } from './dto/user-leave.dto';
 import { USER_REPOSITORY } from './user.symbols';
 import type { UserRepositoryInterface } from './interfaces/user.repository.interface';
 import { isAdult, generateSnsLoginId, issueAccessAndRefresh } from './user.util';
-import { translate } from '@root/common/i18n/translate';
 import { createValidationError } from '@root/common/utils/validation';
 import { getBcrypt } from '@root/common/utils/bcrypt';
 import { sha256Hex } from '@root/common/utils/hash';
@@ -36,8 +35,7 @@ export class UserService {
     async sign(dto: UserSignDto, ip: string): Promise<UserSignResultDto> {
         // 1. 만 18세 이하 가입 제한
         if (!isAdult(dto.birth)) {
-            // 입력하신 정보로는 서비스 이용이 제한됩니다. 생년월일을 다시 확인해 주세요.
-            const message = translate('user.service.sign.age_restriction');
+            const message = '입력하신 정보로는 서비스 이용이 제한됩니다. 생년월일을 다시 확인해 주세요.';
             throw new BadRequestException({
                 message,
                 validationErrors: createValidationError('birth', message),
@@ -125,15 +123,13 @@ export class UserService {
             state_id: In(['ACTIVE', 'BLOCK']),
         });
         if (!user) {
-            // 잘못된 로그인 정보입니다.
-            throw new NotFoundException({message: translate('user.service.login.invalid_login')});
+            throw new NotFoundException({message: '잘못된 로그인 정보입니다.'});
         }
 
         // 2. BLOCK 차단
         if (user.state_id === 'BLOCK') {
             throw new HttpException(
-                // 이용이 제한된 계정입니다.
-                {message: translate('user.service.login.account_blocked'), block_comment: user.block_comment},
+                {message: '이용이 제한된 계정입니다.', block_comment: user.block_comment},
                 HttpStatus.FORBIDDEN,
             );
         }
@@ -193,25 +189,21 @@ export class UserService {
         try {
             payload = this.jwtService.verify(dto.refresh_token);
         } catch {
-            // 유효하지 않은 토큰입니다.
-            throw new UnauthorizedException({message: translate('user.service.token_refresh.invalid_refresh_token')});
+            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
         }
         if (payload.type !== 'refresh') {
-            // 유효하지 않은 토큰입니다.
-            throw new UnauthorizedException({message: translate('user.service.token_refresh.invalid_refresh_token')});
+            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
         }
 
         // 2. DB 조회 (refresh_hash)
         const refresh_hash = sha256Hex(dto.refresh_token);
         const oldRefresh = await this.userRepository.findSessionRefresh({refresh_hash});
         if (!oldRefresh) {
-            // 유효하지 않은 토큰입니다.
-            throw new UnauthorizedException({message: translate('user.service.token_refresh.invalid_refresh_token')});
+            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
         }
         // DB end_at 만료 확인 (chain 재사용 차단)
         if (oldRefresh.end_at.getTime() < Date.now()) {
-            // 유효하지 않은 토큰입니다.
-            throw new UnauthorizedException({message: translate('user.service.token_refresh.invalid_refresh_token')});
+            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
         }
 
         // 3. 회원 state 재검증
@@ -221,8 +213,7 @@ export class UserService {
             const expireEntity = new SessionRefreshEntity();
             expireEntity.end_at = dayjs().add(1, 'minute').toDate();
             await this.userRepository.updateSessionRefresh({refresh_hash}, expireEntity);
-            // 유효하지 않은 토큰입니다.
-            throw new UnauthorizedException({message: translate('user.service.token_refresh.unauthorized_user')});
+            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
         }
 
         // 4. old refresh 단축 (1분 후 만료)
@@ -261,12 +252,10 @@ export class UserService {
     async leave(user_id: string, dto: UserLeaveDto): Promise<void> {
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
-            // 일치하는 회원이 없습니다.
-            throw new NotFoundException({message: translate('user.service.leave.member_not_found')});
+            throw new NotFoundException({message: '일치하는 회원이 없습니다.'});
         }
         if (user.state_id !== 'ACTIVE' && user.state_id !== 'BLOCK') {
-            // 탈퇴를 신청할 수 없는 상태입니다.
-            throw new BadRequestException({message: translate('user.service.leave.invalid_state')});
+            throw new BadRequestException({message: '탈퇴를 신청할 수 없는 상태입니다.'});
         }
 
         const entity = new UserEntity();
@@ -285,12 +274,10 @@ export class UserService {
     async cancelLeave(user_id: string): Promise<void> {
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
-            // 일치하는 회원이 없습니다.
-            throw new NotFoundException({message: translate('user.service.cancel_leave.member_not_found')});
+            throw new NotFoundException({message: '일치하는 회원이 없습니다.'});
         }
         if (user.state_id !== 'LEAVE_WAIT') {
-            // 탈퇴 철회를 할 수 없는 상태입니다.
-            throw new BadRequestException({message: translate('user.service.cancel_leave.invalid_state')});
+            throw new BadRequestException({message: '탈퇴 철회를 할 수 없는 상태입니다.'});
         }
 
         const entity = new UserEntity();

@@ -56,11 +56,11 @@ export class UserRepository implements UserRepositoryInterface {
             await this.userRepository.insert(entity);
         } catch (error) {
             if (error.errno === 1062 && error.sqlMessage.indexOf('UK_User_LoginId') !== -1) {
-                throw new BadRequestException({ message: translate('user.repository.insert_user.login_id_duplicate') });
+                throw new BadRequestException({ message: '이미 존재하는 로그인 ID입니다.' });
             } else if (error.errno === 1452 && error.sqlMessage.indexOf('FK_User_Auth') !== -1) {
-                throw new BadRequestException({ message: translate('user.repository.insert_user.auth_not_found') });
+                throw new BadRequestException({ message: '존재하지 않는 권한입니다.' });
             } else {
-                throw new InternalServerErrorException({ message: translate('common.internal_server_error') });
+                throw new InternalServerErrorException({ message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.' });
             }
         }
     }
@@ -69,14 +69,14 @@ export class UserRepository implements UserRepositoryInterface {
         try {
             return await this.userRepository.findOne({ where, loadRelationIds: true });
         } catch (error) {
-            throw new InternalServerErrorException({ message: translate('common.internal_server_error') });
+            throw new InternalServerErrorException({ message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.' });
         }
     }
 }
 ```
 
 규칙:
-- **모든 메서드 try/catch**. 최종 실패는 통일 문구 `throw new InternalServerErrorException({message: translate('common.internal_server_error')})`(도메인별 동사 ❌).
+- **모든 메서드 try/catch**. 최종 실패는 통일 문구 `throw new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'})`(도메인별 동사 ❌).
 - **insert/update 는 errno 분기**: `1062`(UK 중복)·`1452`(FK 위반)를 **제약명별 `if` 분기**로 `BadRequestException` 매핑. 멱등 upsert 는 UK 중복을 `return` 으로 무시 가능(예: `insertUserSetting`).
 - **범용 메서드 우선**(`insert/find/findOne/update`). WHERE 조건은 service 가 구성하고 repository 는 실행만.
 - WHERE 타입 `FindOptionsWhere<XEntity>`(❌ `Partial`).

@@ -18,10 +18,6 @@ import { SessionRefreshEntity } from '../entities/session-refresh.entity';
 import * as hashUtil from '@root/common/utils/hash';
 import * as cipherUtil from '@root/common/utils/cipher';
 import * as jwtUtil from '@root/common/utils/jwt';
-import { I18nModule } from 'nestjs-i18n';
-import { buildI18nOptions } from '@root/common/i18n/i18n.config';
-import { loadKoPack } from '@root/common/i18n/test-utils/load-ko-pack';
-const userKo = loadKoPack('user');
 import { ValidationErrorDto } from '@root/common/dto/global.result.dto';
 import { CustomErrorFilter } from '@root/exception/exception';
 
@@ -52,7 +48,6 @@ describe('UserService - login', () => {
         jwtServiceMock = {sign: jest.fn()};
 
         const module: TestingModule = await Test.createTestingModule({
-            imports: [I18nModule.forRoot(buildI18nOptions())],
             controllers: [UserController],
             providers: [
                 UserService,
@@ -254,7 +249,7 @@ describe('UserService - login', () => {
                 .expect((res) => {
                     expect(res.body.validationErrors).toBeDefined();
                     const hasTokenError = res.body.validationErrors.some(
-                        (e: any) => e.message === userKo.login.dto.device_token_required_with_os,
+                        (e: any) => e.message === 'device_os 입력 시 device_token 도 입력해야 합니다.',
                     );
                     expect(hasTokenError).toBe(true);
                 });
@@ -272,7 +267,7 @@ describe('UserService - login', () => {
                 .expect((res) => {
                     expect(res.body.validationErrors).toBeDefined();
                     const hasOsError = res.body.validationErrors.some(
-                        (e: any) => e.message === userKo.login.dto.device_os_required_with_token,
+                        (e: any) => e.message === 'device_token 입력 시 device_os 도 입력해야 합니다.',
                     );
                     expect(hasOsError).toBe(true);
                 });
@@ -293,7 +288,7 @@ describe('UserService - login', () => {
                 .send({sns_id: 'KAKAO', sns_user_id: 'unknown'})
                 .expect(404)
                 .expect((res) => {
-                    expect(res.body.message).toBe(userKo.login.invalid_login);
+                    expect(res.body.message).toBe('잘못된 로그인 정보입니다.');
                     expect(res.body.validationErrors).toBeUndefined();
                 });
 
@@ -314,7 +309,7 @@ describe('UserService - login', () => {
                 .send({sns_id: 'KAKAO', sns_user_id: 'kakao-sns-user-id'})
                 .expect(403)
                 .expect((res) => {
-                    expect(res.body.message).toBe(userKo.login.account_blocked);
+                    expect(res.body.message).toBe('이용이 제한된 계정입니다.');
                     expect(res.body.block_comment).toBe('욕설 사용으로 정지');
                     expect(res.body.validationErrors).toBeUndefined();
                 });

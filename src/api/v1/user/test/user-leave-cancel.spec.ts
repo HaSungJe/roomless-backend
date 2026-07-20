@@ -12,11 +12,6 @@ import { UserController } from '../user.controller';
 import { UserService } from '../user.service';
 import { USER_REPOSITORY } from '../user.symbols';
 import { PassportJwtAuthGuard } from '@root/guards/passport.jwt.auth/passport.jwt.auth.guard';
-import { I18nModule } from 'nestjs-i18n';
-import { buildI18nOptions } from '@root/common/i18n/i18n.config';
-import { loadKoPack } from '@root/common/i18n/test-utils/load-ko-pack';
-const userKo = loadKoPack('user');
-const cancelKo = userKo['cancel_leave'];
 import { ValidationErrorDto } from '@root/common/dto/global.result.dto';
 import { CustomErrorFilter } from '@root/exception/exception';
 
@@ -35,7 +30,6 @@ describe('UserService - cancelLeave (회원 탈퇴 철회)', () => {
         };
 
         const module: TestingModule = await Test.createTestingModule({
-            imports: [I18nModule.forRoot(buildI18nOptions())],
             controllers: [UserController],
             providers: [
                 UserService,
@@ -102,14 +96,14 @@ describe('UserService - cancelLeave (회원 탈퇴 철회)', () => {
         it('LEAVE_WAIT 아님(ACTIVE) → 400 invalid_state, updateUser 미호출', async () => {
             userRepository.findUser.mockResolvedValueOnce({user_id: USER, state_id: 'ACTIVE', leave_prev_state_id: null});
             const res = await patch().expect(400);
-            expect(res.body.message).toBe(cancelKo.invalid_state);
+            expect(res.body.message).toBe('탈퇴 철회를 할 수 없는 상태입니다.');
             expect(userRepository.updateUser).not.toHaveBeenCalled();
         });
 
         it('회원 미존재 → 404 member_not_found, updateUser 미호출', async () => {
             userRepository.findUser.mockResolvedValueOnce(null);
             const res = await patch().expect(404);
-            expect(res.body.message).toBe(cancelKo.member_not_found);
+            expect(res.body.message).toBe('일치하는 회원이 없습니다.');
             expect(userRepository.updateUser).not.toHaveBeenCalled();
         });
     });

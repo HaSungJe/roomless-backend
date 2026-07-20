@@ -8,7 +8,7 @@
   "scripts": {
     "redis:up": "docker compose up -d",
     "redis:down": "docker compose down",
-    "build": "nest build && node scripts/copy-i18n.js",
+    "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" ",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -43,7 +43,6 @@
     "dayjs": "^1.11.18",
     "dotenv": "^17.2.3",
     "mysql2": "^3.15.3",
-    "nestjs-i18n": "^10.8.4",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

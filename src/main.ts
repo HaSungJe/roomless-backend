@@ -2,8 +2,6 @@ import { addTransactionalDataSource, initializeTransactionalContext } from 'type
 import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { CustomErrorFilter } from './exception/exception';
-import { I18nService } from 'nestjs-i18n';
-import { setI18nService } from './common/i18n/translate';
 import { ApiLogInterceptor } from './modules/api-log/api-log.interceptor';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -69,10 +67,6 @@ async function bootstrap() {
     app.use(bodyParser.json({ limit, verify: (req: any, _res, buf: Buffer) => { req.rawBody = buf; } }));
     app.use(bodyParser.urlencoded({ limit, extended: true }));
     app.useGlobalFilters(new CustomErrorFilter());
-
-    // 다국어 — HTTP 외 컨텍스트(Worker/스케줄러)에서도 번역 가능하도록 전역 I18nService 등록
-    // (HTTP 요청의 언어 해석은 I18nModule 이 미들웨어로 자동 처리)
-    setI18nService(app.get(I18nService));
 
     // API 호출 자동 로깅 — 모든 요청/응답을 t_api_log 에 저장
     app.useGlobalInterceptors(app.get(ApiLogInterceptor));

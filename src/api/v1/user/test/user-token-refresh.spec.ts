@@ -16,10 +16,6 @@ import { SessionRefreshEntity } from '../entities/session-refresh.entity';
 import * as hashUtil from '@root/common/utils/hash';
 import * as cipherUtil from '@root/common/utils/cipher';
 import * as jwtUtil from '@root/common/utils/jwt';
-import { I18nModule } from 'nestjs-i18n';
-import { buildI18nOptions } from '@root/common/i18n/i18n.config';
-import { loadKoPack } from '@root/common/i18n/test-utils/load-ko-pack';
-const userKo = loadKoPack('user');
 import { ValidationErrorDto } from '@root/common/dto/global.result.dto';
 import { CustomErrorFilter } from '@root/exception/exception';
 
@@ -60,7 +56,6 @@ describe('UserService - tokenRefresh', () => {
         jwtServiceMock = {sign: jest.fn(), verify: jest.fn()};
 
         const module: TestingModule = await Test.createTestingModule({
-            imports: [I18nModule.forRoot(buildI18nOptions())],
             controllers: [UserController],
             providers: [
                 UserService,
@@ -230,7 +225,7 @@ describe('UserService - tokenRefresh', () => {
                 .send({refresh_token: 'bad-token'})
                 .expect(401)
                 .expect((res) => {
-                    expect(res.body.message).toBe(userKo.token_refresh.invalid_refresh_token);
+                    expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
                 });
 
             expect(userRepository.findSessionRefresh).not.toHaveBeenCalled();
@@ -249,7 +244,7 @@ describe('UserService - tokenRefresh', () => {
                 .send({refresh_token: OLD_REFRESH})
                 .expect(401)
                 .expect((res) => {
-                    expect(res.body.message).toBe(userKo.token_refresh.invalid_refresh_token);
+                    expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
                 });
 
             expect(userRepository.findSessionRefresh).not.toHaveBeenCalled();
@@ -303,7 +298,7 @@ describe('UserService - tokenRefresh', () => {
                 .send({refresh_token: OLD_REFRESH})
                 .expect(401)
                 .expect((res) => {
-                    expect(res.body.message).toBe(userKo.token_refresh.unauthorized_user);
+                    expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
                 });
 
             expect(userRepository.updateSessionRefresh).toHaveBeenCalledTimes(1);
@@ -328,7 +323,7 @@ describe('UserService - tokenRefresh', () => {
                 .send({refresh_token: OLD_REFRESH})
                 .expect(401)
                 .expect((res) => {
-                    expect(res.body.message).toBe(userKo.token_refresh.unauthorized_user);
+                    expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
                 });
 
             expect(userRepository.updateSessionRefresh).toHaveBeenCalledTimes(1);

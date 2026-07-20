@@ -1,15 +1,14 @@
 # Architecture
 
-NestJS 11 + TypeORM 0.3(MySQL, `mysql2`) + passport-jwt + Swagger(`@nestjs/swagger`) + nestjs-i18n + `@nestjs/schedule` + typeorm-transactional. 단일 도메인(`user`) + 인프라 모듈 구성.
+NestJS 11 + TypeORM 0.3(MySQL, `mysql2`) + passport-jwt + Swagger(`@nestjs/swagger`) + `@nestjs/schedule` + typeorm-transactional. 단일 도메인(`user`) + 인프라 모듈 구성. 다국어(i18n) 없음 — 사용자 노출 메시지는 한국어 리터럴.
 
 ```
 src/
 ├── api/v1/user/        # 유일한 도메인: controller → service → repository + 스케줄러(leave-cleanup)
-├── common/             # 비도메인 공통: decorators, dto, utils(순수함수), i18n, language
+├── common/             # 비도메인 공통: dto, utils(순수함수)
 ├── config/             # typeorm.config.ts (기본 비즈니스 DataSource)
 ├── exception/          # CustomErrorFilter (전역 @Catch(Error))
 ├── guards/             # passport.jwt.auth(JWT, 적용) · roles(정의만, 미적용)
-├── i18n/<lang>/        # 언어팩 yaml — ko/en/ja 3개
 ├── modules/            # 인프라 @Module: api-log(@Global,별도 DataSource) · queue(BullMQ,미적용) · typeorm · seeder
 ├── app.module.ts       # 유일한 모듈 집합점
 └── main.ts             # 부트스트랩
@@ -83,7 +82,7 @@ export class UserModule {}
 
 ## 부트스트랩 (main.ts)
 
-- `initializeTransactionalContext()` → `bodyParser:false` + 수동 `bodyParser.json({verify})`(raw body 보존) → 전역 `CustomErrorFilter` → 전역 `ApiLogInterceptor` → `setI18nService` → Swagger 자동 등록 → 전역 `ValidationPipe`(custom exceptionFactory) → CORS → `addTransactionalDataSource` → `listen`.
+- `initializeTransactionalContext()` → `bodyParser:false` + 수동 `bodyParser.json({verify})`(raw body 보존) → 전역 `CustomErrorFilter` → 전역 `ApiLogInterceptor` → Swagger 자동 등록 → 전역 `ValidationPipe`(custom exceptionFactory) → CORS → `addTransactionalDataSource` → `listen`.
 
 ## 새 도메인 추가 절차
 
@@ -91,6 +90,6 @@ export class UserModule {}
 2. repository 인터페이스 + Symbol 토큰 정의, 모듈에서 `{provide: TOKEN, useClass: XRepository}`.
 3. 엔티티를 `TypeOrmModule.forFeature([...])` 에 등록, 모듈에 `@SetMetadata('type','API'|'description'|'path')`.
 4. `app.module.ts` `imports` 에 모듈 추가.
-5. i18n 키(ko/en/ja) 추가, 테스트 작성.
+5. 테스트 작성.
 
 → 레이어별 상세 규약: [conventions.md](conventions.md) · [data-layer.md](data-layer.md) · [error-handling.md](error-handling.md) · [api.md](api.md) · [testing.md](testing.md)

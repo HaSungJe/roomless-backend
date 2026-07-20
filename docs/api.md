@@ -6,12 +6,11 @@ Swagger(`@nestjs/swagger`). 모듈 메타데이터(`@SetMetadata('type','API')` 
 
 ```ts
 @ApiTags('회원')
-@ApiLanguageHeader()
 @Controller('/api/v1/user')
 export class UserController { ... }
 ```
 
-`@ApiTags('<한글>')` → `@ApiLanguageHeader()`(`@root/common/decorators/api-language-header.decorator`) → `@Controller(...)`.
+`@ApiTags('<한글>')` → `@Controller(...)`.
 
 ## 메서드 데코레이터 순서
 

@@ -20,10 +20,6 @@ import * as bcryptUtil from '@root/common/utils/bcrypt';
 import * as hashUtil from '@root/common/utils/hash';
 import * as cipherUtil from '@root/common/utils/cipher';
 import * as jwtUtil from '@root/common/utils/jwt';
-import { I18nModule } from 'nestjs-i18n';
-import { buildI18nOptions } from '@root/common/i18n/i18n.config';
-import { loadKoPack } from '@root/common/i18n/test-utils/load-ko-pack';
-const userKo = loadKoPack('user');
 import { ValidationErrorDto } from '@root/common/dto/global.result.dto';
 import { CustomErrorFilter } from '@root/exception/exception';
 
@@ -76,7 +72,6 @@ describe('UserService - sign (SNS 회원가입)', () => {
         jwtServiceMock = {sign: jest.fn()};
 
         const module: TestingModule = await Test.createTestingModule({
-            imports: [I18nModule.forRoot(buildI18nOptions())],
             controllers: [UserController],
             providers: [
                 UserService,
@@ -332,7 +327,7 @@ describe('UserService - sign (SNS 회원가입)', () => {
                 .send({...VALID_DTO, birth: MINOR_BIRTH})
                 .expect(400);
 
-            expect(res.body.message).toBe(userKo.sign.age_restriction);
+            expect(res.body.message).toBe('입력하신 정보로는 서비스 이용이 제한됩니다. 생년월일을 다시 확인해 주세요.');
             expect(res.body.validationErrors[0].property).toBe('birth');
             expect(isAdultSpy).toHaveBeenCalledTimes(1);
             expect(isAdultSpy).toHaveBeenCalledWith(MINOR_BIRTH);

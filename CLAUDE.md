@@ -37,16 +37,15 @@
 
 ## Architecture
 
-NestJS 11 + TypeORM 0.3(MySQL, `mysql2`) + passport-jwt + Swagger + nestjs-i18n + `@nestjs/schedule` + typeorm-transactional. 현재 **단일 도메인 `user`** + 인프라 모듈(api-log·queue(미적용)·typeorm·seeder).
+NestJS 11 + TypeORM 0.3(MySQL, `mysql2`) + passport-jwt + Swagger + `@nestjs/schedule` + typeorm-transactional. 현재 **단일 도메인 `user`** + 인프라 모듈(api-log·queue(미적용)·typeorm·seeder). 다국어(i18n) 없음 — 모든 사용자 노출 메시지는 한국어 리터럴.
 
 ```
 src/
 ├── api/v1/user/   # 유일한 도메인: controller→service→repository + 스케줄러(leave-cleanup)
-├── common/        # 비도메인 공통: decorators, dto, utils(순수함수), i18n, language
+├── common/        # 비도메인 공통: dto, utils(순수함수)
 ├── config/        # typeorm.config.ts (기본 비즈니스 DataSource)
 ├── exception/     # CustomErrorFilter (전역 @Catch)
 ├── guards/        # passport.jwt.auth(적용), roles(미적용)
-├── i18n/<lang>/   # 언어팩 yaml (ko/en/ja)
 ├── modules/       # 인프라: api-log(@Global,별도 DataSource), queue(BullMQ,미적용), typeorm, seeder
 ├── app.module.ts  # 유일한 모듈 집합점
 └── main.ts        # 부트스트랩
@@ -81,16 +80,15 @@ src/
 ## Validation
 
 - `class-validator` 데코레이터. 사용: `@IsNotEmpty`/`@IsOptional`/`@IsIn`/`@Matches`/`@MaxLength`(+`@ValidateIf`). **`@IsString`/`@IsNumber`/`@Type`/`@Transform` 미사용**(존재+형식/길이+enum 만).
-- **모든 검증 데코레이터에 `message: i18nMsg('<key>')` 필수**(문자열 리터럴 ❌). `@IsOptional()` 만 `message` 없음.
+- **모든 검증 데코레이터에 `message: '<한국어 문자열>'` 리터럴 필수**. `@IsOptional()` 만 `message` 없음.
 - **데코레이터 순서**: `@ApiProperty` → 제약 → `@IsNotEmpty`(맨 마지막). optional 은 `@ApiProperty` → `@IsOptional()` → 제약.
-- i18n 키 = `<domain>.dto.<feature>.<field>_<rule>`, 호출 줄에 ko 한글 주석 병기(다국어 상세는 아래 i18n 절).
 
 → 상세: [docs/conventions.md](docs/conventions.md)
 
 ## Error & Response
 
-- **repository**: 모든 메서드 try/catch, 최종 실패는 통일 `InternalServerErrorException({message: translate('common.internal_server_error')})`. insert/update errno 1062(UK)/1452(FK)를 제약명별 if 분기로 `BadRequestException` 매핑.
-- **service**: 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw, body `{message: translate('<key>')}`. controller 는 throw 안 함.
+- **repository**: 모든 메서드 try/catch, 최종 실패는 통일 `InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'})`. insert/update errno 1062(UK)/1452(FK)를 제약명별 if 분기로 `BadRequestException` 매핑.
+- **service**: 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw, body `{message: '<한국어 문자열>'}`. controller 는 throw 안 함.
 - **`validationErrors` 기준**: 사용자 입력 필드 오류만 포함, 비즈니스·내부값 오류는 `{message}` 단독.
 - 상태코드는 핸들러마다 `@HttpCode(200|204)` 명시. **응답 필드 생략 금지 — 없으면 `null` 포함**(`x: T | null`).
 
@@ -99,7 +97,7 @@ src/
 ## API & Docs
 
 - **모든 함수/메서드에 주석 필수**(레이어 무관 JSDoc/한 줄), controller 핸들러에 Swagger 데코레이터 필수.
-- 클래스: `@ApiTags('<한글>')` → `@ApiLanguageHeader()` → `@Controller(...)`.
+- 클래스: `@ApiTags('<한글>')` → `@Controller(...)`.
 - 메서드: HTTP verb → `@UseGuards`(인증 시) → `@HttpCode` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse`/`@ApiNoContentResponse` → 에러 응답들. 응답 데코레이터는 `type` 만(❌ `description`), `@ApiOperation` 은 `summary` 만.
 
 → 상세: [docs/api.md](docs/api.md)
@@ -117,13 +115,6 @@ src/
 - 인증은 **핸들러 단위** `@UseGuards(PassportJwtAuthGuard)`(컨트롤러 전체 아님). 공개 엔드포인트(sign/login/token-refresh)는 guard 생략, 보호 엔드포인트(leave/cancelLeave)는 부착.
 - 로그인 회원은 반드시 `@PassportUser('user_id') user_id: string`(raw `@Req()` ❌). import: `@root/guards/passport.jwt.auth/passport.jwt.auth.decorator`.
 - **역할 기반 권한**(`@Roles`+`RolesGuard`, `src/guards/roles/`): 정의돼 있으나 **적용 0건 — 미적용/규약**.
-
-## i18n / 다국어
-
-- `nestjs-i18n` + `Accept-Language`(BCP-47) → `AcceptLanguageResolver` 자동 해석, fallback `ko`. **3개 언어(`ko en ja`)**.
-- 언어팩 yaml: `src/i18n/<lang>/<domain>/{service.yaml,repository.yaml,dto/<feature>.dto.yaml}` + `common.yaml`. 폴더경로가 키 네임스페이스(`includeSubfolders: true`).
-- 헬퍼: service/repository 는 `translate('<key>')`, DTO `message` 는 `i18nMsg('<key>')`(둘 다 `@root/common/i18n/translate`). **호출 줄에 ko 한글 주석 병기 필수**. HTTP 외(스케줄러 등)는 부트스트랩의 전역 `setI18nService` 로 fallback 번역.
-- 신규 메시지는 3개 언어 yaml 에 동일 키 추가.
 
 ## 비동기 / 스케줄러
 
@@ -143,7 +134,7 @@ src/
 
 - jest + ts-jest + `@nestjs/testing` + `supertest`. 위치 `<domain>/test/<feature>.spec.ts`(kebab), 인프라는 `src/modules/<m>/test/`. 실행 `npm test`, 단일 `npm test -- --testPathPatterns=<패턴>`.
 - 지배적 스타일: ① controller 기능은 실제 controller+service+ValidationPipe+필터 부팅 후 **repository 만 Symbol 토큰으로 `jest.fn()` 주입**(외부 util 은 `jest.spyOn`+`mockRestore`, guard 는 `.overrideGuard`, 상단 `typeorm-transactional` mock). ② controller 없는 service(스케줄러·seeder)는 mock DataSource/repository 로 직접 `new`.
-- 강도: 상태코드만 검사 금지 — mock 호출 횟수·인자(write 는 entity 컬럼 값)·실패 후 `.not.toHaveBeenCalled()` 까지 단언. i18n 메시지는 `loadKoPack('<domain>')` 로 단언. `[SUCCESS]`/`[FAIL:*]` describe 분류. **실DB·외부 IO 금지.**
+- 강도: 상태코드만 검사 금지 — mock 호출 횟수·인자(write 는 entity 컬럼 값)·실패 후 `.not.toHaveBeenCalled()` 까지 단언. 메시지는 한국어 리터럴로 단언. `[SUCCESS]`/`[FAIL:*]` describe 분류. **실DB·외부 IO 금지.**
 - **Data-Access Smoke(미적용/규약)**: 매핑 민감 쿼리(관계 필드 where·QueryBuilder) 메서드는 repository-mock spec 만으로 커버 금지 — TypeORM 무연결 쿼리 빌드 smoke 케이스 필수(정의·방법: [docs/testing.md](docs/testing.md)).
 - 공유 service 생성자에 DI 추가 시 그 service 를 부팅하는 기존 모든 spec 의 providers 에 mock 추가(grep 전수).
 
@@ -154,14 +145,13 @@ src/
 - [ ] 파일/클래스명: 레이어 `<domain>.<role>.ts`, DTO/엔티티 kebab, 클래스 `<Domain><Feature><Role>Dto`(응답 `ResultDto`)
 - [ ] 컨트롤러 입력 DTO 타입(`any`·`@Param('key')` 금지), 파라미터 한 줄, 인증 `@PassportUser('user_id')` 첫 파라미터
 - [ ] 라우트 `@Controller('/api/v1/<domain>')` + 핸들러 앞 `/`, snake path param
-- [ ] DTO 검증: `message: i18nMsg('<key>')` 필수, `@IsNotEmpty` 맨 마지막, `@IsString` 미사용
+- [ ] DTO 검증: `message: '<한국어 문자열>'` 리터럴 필수, `@IsNotEmpty` 맨 마지막, `@IsString` 미사용
 - [ ] Entity: `@Entity({name:'t_…', comment})`, 제약명 `PK_/UK_/FK_`, `@Unique()`/`@JoinColumn({foreignKeyConstraintName})`, `@BeforeInsert/@BeforeUpdate` 타임스탬프, 모든 컬럼 comment
 - [ ] Repository: try/catch + 통일 500, errno 1062/1452 분기, `FindOptionsWhere`, `loadRelationIds:true`, `update` 는 `new XEntity()` 전달
 - [ ] Service: public=API 1:1, private 헬퍼 없이 util 분리, 쓰기 `@Transactional()`, 엔티티는 `new`+할당
-- [ ] Error: repository 통일/매핑, service throw 는 `{message: translate(...)}`, `validationErrors` 는 입력 필드 오류만
-- [ ] Swagger: 클래스 `@ApiTags`+`@ApiLanguageHeader`, 메서드 순서·`type`만, `@HttpCode(200|204)`, void 는 `@ApiNoContentResponse`
+- [ ] Error: repository 통일/매핑, service throw 는 `{message: '<한국어 문자열>'}`, `validationErrors` 는 입력 필드 오류만
+- [ ] Swagger: 클래스 `@ApiTags`, 메서드 순서·`type`만, `@HttpCode(200|204)`, void 는 `@ApiNoContentResponse`
 - [ ] Repository DI: Symbol 토큰 + `useClass`/`@Inject`, 모듈 `@SetMetadata('type','API')` + `app.module.ts` 등록
-- [ ] i18n: 신규 메시지 3개 언어(ko/en/ja) 동일 키 추가, 호출 줄 ko 한글 주석
 - [ ] 응답 필드 생략 금지 — 없으면 `null` 포함(`x: T | null`)
 - [ ] 기본 데이터 추가 시 seeder.targets.ts(`<X>_SEED_DATA`+`SEED_TARGETS`)에만 정의(엔티티 보유 ❌)
-- [ ] 테스트: repository mock 주입, 호출 횟수·인자·미호출 단언, `loadKoPack` 메시지 단언, `npm test` 통과
+- [ ] 테스트: repository mock 주입, 호출 횟수·인자·미호출 단언, 한국어 리터럴 메시지 단언, `npm test` 통과

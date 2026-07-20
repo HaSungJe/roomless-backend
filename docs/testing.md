@@ -25,7 +25,6 @@ jest.mock('typeorm-transactional', () => ({          // 최상단 — @Transacti
 }));
 // …
 const module = await Test.createTestingModule({
-    imports: [I18nModule.forRoot(buildI18nOptions())],
     controllers: [UserController],
     providers: [
         UserService,
@@ -56,7 +55,7 @@ controller 없는 service 는 HTTP boot 없이 mock 으로 직접 `new`:
 - 응답 body 필드 전부(토큰 4종, `null` 필드 등).
 - `toHaveBeenCalledTimes`, 생성 엔티티 `toBeInstanceOf(XEntity)` + 컬럼별 값(생성 id 는 `/^[a-f0-9]{32}$/` 정규식), 순서 `toHaveBeenNthCalledWith`.
 - 실패 분기 후 하위 write 전부 미호출(`expectNoWrites()` 헬퍼 패턴).
-- **i18n 메시지는 `loadKoPack('<domain>')`** 로 단언(`userKo.sign.age_restriction` 등). 헬퍼: [common/i18n/test-utils/load-ko-pack.ts](../src/common/i18n/test-utils/load-ko-pack.ts). Test 모듈 imports 에 `I18nModule.forRoot(buildI18nOptions())`.
+- **에러/검증 메시지는 한국어 리터럴 문자열로 단언**(소스의 메시지 리터럴과 동일 값).
 - `describe` 는 분기 분류 태그: `[SUCCESS]` / `[FAIL:validation]` / `[FAIL:service]` / `[FAIL:duplicate]` / `[FAIL:repository]`.
 
 ## Data-Access Smoke (No-DB통합) — 미적용/규약

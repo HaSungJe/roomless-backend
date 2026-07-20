@@ -2,7 +2,6 @@ import { Body, Controller, Delete, HttpCode, Ip, Patch, Post, UseGuards } from '
 import { ApiTags, ApiOperation, ApiBody, ApiOkResponse, ApiBadRequestResponse, ApiForbiddenResponse, ApiInternalServerErrorResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { PassportJwtAuthGuard } from '@root/guards/passport.jwt.auth/passport.jwt.auth.guard';
 import { PassportUser } from '@root/guards/passport.jwt.auth/passport.jwt.auth.decorator';
-import { ApiLanguageHeader } from '@root/common/decorators/api-language-header.decorator';
 import { ApiBadRequestResultDto, ApiFailResultDto } from '@root/common/dto/global.result.dto';
 import { UserService } from './user.service';
 import { UserSignDto, UserSignResultDto } from './dto/user-sign.dto';
@@ -11,7 +10,6 @@ import { UserTokenRefreshDto, UserTokenRefreshResultDto } from './dto/user-token
 import { UserLeaveDto } from './dto/user-leave.dto';
 
 @ApiTags('회원')
-@ApiLanguageHeader()
 @Controller('/api/v1/user')
 export class UserController {
     constructor(private readonly userService: UserService) {}
