@@ -29,9 +29,9 @@
         "./src/util/*"
       ]
     },
-    "typeRoots": [
-      "./@types",
-      "./node_modules/@types"
+    "types": [
+      "jest",
+      "node"
     ]
   }
 }

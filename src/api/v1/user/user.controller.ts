@@ -8,6 +8,8 @@ import { UserSignDto, UserSignResultDto } from './dto/user-sign.dto';
 import { UserLoginDto, UserLoginResultDto } from './dto/user-login.dto';
 import { UserTokenRefreshDto, UserTokenRefreshResultDto } from './dto/user-token-refresh.dto';
 import { UserLeaveDto } from './dto/user-leave.dto';
+import { UserGeneralSignDto, UserGeneralSignResultDto } from './dto/user-general-sign.dto';
+import { UserGeneralLoginDto, UserGeneralLoginResultDto } from './dto/user-general-login.dto';
 
 @ApiTags('회원')
 @Controller('/api/v1/user')
@@ -42,6 +44,36 @@ export class UserController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async login(@Body() dto: UserLoginDto, @Ip() ip: string): Promise<UserLoginResultDto> {
         return this.userService.login(dto, ip);
+    }
+
+    /**
+     * 일반 회원가입 (아이디/비밀번호)
+     */
+    @Post('/general-sign')
+    @HttpCode(200)
+    @ApiOperation({summary: '일반 회원가입'})
+    @ApiBody({type: UserGeneralSignDto})
+    @ApiOkResponse({type: UserGeneralSignResultDto})
+    @ApiBadRequestResponse({type: ApiBadRequestResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async generalSign(@Body() dto: UserGeneralSignDto, @Ip() ip: string): Promise<UserGeneralSignResultDto> {
+        return this.userService.generalSign(dto, ip);
+    }
+
+    /**
+     * 일반 로그인 (아이디/비밀번호)
+     */
+    @Post('/general-login')
+    @HttpCode(200)
+    @ApiOperation({summary: '일반 로그인'})
+    @ApiBody({type: UserGeneralLoginDto})
+    @ApiOkResponse({type: UserGeneralLoginResultDto})
+    @ApiBadRequestResponse({type: ApiBadRequestResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async generalLogin(@Body() dto: UserGeneralLoginDto, @Ip() ip: string): Promise<UserGeneralLoginResultDto> {
+        return this.userService.generalLogin(dto, ip);
     }
 
     /**

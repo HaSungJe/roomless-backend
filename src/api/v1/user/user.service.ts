@@ -12,11 +12,13 @@ import { UserSignDto, UserSignResultDto } from './dto/user-sign.dto';
 import { UserLoginDto, UserLoginResultDto } from './dto/user-login.dto';
 import { UserTokenRefreshDto, UserTokenRefreshResultDto } from './dto/user-token-refresh.dto';
 import { UserLeaveDto } from './dto/user-leave.dto';
+import { UserGeneralSignDto, UserGeneralSignResultDto } from './dto/user-general-sign.dto';
+import { UserGeneralLoginDto, UserGeneralLoginResultDto } from './dto/user-general-login.dto';
 import { USER_REPOSITORY } from './user.symbols';
 import type { UserRepositoryInterface } from './interfaces/user.repository.interface';
 import { isAdult, generateSnsLoginId, issueAccessAndRefresh } from './user.util';
 import { createValidationError } from '@root/common/utils/validation';
-import { getBcrypt } from '@root/common/utils/bcrypt';
+import { getBcrypt, matchBcrypt } from '@root/common/utils/bcrypt';
 import { sha256Hex } from '@root/common/utils/hash';
 import { encryptAesGcm } from '@root/common/utils/cipher';
 
@@ -107,6 +109,83 @@ export class UserService {
     }
 
     /**
+     * 일반 회원가입 — 아이디/비밀번호로 회원/설정/세션 생성 후 토큰 4종 반환. sns_id/sns_user_id 는 null.
+     */
+    @Transactional()
+    async generalSign(dto: UserGeneralSignDto, ip: string): Promise<UserGeneralSignResultDto> {
+        // 1. 만 18세 이하 가입 제한
+        if (!isAdult(dto.birth)) {
+            const message = '입력하신 정보로는 서비스 이용이 제한됩니다. 생년월일을 다시 확인해 주세요.';
+            throw new BadRequestException({
+                message,
+                validationErrors: createValidationError('birth', message),
+            });
+        }
+
+        // 2. ID 생성
+        const user_id = v4().replace(/-/g, '');
+        const user_setting_id = v4().replace(/-/g, '');
+        const session_id = v4().replace(/-/g, '');
+        const login_pw = await getBcrypt(dto.login_pw);
+        const user_search_code = v4().replace(/-/g, '');
+
+        // 3. t_user 생성 — 일반 회원: sns 미보유
+        const userEntity = new UserEntity();
+        userEntity.user_id = user_id;
+        userEntity.user_search_code = user_search_code;
+        userEntity.auth_id = 'USER';
+        userEntity.state_id = 'ACTIVE';
+        userEntity.sns_id = null;
+        userEntity.sns_user_id = null;
+        userEntity.login_id = dto.login_id;
+        userEntity.login_pw = login_pw;
+        userEntity.name = dto.nickname;
+        userEntity.gender = dto.gender;
+        userEntity.birth = dto.birth;
+        userEntity.phone = null;
+        userEntity.nickname = dto.nickname;
+        userEntity.device_os = dto.device_os ?? null;
+        userEntity.device_token = dto.device_token ?? null;
+        await this.userRepository.insertUser(userEntity);   // 아이디 중복은 UK_User_LoginId 분기 400
+
+        // 4. t_user_setting 생성
+        const userSettingEntity = new UserSettingEntity();
+        userSettingEntity.user_setting_id = user_setting_id;
+        userSettingEntity.user_id = user_id;
+        userSettingEntity.bio = null;
+        await this.userRepository.insertUserSetting(userSettingEntity);
+
+        // 5. t_session 생성
+        const sessionEntity = new SessionEntity();
+        sessionEntity.session_id = session_id;
+        sessionEntity.user_id = user_id;
+        sessionEntity.ip = ip ?? null;
+        sessionEntity.device_os = dto.device_os ?? null;
+        sessionEntity.device_token = dto.device_token ?? null;
+        sessionEntity.is_delete = 0;
+        await this.userRepository.insertSession(sessionEntity);
+
+        // 6. 토큰 발급 (공통 util)
+        const tokens = issueAccessAndRefresh(this.jwtService, {user_id, session_id});
+
+        // 7. t_session_refresh 생성
+        const sessionRefreshEntity = new SessionRefreshEntity();
+        sessionRefreshEntity.session_id = session_id;
+        sessionRefreshEntity.refresh_hash = sha256Hex(tokens.refreshToken);
+        sessionRefreshEntity.refresh_encrypted = encryptAesGcm(tokens.refreshToken);
+        sessionRefreshEntity.before_refresh_hash = null;
+        sessionRefreshEntity.end_at = tokens.refreshTokenExpiresAt;
+        await this.userRepository.insertSessionRefresh(sessionRefreshEntity);
+
+        return {
+            access_token: tokens.accessToken,
+            refresh_token: tokens.refreshToken,
+            access_token_expires_at: tokens.accessTokenExpiresAt.toISOString(),
+            refresh_token_expires_at: tokens.refreshTokenExpiresAt.toISOString(),
+        };
+    }
+
+    /**
      * SNS 로그인
      * - (sns_id, sns_user_id) + state_id IN (ACTIVE, BLOCK) 로 조회
      * - 미존재 / LEAVE_WAIT / LEAVE → 404 "잘못된 로그인 정보입니다."
@@ -158,6 +237,78 @@ export class UserService {
         const tokens = issueAccessAndRefresh(this.jwtService, {user_id: user.user_id, session_id});
 
         // 5. refresh 저장
+        const sessionRefreshEntity = new SessionRefreshEntity();
+        sessionRefreshEntity.session_id = session_id;
+        sessionRefreshEntity.refresh_hash = sha256Hex(tokens.refreshToken);
+        sessionRefreshEntity.refresh_encrypted = encryptAesGcm(tokens.refreshToken);
+        sessionRefreshEntity.before_refresh_hash = null;
+        sessionRefreshEntity.end_at = tokens.refreshTokenExpiresAt;
+        await this.userRepository.insertSessionRefresh(sessionRefreshEntity);
+
+        return {
+            access_token: tokens.accessToken,
+            refresh_token: tokens.refreshToken,
+            access_token_expires_at: tokens.accessTokenExpiresAt.toISOString(),
+            refresh_token_expires_at: tokens.refreshTokenExpiresAt.toISOString(),
+        };
+    }
+
+    /**
+     * 일반 로그인
+     * - login_id + state_id IN (ACTIVE, BLOCK) 조회 → 미존재 404 "잘못된 로그인 정보입니다."
+     * - matchBcrypt 불일치 → 동일 404 (아이디/비밀번호 구분 비노출)
+     * - BLOCK → 403 + block_comment (비밀번호 검증 후 판정 — 비밀번호 없이 정지 여부 탐지 방지)
+     * - ACTIVE → device 동기화(둘 다 입력 시) + 세션/refresh 발급 (SNS login 과 동일)
+     */
+    @Transactional()
+    async generalLogin(dto: UserGeneralLoginDto, ip: string): Promise<UserGeneralLoginResultDto> {
+        // 1. 회원 조회 (ACTIVE / BLOCK 만)
+        const user = await this.userRepository.findUser({
+            login_id: dto.login_id,
+            state_id: In(['ACTIVE', 'BLOCK']),
+        });
+        if (!user) {
+            throw new NotFoundException({message: '잘못된 로그인 정보입니다.'});
+        }
+
+        // 2. 비밀번호 검증 — 실패 시 미존재와 동일 404
+        const matched = await matchBcrypt(dto.login_pw, user.login_pw);
+        if (!matched) {
+            throw new NotFoundException({message: '잘못된 로그인 정보입니다.'});
+        }
+
+        // 3. BLOCK 차단 (비밀번호 검증 후)
+        if (user.state_id === 'BLOCK') {
+            throw new HttpException(
+                {message: '이용이 제한된 계정입니다.', block_comment: user.block_comment},
+                HttpStatus.FORBIDDEN,
+            );
+        }
+
+        // 3-5. device 정보 입력 시 t_user 동기화 (마지막 로그인 기기 유지)
+        //      device_os/device_token 둘 다 입력된 경우에만 update — 미입력이면 기존값 보존(null 초기화 ❌)
+        if (dto.device_os && dto.device_token) {
+            const userDeviceEntity = new UserEntity();   // 객체리터럴 ❌ — new+할당(@BeforeUpdate update_at 트리거)
+            userDeviceEntity.device_os = dto.device_os;
+            userDeviceEntity.device_token = dto.device_token;
+            await this.userRepository.updateUser({user_id: user.user_id}, userDeviceEntity);
+        }
+
+        // 4. session 생성
+        const session_id = v4().replace(/-/g, '');
+        const sessionEntity = new SessionEntity();
+        sessionEntity.session_id = session_id;
+        sessionEntity.user_id = user.user_id;
+        sessionEntity.ip = ip ?? null;
+        sessionEntity.device_os = dto.device_os ?? null;
+        sessionEntity.device_token = dto.device_token ?? null;
+        sessionEntity.is_delete = 0;
+        await this.userRepository.insertSession(sessionEntity);
+
+        // 5. 토큰 발급 (공통 util)
+        const tokens = issueAccessAndRefresh(this.jwtService, {user_id: user.user_id, session_id});
+
+        // 6. refresh 저장
         const sessionRefreshEntity = new SessionRefreshEntity();
         sessionRefreshEntity.session_id = session_id;
         sessionRefreshEntity.refresh_hash = sha256Hex(tokens.refreshToken);
