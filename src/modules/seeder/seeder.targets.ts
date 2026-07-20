@@ -21,7 +21,7 @@ export const AUTH_SEED_DATA: AuthEntity[] = [
 export const STATE_SEED_DATA: StateEntity[] = [
     {state_id: 'ACTIVE', state_name: '정상', is_login_able: 1},
     {state_id: 'BLOCK', state_name: '정지', is_login_able: 0},
-    {state_id: 'LEAVE_WAIT', state_name: '탈퇴 대기', is_login_able: 0},
+    {state_id: 'LEAVE_WAIT', state_name: '탈퇴 대기', is_login_able: 1},
     {state_id: 'LEAVE', state_name: '탈퇴', is_login_able: 0},
 ];
 
