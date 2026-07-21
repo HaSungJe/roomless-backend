@@ -45,7 +45,7 @@ src/
 ├── common/        # 비도메인 공통: dto, utils(순수함수)
 ├── config/        # typeorm.config.ts (기본 비즈니스 DataSource)
 ├── exception/     # CustomErrorFilter (전역 @Catch)
-├── guards/        # passport.jwt.auth(적용), roles(미적용)
+├── guards/        # passport.jwt.auth(적용), roles(적용)
 ├── modules/       # 인프라: api-log(@Global,별도 DataSource), queue(BullMQ,미적용), typeorm, seeder
 ├── app.module.ts  # 유일한 모듈 집합점
 └── main.ts        # 부트스트랩
@@ -98,7 +98,7 @@ src/
 
 - **모든 함수/메서드에 주석 필수**(레이어 무관 JSDoc/한 줄), controller 핸들러에 Swagger 데코레이터 필수.
 - 클래스: `@ApiTags('<한글>')` → `@Controller(...)`.
-- 메서드: HTTP verb → `@UseGuards`(인증 시) → `@HttpCode` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse`/`@ApiNoContentResponse` → 에러 응답들. 응답 데코레이터는 `type` 만(❌ `description`), `@ApiOperation` 은 `summary` 만.
+- 메서드: HTTP verb → `@UseGuards`(인증 시) → `@Roles`(권한 제한 시) → `@HttpCode` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse`/`@ApiNoContentResponse` → 에러 응답들. 응답 데코레이터는 `type` 만(❌ `description`), `@ApiOperation` 은 `summary` 만.
 
 → 상세: [docs/api.md](docs/api.md)
 
@@ -114,7 +114,7 @@ src/
 
 - 인증은 **핸들러 단위** `@UseGuards(PassportJwtAuthGuard)`(컨트롤러 전체 아님). 공개 엔드포인트(sign/login/token-refresh)는 guard 생략, 보호 엔드포인트(leave/cancelLeave)는 부착.
 - 로그인 회원은 반드시 `@PassportUser('user_id') user_id: string`(raw `@Req()` ❌). import: `@root/guards/passport.jwt.auth/passport.jwt.auth.decorator`.
-- **역할 기반 권한**(`@Roles`+`RolesGuard`, `src/guards/roles/`): 정의돼 있으나 **적용 0건 — 미적용/규약**.
+- **역할 기반 권한**(`@Roles`+`RolesGuard`, `src/guards/roles/`): 관리자 전용 API 는 `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles('SUPER_ADMIN', 'ADMIN')` 를 **한 세트로** 부착(가드 순서 = 인증 → 권한). 권한값은 `t_auth` PK 문자열(SUPER_ADMIN/ADMIN/MANAGER/USER, [seeder.targets.ts](src/modules/seeder/seeder.targets.ts)). `RolesGuard` 는 불일치 시 `ForbiddenException({message: '접근 권한이 없습니다.'})` 로 403. 적용 예: [store.controller.ts](src/api/v1/store/store.controller.ts).
 
 ## 비동기 / 스케줄러
 

@@ -8,7 +8,7 @@ src/
 ├── common/             # 비도메인 공통: dto, utils(순수함수)
 ├── config/             # typeorm.config.ts (기본 비즈니스 DataSource)
 ├── exception/          # CustomErrorFilter (전역 @Catch(Error))
-├── guards/             # passport.jwt.auth(JWT, 적용) · roles(정의만, 미적용)
+├── guards/             # passport.jwt.auth(JWT, 적용) · roles(역할 권한, 적용)
 ├── modules/            # 인프라 @Module: api-log(@Global,별도 DataSource) · queue(BullMQ,미적용) · typeorm · seeder
 ├── app.module.ts       # 유일한 모듈 집합점
 └── main.ts             # 부트스트랩

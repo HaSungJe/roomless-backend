@@ -30,8 +30,19 @@ async leave(@PassportUser('user_id') user_id: string, @Body() dto: UserLeaveDto)
 }
 ```
 
-순서: **HTTP verb → `@UseGuards`(인증 시) → `@HttpCode` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse`/`@ApiNoContentResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse`/`@ApiForbiddenResponse`/`@ApiNotFoundResponse` → `@ApiInternalServerErrorResponse`**.
+순서: **HTTP verb → `@UseGuards`(인증 시) → `@Roles`(권한 제한 시) → `@HttpCode` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse`/`@ApiNoContentResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse`/`@ApiForbiddenResponse`/`@ApiNotFoundResponse` → `@ApiInternalServerErrorResponse`**.
 
+권한 제한 핸들러는 가드를 **인증 → 권한 순으로 한 세트** 부착하고 바로 다음 줄에 `@Roles` 를 둔다([store.controller.ts](../src/api/v1/store/store.controller.ts)):
+
+```ts
+@Post('/register')
+@UseGuards(PassportJwtAuthGuard, RolesGuard)   // 인증 → 권한 순
+@Roles('SUPER_ADMIN', 'ADMIN')                 // t_auth PK 문자열
+@HttpCode(200)
+// … 이하 동일
+```
+
+- 권한 불일치는 `RolesGuard` 가 `ForbiddenException({message: '접근 권한이 없습니다.'})` 로 403 — 핸들러는 관여하지 않는다. `@ApiForbiddenResponse({type: ApiFailResultDto})` 를 함께 명시한다.
 - `@ApiOperation` 은 `summary` 만.
 - 응답 데코레이터는 `type` 만(❌ `description`): 200 `XResultDto`, 400 `ApiBadRequestResultDto`, 401/403/404/500 `ApiFailResultDto`.
 - 데이터 반환 `@Post` 도 `@HttpCode(200)`, void 는 `@HttpCode(204)` + `@ApiNoContentResponse()`.
