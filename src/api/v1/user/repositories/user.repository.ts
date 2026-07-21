@@ -123,6 +123,17 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
+     * 세션 단건 조회
+     */
+    async findSession(where: FindOptionsWhere<SessionEntity>): Promise<SessionEntity | null> {
+        try {
+            return await this.sessionRepository.findOne({where, loadRelationIds: true});
+        } catch (error) {
+            throw new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'});
+        }
+    }
+
+    /**
      * Refresh 세션 단건 조회
      */
     async findSessionRefresh(where: FindOptionsWhere<SessionRefreshEntity>): Promise<SessionRefreshEntity | null> {

@@ -12,6 +12,7 @@ import { UserController } from '../user.controller';
 import { UserService } from '../user.service';
 import { USER_REPOSITORY } from '../user.symbols';
 import { UserEntity } from '../entities/user.entity';
+import { SessionEntity } from '../entities/session.entity';
 import { SessionRefreshEntity } from '../entities/session-refresh.entity';
 import * as hashUtil from '@root/common/utils/hash';
 import * as cipherUtil from '@root/common/utils/cipher';
@@ -23,11 +24,13 @@ describe('UserService - tokenRefresh', () => {
     let app: INestApplication;
     let userRepository: {
         findUser: jest.Mock;
+        findSession: jest.Mock;
         findSessionRefresh: jest.Mock;
         updateSessionRefresh: jest.Mock;
         insertSessionRefresh: jest.Mock;
     };
     let jwtServiceMock: {sign: jest.Mock; verify: jest.Mock};
+    let capturedIp: string;   // 요청 ip 캡처 — ip 일치 케이스를 결정적으로 만들기 위한 미들웨어 저장값
     let sha256HexSpy: jest.SpyInstance;
     let encryptAesGcmSpy: jest.SpyInstance;
     let extractJwtExpiresAtSpy: jest.SpyInstance;
@@ -49,6 +52,7 @@ describe('UserService - tokenRefresh', () => {
     const buildModule = async () => {
         userRepository = {
             findUser: jest.fn(),
+            findSession: jest.fn(),
             findSessionRefresh: jest.fn(),
             updateSessionRefresh: jest.fn(),
             insertSessionRefresh: jest.fn(),
@@ -64,6 +68,8 @@ describe('UserService - tokenRefresh', () => {
         }).compile();
 
         app = module.createNestApplication();
+        // 요청 ip 캡처 미들웨어 — findSession mock 이 같은 요청의 실제 ip 를 반환할 수 있게 함
+        app.use((req: any, _res: any, next: any) => { capturedIp = req.ip; next(); });
         app.useGlobalFilters(new CustomErrorFilter());
         app.useGlobalPipes(
             new ValidationPipe({
@@ -102,6 +108,15 @@ describe('UserService - tokenRefresh', () => {
         return e;
     };
 
+    const buildSession = (sessionIp: string | null): SessionEntity => {
+        const s = new SessionEntity();
+        s.session_id = PAYLOAD.session_id;
+        s.user_id = PAYLOAD.user_id;
+        s.ip = sessionIp;
+        s.is_delete = 0;
+        return s;
+    };
+
     beforeEach(async () => {
         jest.useFakeTimers();
         jest.setSystemTime(FIXED_TIME);
@@ -132,10 +147,11 @@ describe('UserService - tokenRefresh', () => {
     // ─────────────────────────────────────────
     // [SUCCESS]
     // ─────────────────────────────────────────
-    describe('[SUCCESS] tokenRefresh — 정상 재발급', () => {
-        it('verify → findSessionRefresh → findUser ACTIVE → update(end_at 1m) → 토큰 발급 → insert(chain), 200 4필드', async () => {
+    describe('[SUCCESS] tokenRefresh — 정상 재발급 (저장 ip null → 체크 생략)', () => {
+        it('verify → findSessionRefresh → findSession(ip 체크) → findUser ACTIVE → update(end_at 1m) → 토큰 발급 → insert(chain), 200 4필드', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(buildSession(null));   // 저장 ip 없음 → 체크 생략
             userRepository.findUser.mockResolvedValueOnce(buildActiveUser());
             userRepository.updateSessionRefresh.mockResolvedValueOnce(undefined);
             jwtServiceMock.sign
@@ -162,6 +178,10 @@ describe('UserService - tokenRefresh', () => {
             expect(userRepository.findSessionRefresh).toHaveBeenCalledTimes(1);
             expect(userRepository.findSessionRefresh).toHaveBeenCalledWith({refresh_hash: OLD_HASH});
 
+            // findSession — ip 체크용 세션 조회
+            expect(userRepository.findSession).toHaveBeenCalledTimes(1);
+            expect(userRepository.findSession).toHaveBeenCalledWith({session_id: PAYLOAD.session_id});
+
             // findUser
             expect(userRepository.findUser).toHaveBeenCalledTimes(1);
             expect(userRepository.findUser).toHaveBeenCalledWith({user_id: PAYLOAD.user_id});
@@ -187,6 +207,30 @@ describe('UserService - tokenRefresh', () => {
             expect(newEntity.refresh_encrypted).toBe(NEW_ENCRYPTED);
             expect(newEntity.before_refresh_hash).toBe(OLD_HASH);
             expect(newEntity.end_at).toEqual(REFRESH_EXP);
+        });
+    });
+
+    describe('[SUCCESS] tokenRefresh — 저장 ip 와 요청 ip 일치', () => {
+        it('세션 ip = 실제 요청 ip → 체크 통과, 200 정상 재발급', async () => {
+            jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
+            userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            // 캡처 미들웨어가 이 요청의 ip 를 저장한 뒤 mock 이 호출되므로, 저장 ip = 요청 ip 로 결정적 일치
+            userRepository.findSession.mockImplementationOnce(async () => buildSession(capturedIp));
+            userRepository.findUser.mockResolvedValueOnce(buildActiveUser());
+            userRepository.updateSessionRefresh.mockResolvedValueOnce(undefined);
+            jwtServiceMock.sign
+                .mockReturnValueOnce(NEW_ACCESS)
+                .mockReturnValueOnce(NEW_REFRESH);
+            userRepository.insertSessionRefresh.mockResolvedValueOnce(undefined);
+
+            const res = await request(app.getHttpServer())
+                .post('/api/v1/user/token-refresh')
+                .send({refresh_token: OLD_REFRESH})
+                .expect(200);
+
+            expect(res.body.access_token).toBe(NEW_ACCESS);
+            expect(userRepository.findSession).toHaveBeenCalledTimes(1);
+            expect(userRepository.insertSessionRefresh).toHaveBeenCalledTimes(1);
         });
     });
 
@@ -229,6 +273,7 @@ describe('UserService - tokenRefresh', () => {
                 });
 
             expect(userRepository.findSessionRefresh).not.toHaveBeenCalled();
+            expect(userRepository.findSession).not.toHaveBeenCalled();
             expect(userRepository.findUser).not.toHaveBeenCalled();
             expect(userRepository.updateSessionRefresh).not.toHaveBeenCalled();
             expect(userRepository.insertSessionRefresh).not.toHaveBeenCalled();
@@ -248,11 +293,12 @@ describe('UserService - tokenRefresh', () => {
                 });
 
             expect(userRepository.findSessionRefresh).not.toHaveBeenCalled();
+            expect(userRepository.findSession).not.toHaveBeenCalled();
         });
     });
 
     describe('[FAIL:service] findSessionRefresh null', () => {
-        it('401, findUser 미호출', async () => {
+        it('401, findSession·findUser 미호출', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             userRepository.findSessionRefresh.mockResolvedValueOnce(null);
 
@@ -262,6 +308,7 @@ describe('UserService - tokenRefresh', () => {
                 .expect(401);
 
             expect(userRepository.findSessionRefresh).toHaveBeenCalledTimes(1);
+            expect(userRepository.findSession).not.toHaveBeenCalled();
             expect(userRepository.findUser).not.toHaveBeenCalled();
             expect(userRepository.updateSessionRefresh).not.toHaveBeenCalled();
             expect(userRepository.insertSessionRefresh).not.toHaveBeenCalled();
@@ -269,7 +316,7 @@ describe('UserService - tokenRefresh', () => {
     });
 
     describe('[FAIL:service] DB end_at 만료', () => {
-        it('401, findUser 미호출', async () => {
+        it('401, findSession·findUser 미호출', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             const past = new Date(FIXED_TIME.getTime() - 1000);
             userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(past));
@@ -280,6 +327,49 @@ describe('UserService - tokenRefresh', () => {
                 .expect(401);
 
             expect(userRepository.findSessionRefresh).toHaveBeenCalledTimes(1);
+            expect(userRepository.findSession).not.toHaveBeenCalled();
+            expect(userRepository.findUser).not.toHaveBeenCalled();
+            expect(userRepository.updateSessionRefresh).not.toHaveBeenCalled();
+            expect(userRepository.insertSessionRefresh).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('[FAIL:service] 세션 ip 불일치', () => {
+        it('401 동일 메시지, findUser·update·insert 전부 미호출 (거부만 — end_at 단축 없음)', async () => {
+            jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
+            userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(buildSession('10.99.99.99'));   // 요청 ip(로컬)와 불일치
+
+            await request(app.getHttpServer())
+                .post('/api/v1/user/token-refresh')
+                .send({refresh_token: OLD_REFRESH})
+                .expect(401)
+                .expect((res) => {
+                    expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
+                });
+
+            expect(userRepository.findSession).toHaveBeenCalledTimes(1);
+            expect(userRepository.findUser).not.toHaveBeenCalled();
+            expect(userRepository.updateSessionRefresh).not.toHaveBeenCalled();   // 거부만 — 만료 단축 없음
+            expect(userRepository.insertSessionRefresh).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('[FAIL:service] 세션 미존재 — findSession null', () => {
+        it('401 동일 메시지, 후속 호출 없음', async () => {
+            jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
+            userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(null);
+
+            await request(app.getHttpServer())
+                .post('/api/v1/user/token-refresh')
+                .send({refresh_token: OLD_REFRESH})
+                .expect(401)
+                .expect((res) => {
+                    expect(res.body.message).toBe('유효하지 않은 토큰입니다.');
+                });
+
+            expect(userRepository.findSession).toHaveBeenCalledTimes(1);
             expect(userRepository.findUser).not.toHaveBeenCalled();
             expect(userRepository.updateSessionRefresh).not.toHaveBeenCalled();
             expect(userRepository.insertSessionRefresh).not.toHaveBeenCalled();
@@ -290,6 +380,7 @@ describe('UserService - tokenRefresh', () => {
         it('401 UNAUTHORIZED_USER, updateSessionRefresh 1회(end_at 1m), insertSessionRefresh 미호출', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(buildSession(null));   // ip 체크 통과(저장 ip 없음)
             userRepository.findUser.mockResolvedValueOnce(null);
             userRepository.updateSessionRefresh.mockResolvedValueOnce(undefined);
 
@@ -313,6 +404,7 @@ describe('UserService - tokenRefresh', () => {
         it('401, updateSessionRefresh 1회, insertSessionRefresh 미호출', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(buildSession(null));   // ip 체크 통과(저장 ip 없음)
             const blocked = buildActiveUser();
             blocked.state_id = 'BLOCK';
             userRepository.findUser.mockResolvedValueOnce(blocked);
@@ -346,6 +438,30 @@ describe('UserService - tokenRefresh', () => {
                 .send({refresh_token: OLD_REFRESH})
                 .expect(500);
 
+            expect(userRepository.findSession).not.toHaveBeenCalled();
+            expect(userRepository.findUser).not.toHaveBeenCalled();
+            expect(userRepository.updateSessionRefresh).not.toHaveBeenCalled();
+            expect(userRepository.insertSessionRefresh).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('[FAIL:repository] findSession throw', () => {
+        it('500 통일 메시지, findUser·후속 호출 없음', async () => {
+            jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
+            userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockRejectedValueOnce(
+                new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'}),
+            );
+
+            await request(app.getHttpServer())
+                .post('/api/v1/user/token-refresh')
+                .send({refresh_token: OLD_REFRESH})
+                .expect(500)
+                .expect((res) => {
+                    expect(res.body.message).toBe('서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.');
+                });
+
+            expect(userRepository.findSession).toHaveBeenCalledTimes(1);
             expect(userRepository.findUser).not.toHaveBeenCalled();
             expect(userRepository.updateSessionRefresh).not.toHaveBeenCalled();
             expect(userRepository.insertSessionRefresh).not.toHaveBeenCalled();
@@ -356,6 +472,7 @@ describe('UserService - tokenRefresh', () => {
         it('500, updateSessionRefresh 미호출', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(buildSession(null));
             userRepository.findUser.mockRejectedValueOnce(
                 new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'}),
             );
@@ -374,6 +491,7 @@ describe('UserService - tokenRefresh', () => {
         it('500, insertSessionRefresh 미호출', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(buildSession(null));
             userRepository.findUser.mockResolvedValueOnce(buildActiveUser());
             userRepository.updateSessionRefresh.mockRejectedValueOnce(
                 new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'}),
@@ -392,6 +510,7 @@ describe('UserService - tokenRefresh', () => {
         it('500, 흐름 끝까지 진행 후 insert 에서 throw', async () => {
             jwtServiceMock.verify.mockReturnValueOnce(PAYLOAD);
             userRepository.findSessionRefresh.mockResolvedValueOnce(buildOldRefresh(REFRESH_EXP));
+            userRepository.findSession.mockResolvedValueOnce(buildSession(null));
             userRepository.findUser.mockResolvedValueOnce(buildActiveUser());
             userRepository.updateSessionRefresh.mockResolvedValueOnce(undefined);
             jwtServiceMock.sign

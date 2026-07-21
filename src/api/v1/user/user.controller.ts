@@ -87,8 +87,8 @@ export class UserController {
     @ApiBadRequestResponse({type: ApiBadRequestResultDto})
     @ApiUnauthorizedResponse({type: ApiFailResultDto})
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
-    async tokenRefresh(@Body() dto: UserTokenRefreshDto): Promise<UserTokenRefreshResultDto> {
-        return this.userService.tokenRefresh(dto);
+    async tokenRefresh(@Body() dto: UserTokenRefreshDto, @Ip() ip: string): Promise<UserTokenRefreshResultDto> {
+        return this.userService.tokenRefresh(dto, ip);
     }
 
     /**

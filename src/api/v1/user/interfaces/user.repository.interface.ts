@@ -11,6 +11,7 @@ export interface UserRepositoryInterface {
     insertSessionRefresh(entity: SessionRefreshEntity): Promise<void>;
     findUser(where: FindOptionsWhere<UserEntity>): Promise<UserEntity | null>;
     findLeaveReadyUsers(now: string): Promise<UserEntity[]>;
+    findSession(where: FindOptionsWhere<SessionEntity>): Promise<SessionEntity | null>;
     findSessionRefresh(where: FindOptionsWhere<SessionRefreshEntity>): Promise<SessionRefreshEntity | null>;
     updateSessionRefresh(where: FindOptionsWhere<SessionRefreshEntity>, entity: SessionRefreshEntity): Promise<void>;
     updateUser(where: FindOptionsWhere<UserEntity>, entity: UserEntity): Promise<void>;

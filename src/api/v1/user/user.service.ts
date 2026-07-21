@@ -329,12 +329,14 @@ export class UserService {
      * 로그인 토큰 재발급
      * - jwtService.verify 로 서명+만료+payload type 검증 (실패 → 401)
      * - sha256 hash 로 t_session_refresh 조회 (미존재 or end_at < now → 401)
+     * - 세션 조회 + ip 체크 (세션 미존재 or 로그인 시점 저장 ip 와 요청 ip 불일치 → 401 거부, end_at 단축 없음)
+     *   저장 ip 또는 요청 ip 가 없으면 비교 생략(하위호환)
      * - 회원 state 재검증 (ACTIVE 외 모두 401, 안전망으로 end_at 단축)
      * - old refresh end_at = now + 1m 단축 (grace)
      * - 새 access/refresh 발급, before_refresh_hash = old hash 로 t_session_refresh insert
      */
     @Transactional()
-    async tokenRefresh(dto: UserTokenRefreshDto): Promise<UserTokenRefreshResultDto> {
+    async tokenRefresh(dto: UserTokenRefreshDto, ip: string): Promise<UserTokenRefreshResultDto> {
         // 1. JWT 검증
         let payload: {type: string; user_id: string; session_id: string};
         try {
@@ -354,6 +356,15 @@ export class UserService {
         }
         // DB end_at 만료 확인 (chain 재사용 차단)
         if (oldRefresh.end_at.getTime() < Date.now()) {
+            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+        }
+
+        // 2-5. 세션 ip 체크 — 로그인 시점 저장 ip 와 불일치 시 거부(만료 단축 없음)
+        const session = await this.userRepository.findSession({session_id: payload.session_id});
+        if (!session) {
+            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+        }
+        if (session.ip && ip && session.ip !== ip) {
             throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
         }
 
