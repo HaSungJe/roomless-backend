@@ -347,7 +347,9 @@ describe('[SMOKE:data-access] store 목록 쿼리 빌드 (무연결)', () => {
     let dataSource: DataSource;
 
     beforeAll(async () => {
-        dataSource = new DataSource({type: 'mysql', entities: [StoreEntity]});
+        // database 는 무연결 메타데이터 빌드에 필요한 이름일 뿐 — 실제 접속은 하지 않는다.
+        // (TypeORM 은 MySQL 계열에서 database 가 없으면 NoConnectionOptionError 로 메타데이터 검증을 중단한다)
+        dataSource = new DataSource({type: 'mysql', database: 'test', entities: [StoreEntity]});
         // buildMetadatas 는 protected 지만 무연결 메타데이터 구성을 위해 호출한다(docs/testing.md 규약).
         await (dataSource as any).buildMetadatas();
     });

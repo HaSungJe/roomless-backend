@@ -49,8 +49,8 @@
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 1 | 가맹점 등록 | `t_store` 신설 + ADMIN 전용 등록 API. `RolesGuard` 첫 실적용 | — | — | done |
-| 2 | 가맹점 목록 조회 | 등록된 가맹점을 검색·페이지네이션으로 훑는다. `PaginationDto` **최초 실적용** — 이후 모든 목록 API 의 형태가 여기서 굳는다 | ~~검색조건 집합과 페이지네이션 응답 래핑 구조~~ → `search_type`(ALL/STORE_NAME/BUSINESS_NUMBER/OWNER_NAME) + `search_keyword`, 응답은 `{list, pagination}` | 1 | in-progress |
-| 3 | 가맹점 상세 조회 | 단건 상세. 수정·삭제·인력 관리의 공통 진입점 | ~~삭제된 가맹점의 상세 조회 허용 여부~~ → 불허(404) | 1 | in-progress |
+| 2 | 가맹점 목록 조회 | 등록된 가맹점을 검색·페이지네이션으로 훑는다. `PaginationDto` **최초 실적용** — 이후 모든 목록 API 의 형태가 여기서 굳는다 | ~~검색조건 집합과 페이지네이션 응답 래핑 구조~~ → `search_type`(ALL/STORE_NAME/BUSINESS_NUMBER/OWNER_NAME) + `search_keyword`, 응답은 `{list, pagination}` | 1 | done |
+| 3 | 가맹점 상세 조회 | 단건 상세. 수정·삭제·인력 관리의 공통 진입점 | ~~삭제된 가맹점의 상세 조회 허용 여부~~ → 불허(404) | 1 | done |
 
 **Expected APIs** (이름은 잠정 — 각 유닛 spec 에서 확정되면 이 표를 갱신한다)
 
@@ -64,8 +64,8 @@
 
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 4 | 가맹점 수정 | 상호명·대표자·연락처·주소 갱신 | ~~사업자등록번호 수정 허용 여부~~ → 불가(DTO 에 필드 없음) | 3 | in-progress |
-| 5 | 가맹점 삭제 | `is_delete` soft delete + `business_number` 를 `DELETE_<store_id>` 로 마스킹해 UK 를 비우고, 삭제 직전 스냅샷을 `delete_backup` 에 남긴다 | ~~사업자번호 점유 문제~~ → 마스킹+백업으로 해소. **복구 API 는 범위에서 제외** | 3 | in-progress |
+| 4 | 가맹점 수정 | 상호명·대표자·연락처·주소 갱신 | ~~사업자등록번호 수정 허용 여부~~ → 불가(DTO 에 필드 없음) | 3 | done |
+| 5 | 가맹점 삭제 | `is_delete` soft delete + `business_number` 를 `DELETE_<store_id>` 로 마스킹해 UK 를 비우고, 삭제 직전 스냅샷을 `delete_backup` 에 남긴다 | ~~사업자번호 점유 문제~~ → 마스킹+백업으로 해소. **복구 API 는 범위에서 제외** | 3 | done |
 
 **Expected APIs**
 
@@ -108,8 +108,8 @@
 | #10 | GET | `/api/v1/store/staff/list` | 업체 인력 목록 (ADMIN 전체 / 총괄매니저 자기 업체) |
 | #11 | DELETE | `/api/v1/store/staff/remove/:user_id` | 인력 계정 삭제 (ADMIN→총괄매니저, 총괄매니저→매니저) |
 
-**Progress**: 1/11 done · **진행 중**: #2·#3·#4·#5 (한 사이클로 묶어 기획 완료 — [store-crud-spec.md](../spec/store/store-crud-spec.md) · [store-crud-plan.md](../plan/store/store-crud-plan.md), 등록 점검은 [store-register-revision-260727-1.md](../revision/store/store-register-revision-260727-1.md))
-**Next up**: #6 가맹점 운영상태 관리 — #2~#5 가 ship 되면 의존(#4)이 풀린다. #7(위치정보)과 같은 Phase 지만 #6 을 먼저 두는 이유는 `t_store_state` 룩업이 예약 재고 판정에 걸려 4단계 reservation 까지 영향이 번지기 때문
+**Progress**: 5/11 done — #2·#3·#4·#5 를 한 사이클로 묶어 2026-07-27 ship(`c5f58fb`). 근거 [store-crud-report.md](../report/store/store-crud-report.md) · 리뷰 [worktree-stick+store-9c4msb-review-260727.md](../review/worktree-stick+store-9c4msb-review-260727.md), 등록 점검은 [store-register-revision-260727-1.md](../revision/store/store-register-revision-260727-1.md)
+**Next up**: #6 가맹점 운영상태 관리 — 의존(#4) 해소됨. #7(위치정보)과 같은 Phase 지만 #6 을 먼저 두는 이유는 `t_store_state` 룩업이 예약 재고 판정에 걸려 4단계 reservation 까지 영향이 번지기 때문
 
 ## Cross-Cutting Rules
 

@@ -66,7 +66,7 @@ controller 없는 service 는 HTTP boot 없이 mock 으로 직접 `new`:
 **mock 경계 = 검증 경계의 사각지대**: 이 프로젝트의 unit spec 은 repository(또는 raw `Repository<T>`)를 전부 mock 하므로, **쿼리 매핑 통합면 — where 필드→컬럼 해석, 쿼리 생성, 제약 에러 매핑, `@BeforeInsert/@BeforeUpdate` 훅, `loadRelationIds` — 를 실행하는 spec 이 0건**이다. 이 클래스의 버그(존재하지 않는 매핑 필드로 where 구성 등)는 현 테스트를 구조적으로 전부 통과한다.
 
 - **매핑 민감 쿼리 구성**(다른 단계가 이 정의를 참조): 관계/조인 필드나 컬럼명이 프로퍼티명과 다른 필드에 대한 where 조건, 또는 동적으로 조립되는 쿼리(QueryBuilder, 문자열 조립). 현재 user 도메인은 프로퍼티=컬럼명 일치(snake_case 통일)라 위험 매핑이 없지만, 관계 필드 where(`state_id` 등 FK)·QueryBuilder 도입 시부터 해당된다.
-- **smoke 규약(신규 해당 메서드부터 적용)**: TypeORM 은 무연결로 쿼리 빌드가 가능하다 — `new DataSource(opts)` 후 `buildMetadatas()` + `createQueryBuilder(...).getSql()`. 매핑 민감 쿼리를 쓰는 data-access 메서드는 ① 그 실제 where/criteria 가 throw 없이 SQL 문자열로 빌드되는지 spec 으로 확인하고, ② 프로퍼티명≠컬럼명인 위험 매핑 목록을 메타데이터에서 추출해 스냅샷 단언한다(새 위험 매핑 = 리뷰 강제). DB·외부 서비스 불요, `npm test` 에 포함.
+- **smoke 규약(신규 해당 메서드부터 적용)**: TypeORM 은 무연결로 쿼리 빌드가 가능하다 — `new DataSource(opts)` 후 `buildMetadatas()` + `createQueryBuilder(...).getSql()`. **`opts` 에 `database` 를 반드시 넣는다**(예: `{type:'mysql', database:'test', entities:[XEntity]}`) — MySQL 계열은 `database` 가 없으면 `buildMetadatas()` 가 `NoConnectionOptionError` 로 중단된다(`EntityMetadataValidator.js:108-111`). 접속은 하지 않으므로 이름 값은 아무거나 무방하다. `buildMetadatas()` 는 `.d.ts` 상 protected 라 `(dataSource as any)` 로 호출한다. 매핑 민감 쿼리를 쓰는 data-access 메서드는 ① 그 실제 where/criteria 가 throw 없이 SQL 문자열로 빌드되는지 spec 으로 확인하고, ② 프로퍼티명≠컬럼명인 위험 매핑 목록을 메타데이터에서 추출해 스냅샷 단언한다(새 위험 매핑 = 리뷰 강제). DB·외부 서비스 불요, `npm test` 에 포함.
 - **강제 규칙**: 매핑 민감 쿼리 구성을 쓰는 메서드를 **repository-mock spec 만으로 커버하는 것은 금지** — smoke 케이스 필수(plan 의 `[SMOKE:data-access]` 항목).
 
 ## 규칙
