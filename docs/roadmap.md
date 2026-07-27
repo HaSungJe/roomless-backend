@@ -16,7 +16,7 @@
 | 단계 | 도메인 | 상태 | 의존 |
 |---|---|---|---|
 | 0 | 기반(auth · user · store 등록) | ✅ | — |
-| 1 | store 확장 | ⬜ | 0 |
+| 1 | store 확장 | 🟡 | 0 |
 | 2 | room | ⬜ | 1 |
 | 3 | device | ⬜ | 2 |
 | 4 | reservation + payment | ⬜ | 1, 2 |
@@ -68,7 +68,7 @@
 
 ---
 
-## 1단계 · store 확장 ⬜
+## 1단계 · store 확장 🟡
 
 업체를 "예약 가능한 대상"으로 만드는 단계. 위치·영업시간·매니저를 채운다.
 
@@ -81,10 +81,10 @@
 
 **API — ADMIN**
 
-- [ ] 업체 목록 조회
-- [ ] 업체 상세 조회
-- [ ] 업체 수정
-- [ ] 업체 삭제(soft delete, `is_delete`)
+- [x] 업체 목록 조회 (검색 `search_type`/`search_keyword` + 페이지네이션 최초 적용) — [store-crud-report.md](../.beaver/output/report/store/store-crud-report.md)
+- [x] 업체 상세 조회 — 동 report
+- [x] 업체 수정 (사업자등록번호는 수정 대상 제외) — 동 report
+- [x] 업체 삭제(soft delete + `business_number` 마스킹 + `delete_backup` 스냅샷) — 동 report
 - [ ] 매니저 업체 배정
 - [ ] 매니저 업체 배정 해제
 

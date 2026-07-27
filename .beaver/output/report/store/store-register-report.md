@@ -36,3 +36,19 @@
 - **`@Roles` 데코레이터 위치는 신규 규약 요소** — `@UseGuards` 직후에 배치했다(가드 관련 그룹). CLAUDE.md/docs 의 메서드 데코레이터 순서 서술에는 아직 `@Roles` 항목이 없음.
 - **§4.5 규약 문서 갱신 미승인** — CLAUDE.md/docs 의 "역할 기반 권한: 적용 0건 — 미적용/규약" 서술이 이번 적용으로 사실과 어긋나게 됨. 갱신 승인 시 ship 전에 반영 필요(현재는 plan/spec 문서에만 기록).
 - DB 실스키마의 `t_store` 생성은 사용자 몫(`TYPEORM_SYNC=T` 환경은 부팅 시 자동 생성).
+
+---
+
+## Modification - 260727-1
+
+근거: [store-register-revision-260727-1.md](../../revision/store/store-register-revision-260727-1.md) — store-crud 기획에서 삭제를 soft delete + 사업자등록번호 마스킹으로 정하면서 `t_store` 에 `delete_backup` 이 생겨, 등록도 신규 컬럼을 초기화해야 한다.
+
+| File | Change Type | Description |
+|------|-----------|------|
+| `src/api/v1/store/store.service.ts` | modified | `register` 에 `storeEntity.delete_backup = null;` 추가 (`address_detail ?? null` 과 같은 명시적 초기화 방침) |
+| `src/api/v1/store/test/store-register.spec.ts` | modified | 전 컬럼 값 단언에 `expect(storeEntity.delete_backup).toBeNull()` 추가 |
+| `src/api/v1/store/entities/store.entity.ts` | modified | 등록이 공유하는 엔티티 확장 — 실제 변경은 [store-crud-report.md](store-crud-report.md) 에 기재(중복 아님) |
+
+**점검 결과 — 등록 API 로직에 고칠 것 없음.** 컨트롤러 데코레이터 순서, DTO 검증 집합·순서·한국어 메시지, 엔티티 제약명·comment·타임스탬프 훅, repository try/catch + errno 1062 분기, service public 1:1 + `@Transactional()` + `new`+할당, Symbol DI, 모듈 메타데이터 — 전부 규약 준수. `insertStore` 의 1062 메시지('이미 등록된 사업자등록번호입니다.')도 마스킹 도입 후 여전히 정확하다(삭제된 가맹점은 `DELETE_xxx` 를 갖고 있어 충돌하지 않으므로, 이 메시지가 나오는 경우는 운영 중인 가맹점과 진짜 중복될 때뿐).
+
+관찰만 하고 고치지 않은 것 2건(`address_detail?` 의 `?` — store 쪽이 sibling 보다 타입상 정확해 유지 / 등록자 추적 부재 — 현 설계상 결함 아님)은 revision 문서에 근거와 함께 남겼다.

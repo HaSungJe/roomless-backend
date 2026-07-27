@@ -86,6 +86,14 @@ export class UserRepository implements UserRepositoryInterface {
 
 근거: [user.repository.ts](../src/api/v1/user/repositories/user.repository.ts).
 
-## Pagination / 목록 조회 — 미적용/규약
+## Pagination / 목록 조회
 
-`common/dto/pagination.dto.ts` + `common/utils/pagination.ts` 인프라는 있으나 **현재 적용 도메인 0건**. 목록 API 신설 시 QueryBuilder 단일 메서드 + `PaginationDto`(`QueryDto`) 패턴으로 도입한다.
+`common/dto/pagination.dto.ts` + `common/utils/pagination.ts`. 최초 적용은 가맹점 목록([store.service.ts](../src/api/v1/store/store.service.ts) `list`)이며, 이후 모든 목록 API 가 아래 형태를 따른다.
+
+- **응답은 `{list, pagination}` 래핑** — `list` 는 기능별 항목 DTO 배열, `pagination` 은 `Pagination.getPagination()` 결과(`PaginationResultDto`).
+- **호출 순서는 count → Pagination → 목록**. `Pagination` 생성자가 `total_count` 를 입력으로 받아 `limit`/`offset` 을 산출하는 구조라 순서가 강제된다. repository 는 `countStore(where)` 와 `findStoreList(where, limit, offset)` 처럼 **개수와 목록을 분리한 두 메서드**로 둔다(`findAndCount` ❌ — Pagination 이 총 개수를 먼저 요구한다).
+- **Query DTO 는 `extends PaginationDto`** — 페이지 기본값은 부모 생성자가 담당한다(`all_search_yn='N'`, `page=1`, `size=20`, `page_size=10`). 상세: [conventions.md](conventions.md) "Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다".
+- **검색 WHERE 는 도메인 util 이 조립**하고 repository 는 실행만 한다([store.util.ts](../src/api/v1/store/store.util.ts) `buildStoreSearchWhere`). 통합검색(전체)은 `FindOptionsWhere<T>[]` 배열 = OR 로 표현한다.
+- 목록 조회의 기본 필터는 `is_delete = 0`, 정렬은 `create_at DESC`.
+
+근거: [store.service.ts](../src/api/v1/store/store.service.ts) · [store.repository.ts](../src/api/v1/store/repositories/store.repository.ts) · [store-list.dto.ts](../src/api/v1/store/dto/store-list.dto.ts).

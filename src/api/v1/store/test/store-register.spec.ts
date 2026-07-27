@@ -107,6 +107,7 @@ describe('StoreService - register (가맹점 등록)', () => {
             expect(storeEntity.address).toBe(VALID_DTO.address);
             expect(storeEntity.address_detail).toBe(VALID_DTO.address_detail);
             expect(storeEntity.is_delete).toBe(0);
+            expect(storeEntity.delete_backup).toBeNull();
         });
     });
 

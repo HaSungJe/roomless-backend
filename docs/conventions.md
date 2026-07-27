@@ -47,6 +47,65 @@ DTO 필드·entity 컬럼·path/query param·JWT payload 키 모두 snake_case. 
 
 근거: [user-sign.dto.ts](../src/api/v1/user/dto/user-sign.dto.ts), [user-login.dto.ts](../src/api/v1/user/dto/user-login.dto.ts).
 
+## Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다
+
+**규칙**
+
+1. **`@Query()` 로 받는 DTO 는 생성자를 세트로 갖는다.** 쿼리스트링은 키가 통째로 빠질 수 있어, 기본값이 없으면 `undefined` 가 그대로 service 로 흘러간다.
+2. **컨트롤러가 `new 클래스명({...})` 으로 만들어 service 에 넘긴다.** 핸들러가 받은 쿼리 객체를 그대로 service 로 흘리지 않는다 — 컨트롤러에서 한 번 생성자를 태워 기본값이 확정된 인스턴스를 만든다. 필드를 하나씩 대입하는 형태 ❌.
+3. **`ValidationPipe` 설정은 건드리지 않는다.** [main.ts](../src/main.ts) 의 `transform`·`forbidNonWhitelisted`·`exceptionFactory` 는 그대로 두고, 기본값 책임만 DTO 생성자로 옮긴다. 검증은 파이프가, 기본값은 생성자가 담당하는 분리다.
+
+```typescript
+// dto — 생성자가 기본값의 단일 소재지
+export class StoreListDto extends PaginationDto {
+    // …필드 + 제약 데코레이터…
+
+    constructor(data?: Partial<StoreListDto>) {
+        super(data);
+        this.search_type = data?.search_type ?? null;
+        this.search_keyword = data?.search_keyword ?? null;
+    }
+}
+
+// controller — 받은 쿼리를 생성자에 태워 지역변수 dto 로 만든 뒤 넘긴다
+async list(@Query() query: StoreListDto): Promise<StoreListResultDto> {
+    const dto = new StoreListDto(query);
+    return this.storeService.list(dto);
+}
+```
+
+- 생성 결과는 **지역변수 `dto` 에 담고** service 에 넘긴다 — 호출부에 `new` 를 인라인으로 끼워넣지 않는다. 인증 사용자 등 앞선 인자가 있으면 `this.xService.list(user_id, dto)` 처럼 `dto` 를 마지막에 둔다.
+
+**⚠️ 입력 DTO 의 모든 필드는 class-validator 데코레이터를 최소 1개 갖는다**
+
+`@Query()`/`@Body()`/`@Param()` 으로 들어오는 DTO 는 제약이 없는 필드라도 **`@IsOptional()` 을 반드시 붙인다.** `@ApiProperty` 는 Swagger 메타데이터라 class-validator 의 계산에 들어가지 않으므로, 검증 데코레이터가 **하나도 없는 필드**는 `whitelist: true` 인 순간 `delete object[property]` 로 **조용히 사라진다**(`class-validator` `ValidationExecutor.js:84-105` — 메타데이터 0건인 프로퍼티를 `notAllowedProperties` 로 모아 `forbidNonWhitelisted` 면 400, 아니면 스트립). 페이지 파라미터가 소리 없이 증발하는 버그는 추적이 매우 어렵다.
+
+현재 [main.ts](../src/main.ts) 는 `whitelist` 를 켜지 않아 발동하지 않지만(NestJS 는 `whitelist` 기본값을 넣지 않는다 — `validation.pipe.js:30`), 켜는 순간 무장식 필드가 전부 무너지므로 **선제적으로 붙여둔다**. `PaginationDto.page`/`size`/`page_size` 가 그 예다.
+
+**응답 DTO(`ResultDto`)는 대상이 아니다** — `ValidationPipe` 를 타지 않으므로 데코레이터가 동작할 일이 없다. `PaginationResultDto`/`PageRangeResultDto` 에는 붙이지 않는다.
+
+**⚠️ 생성자 파라미터는 반드시 선택(`data?`)이어야 한다**
+
+`ValidationPipe` 는 내부적으로 `new targetType()` 을 **인자 없이** 호출한다 — `ValidationPipe({transform: true})` → `classTransformer.plainToInstance(...)`(`@nestjs/common@11.1.28` `pipes/validation.pipe.js`) → `newValue = new targetType()`(`class-transformer@0.5.1` `cjs/TransformOperationExecutor.js:147`). 파라미터를 필수로 선언하면 이 경로에서 `data` 가 `undefined` 가 되어 `data.page` 접근이 **매 요청 500** 을 낸다. 그래서 `data?: Partial<T>` + `?? 기본값` 형태여야 파이프 경유 경로와 컨트롤러의 `new` 경로가 모두 산다. (TypeScript 는 파이프의 리플렉션 호출을 못 보므로 컴파일 단계에서 안 잡힌다.)
+
+**그 밖의 함정**
+
+- **쿼리 값은 문자열로 들어온다** — `@Type`/`@Transform` 미사용 + `transformOptions`(`enableImplicitConversion`) 미설정. `page: number` 로 선언해도 `?page=2` 의 런타임 값은 `'2'` 다. service 에서 직접 산술하지 말고 `Pagination` 에 넘겨 `parseInt` 를 태운다.
+- **상속 시 부모 필드를 재선언하지 말 것** — `tsconfig.json` `target: ES2023` → `useDefineForClassFields` 기본 `true`. 하위 클래스의 필드 선언은 `super()` 가 **끝난 뒤** `Object.defineProperty` 로 실행되므로, `StoreListDto` 에서 `page` 를 다시 선언하면(초기화 없이) `PaginationDto` 생성자가 넣은 값이 `undefined` 로 덮인다. Swagger 설명을 바꾸고 싶어도 부모 쪽 `@ApiProperty` 를 고친다.
+- **기본값을 하위 유틸의 방어 로직에 맡기지 않는다** — `Pagination` 이 `parseInt(undefined) → NaN` 을 흡수하더라도([pagination.ts:27](../src/common/utils/pagination.ts)), 기본값의 소재지는 DTO 다. 유틸의 폴백은 안전망이지 사양이 아니다.
+- 페이지 기본값은 공통 `PaginationDto` 생성자가 책임진다(`all_search_yn='N'`, `page=1`, `size=20`, `page_size=10` — `Pagination` 유틸 기본값과 동일). 기능별 Query DTO 는 `extends PaginationDto` 후 `super(data)` 를 호출하고 자기 필드만 추가한다.
+
+**`@Body()` / `@Param()` 은 이 규칙에서 제외**
+
+생성자가 없어도 `new` 는 동일하게 실행된다. 다른 것은 "값이 빠졌을 때 무슨 일이 벌어지느냐"다.
+
+- Body 필수 필드: 누락 → `@IsNotEmpty` 가 잡아 400. **누락이 곧 검증 실패**라 기본값이 낄 자리가 없다.
+- Body 선택 필드: 누락은 사용처에서 `?? null` 로 처리한다(아래).
+- Path param: 라우트가 성립하는 한 항상 존재한다.
+- 반면 Query 의 `page`/`size` 는 **누락이 정상 요청**이라 잡아줄 검증기가 없다 — 그래서 Query 만 DTO 가 기본값을 든다.
+
+**⚠️ 수정 API 의 선택 필드는 `?? null` 필수** — TypeORM `update()` 는 값이 `undefined` 인 필드를 **무시**한다. `entity.address_detail = dto.address_detail` 로 두면 사용자가 값을 비워 보내도 기존 컬럼이 그대로 남는다. `dto.address_detail ?? null` 로 명시해 컬럼을 실제로 비운다.
+
 ## 서비스(비즈니스) 계층 규칙
 
 - **public 메서드 1개 = controller 핸들러 1개 = API 1개**. 실측 예외: controller 없는 스케줄러 전용 service(`UserLeaveCleanupService.processLeaveWait`).

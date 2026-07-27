@@ -43,7 +43,7 @@
 
 ## Architecture
 
-NestJS 11 + TypeORM 0.3(MySQL, `mysql2`) + passport-jwt + Swagger + `@nestjs/schedule` + typeorm-transactional. 현재 **단일 도메인 `user`** + 인프라 모듈(api-log·queue(미적용)·typeorm·seeder). 다국어(i18n) 없음 — 모든 사용자 노출 메시지는 한국어 리터럴.
+NestJS 11 + TypeORM 0.3(MySQL, `mysql2`) + passport-jwt + Swagger + `@nestjs/schedule` + typeorm-transactional. 도메인 **`user` · `store`** + 인프라 모듈(api-log·queue(미적용)·typeorm·seeder). 다국어(i18n) 없음 — 모든 사용자 노출 메시지는 한국어 리터럴.
 
 ```
 src/
@@ -88,6 +88,7 @@ src/
 - `class-validator` 데코레이터. 사용: `@IsNotEmpty`/`@IsOptional`/`@IsIn`/`@Matches`/`@MaxLength`(+`@ValidateIf`). **`@IsString`/`@IsNumber`/`@Type`/`@Transform` 미사용**(존재+형식/길이+enum 만).
 - **모든 검증 데코레이터에 `message: '<한국어 문자열>'` 리터럴 필수**. `@IsOptional()` 만 `message` 없음.
 - **데코레이터 순서**: `@ApiProperty` → 제약 → `@IsNotEmpty`(맨 마지막). optional 은 `@ApiProperty` → `@IsOptional()` → 제약.
+- **`@Query()` DTO 는 생성자를 세트로 갖고, 컨트롤러가 `const dto = new 클래스명(query);` 로 만들어 service 에 넘긴다**(호출부 `new` 인라인 ❌) — 쿼리는 키가 통째로 빠질 수 있고 그 누락은 정상 요청이라 잡아줄 검증기가 없다. `ValidationPipe` 설정은 그대로 두고 기본값 책임만 생성자로 옮긴다(검증=파이프, 기본값=생성자). **생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — 파이프가 내부적으로 `new targetType()` 을 인자 없이 호출하므로 필수로 두면 매 요청 500. 기본값을 `Pagination` 의 NaN 폴백에 맡기지 않는다. 페이지 기본값은 `PaginationDto` 생성자가 담당하고 기능별 Query DTO 는 `super(data)` 후 자기 필드만 추가(부모 필드 재선언 ❌ — `useDefineForClassFields` 로 값이 덮인다). `@Body()`/`@Param()` 은 해당 없음(누락이 곧 검증 실패).
 
 → 상세: [docs/conventions.md](docs/conventions.md)
 
@@ -112,7 +113,7 @@ src/
 
 - **엔티티**: 테이블 `t_<domain>`, 제약 PascalCase(`PK_`/`UK_`/`FK_`), 모든 컬럼 `comment`, `@Unique()` 데코레이터(❌ `@Column({unique})`), FK 는 `@ManyToOne`+`@JoinColumn({foreignKeyConstraintName})`, 타임스탬프 `@BeforeInsert`/`@BeforeUpdate` 훅(❌ `@CreateDateColumn`). 룩업 엔티티(auth/state/sns)는 구조 컬럼만(시드 데이터·타임스탬프 없음).
 - **repository**: 범용 메서드 우선, WHERE 는 service 가 구성·repository 는 실행만, where 타입 `FindOptionsWhere<XEntity>`(❌ `Partial`), 조회 시 `loadRelationIds: true`, `update(where, entity)` 는 `new XEntity()`+할당으로 호출.
-- **Pagination**: 인프라(`PaginationDto`/`pagination.ts`)는 있으나 **적용 0건 — 미적용/규약**.
+- **Pagination**: 최초 적용은 가맹점 목록([store.service.ts](src/api/v1/store/store.service.ts) `list`). 응답은 `{list, pagination}` 래핑, 호출 순서는 **count → `Pagination` → 목록**(생성자가 `total_count` 를 받아 `limit`/`offset` 을 산출하므로 순서 강제), repository 는 개수·목록 두 메서드로 분리(`findAndCount` ❌). Query DTO 는 `extends PaginationDto`.
 
 → 상세: [docs/data-layer.md](docs/data-layer.md)
 
@@ -141,7 +142,7 @@ src/
 - jest + ts-jest + `@nestjs/testing` + `supertest`. 위치 `<domain>/test/<feature>.spec.ts`(kebab), 인프라는 `src/modules/<m>/test/`. 실행 `npm test`, 단일 `npm test -- --testPathPatterns=<패턴>`.
 - 지배적 스타일: ① controller 기능은 실제 controller+service+ValidationPipe+필터 부팅 후 **repository 만 Symbol 토큰으로 `jest.fn()` 주입**(외부 util 은 `jest.spyOn`+`mockRestore`, guard 는 `.overrideGuard`, 상단 `typeorm-transactional` mock). ② controller 없는 service(스케줄러·seeder)는 mock DataSource/repository 로 직접 `new`.
 - 강도: 상태코드만 검사 금지 — mock 호출 횟수·인자(write 는 entity 컬럼 값)·실패 후 `.not.toHaveBeenCalled()` 까지 단언. 메시지는 한국어 리터럴로 단언. `[SUCCESS]`/`[FAIL:*]` describe 분류. **실DB·외부 IO 금지.**
-- **Data-Access Smoke(미적용/규약)**: 매핑 민감 쿼리(관계 필드 where·QueryBuilder) 메서드는 repository-mock spec 만으로 커버 금지 — TypeORM 무연결 쿼리 빌드 smoke 케이스 필수(정의·방법: [docs/testing.md](docs/testing.md)).
+- **Data-Access Smoke**: 매핑 민감 쿼리(관계 필드 where·`Like`/QueryBuilder·동적 조립) 메서드는 repository-mock spec 만으로 커버 금지 — TypeORM 무연결 쿼리 빌드 smoke 케이스 필수. 최초 적용 [store-list.spec.ts](src/api/v1/store/test/store-list.spec.ts)(정의·방법: [docs/testing.md](docs/testing.md)).
 - 공유 service 생성자에 DI 추가 시 그 service 를 부팅하는 기존 모든 spec 의 providers 에 mock 추가(grep 전수).
 
 → 상세: [docs/testing.md](docs/testing.md)

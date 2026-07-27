@@ -58,7 +58,10 @@ controller 없는 service 는 HTTP boot 없이 mock 으로 직접 `new`:
 - **에러/검증 메시지는 한국어 리터럴 문자열로 단언**(소스의 메시지 리터럴과 동일 값).
 - `describe` 는 분기 분류 태그: `[SUCCESS]` / `[FAIL:validation]` / `[FAIL:service]` / `[FAIL:duplicate]` / `[FAIL:repository]`.
 
-## Data-Access Smoke (No-DB통합) — 미적용/규약
+## Data-Access Smoke (No-DB통합)
+
+> 최초 적용: [store-list.spec.ts](../src/api/v1/store/test/store-list.spec.ts) `[SMOKE:data-access]` — `buildStoreSearchWhere` 가 `Like()` + where 배열(OR)을 쓰는 매핑 민감 구성이라 해당됐다. 검색 5분기의 SQL 빌드 + 정렬·페이지 조합 + 위험 매핑 스냅샷(`[]`)을 단언한다.
+
 
 **mock 경계 = 검증 경계의 사각지대**: 이 프로젝트의 unit spec 은 repository(또는 raw `Repository<T>`)를 전부 mock 하므로, **쿼리 매핑 통합면 — where 필드→컬럼 해석, 쿼리 생성, 제약 에러 매핑, `@BeforeInsert/@BeforeUpdate` 훅, `loadRelationIds` — 를 실행하는 spec 이 0건**이다. 이 클래스의 버그(존재하지 않는 매핑 필드로 where 구성 등)는 현 테스트를 구조적으로 전부 통과한다.
 
