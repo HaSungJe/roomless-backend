@@ -94,10 +94,10 @@
 
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 8 | 총괄매니저 계정 생성 | ADMIN 이 업체를 지정해 `HEAD_MANAGER` 계정을 만든다 — `store_id` 는 생성 시 확정. `t_auth` 에 `HEAD_MANAGER` 시드 추가 + `t_user.store_id` nullable FK 추가를 함께 가져간다. **업체당 총괄매니저 1명 고정** — 이미 있으면 400 | 초기 비밀번호 전달 방식(관리자 지정 vs 임시발급) — #9 가 그대로 따라감 | 1 | in-progress |
-| 9 | 매니저 계정 생성 (총괄매니저) | 총괄매니저가 자기 업체에 `MANAGER` 계정을 만든다 — `store_id` 는 자기 것으로 자동 확정. **위임의 핵심 유닛** | "내 업체" 판정을 JWT `store_id` 로 할지 매 요청 DB 조회로 할지 (아래 Open Decisions) | 8 | in-progress |
-| 10 | 업체 인력 목록 조회 | 업체별 총괄매니저·매니저 목록. ADMIN 은 전 업체, 총괄매니저는 자기 업체만 | 하나의 API 를 역할별로 스코프 분기할지, 엔드포인트를 나눌지 | 9 | in-progress |
-| 11 | 인력 계정 삭제 | ADMIN 은 총괄매니저를, 총괄매니저는 자기 업체 매니저를 삭제한다. 충원만 있고 삭제가 없으면 인력이 쌓이기만 한다 | soft(`state_id` → `LEAVE`) vs hard delete, 그리고 **총괄매니저 삭제 시 그 업체 매니저들의 처리** (권장: soft — `t_user` 의 기존 탈퇴 기계장치 재사용) | 9 | in-progress |
+| 8 | 총괄매니저 계정 생성 | ADMIN 이 업체를 지정해 `HEAD_MANAGER` 계정을 만든다 — `store_id` 는 생성 시 확정. `t_auth` 에 `HEAD_MANAGER` 시드 추가 + `t_user.store_id` nullable FK 추가를 함께 가져간다. **업체당 총괄매니저 1명 고정** — 이미 있으면 400 | 초기 비밀번호 전달 방식(관리자 지정 vs 임시발급) — #9 가 그대로 따라감 | 1 | done |
+| 9 | 매니저 계정 생성 (총괄매니저) | 총괄매니저가 자기 업체에 `MANAGER` 계정을 만든다 — `store_id` 는 자기 것으로 자동 확정. **위임의 핵심 유닛** | "내 업체" 판정을 JWT `store_id` 로 할지 매 요청 DB 조회로 할지 (아래 Open Decisions) | 8 | done |
+| 10 | 업체 인력 목록 조회 | 업체별 총괄매니저·매니저 목록. ADMIN 은 전 업체, 총괄매니저는 자기 업체만 | 하나의 API 를 역할별로 스코프 분기할지, 엔드포인트를 나눌지 | 9 | done |
+| 11 | 인력 계정 삭제 | ADMIN 은 총괄매니저를, 총괄매니저는 자기 업체 매니저를 삭제한다. 충원만 있고 삭제가 없으면 인력이 쌓이기만 한다 | soft(`state_id` → `LEAVE`) vs hard delete, 그리고 **총괄매니저 삭제 시 그 업체 매니저들의 처리** (권장: soft — `t_user` 의 기존 탈퇴 기계장치 재사용) | 9 | done |
 
 **Expected APIs**
 
@@ -108,8 +108,8 @@
 | #10 | GET | `/api/v1/store/staff/list` | 업체 인력 목록 (ADMIN 전체 / 총괄매니저 자기 업체) |
 | #11 | DELETE | `/api/v1/store/staff/remove/:user_id` | 인력 계정 삭제 (ADMIN→총괄매니저, 총괄매니저→매니저) |
 
-**Progress**: 5/11 done — #2·#3·#4·#5 를 한 사이클로 묶어 2026-07-27 ship(`c5f58fb`). 근거 [store-crud-report.md](../report/store/store-crud-report.md) · 리뷰 [worktree-stick+store-9c4msb-review-260727.md](../review/worktree-stick+store-9c4msb-review-260727.md), 등록 점검은 [store-register-revision-260727-1.md](../revision/store/store-register-revision-260727-1.md)
-**Next up**: #6 가맹점 운영상태 관리 — 의존(#4) 해소됨. #7(위치정보)과 같은 Phase 지만 #6 을 먼저 두는 이유는 `t_store_state` 룩업이 예약 재고 판정에 걸려 4단계 reservation 까지 영향이 번지기 때문
+**Progress**: 9/11 done — #2·#3·#4·#5 는 2026-07-27 ship(`c5f58fb`, [store-crud-report.md](../report/store/store-crud-report.md)), #8·#9·#10·#11 은 2026-07-28 ship(`d6123d2`, [store-staff-report.md](../report/store/store-staff-report.md) · 리뷰 [worktree-stick+store-4m8kqp-review-260728.md](../review/worktree-stick+store-4m8kqp-review-260728.md)). Phase 4 에는 계획에 없던 **비밀번호 변경 API**(`PATCH /api/v1/user/password`)가 임시 비밀번호 발급 결정에 따라 함께 들어갔다
+**Next up**: #6 가맹점 운영상태 관리 — 남은 것은 Phase 3 의 #6·#7 뿐이다. 의존(#4)은 이미 풀렸고, #7(위치정보)보다 #6 을 먼저 두는 이유는 `t_store_state` 룩업이 예약 재고 판정에 걸려 4단계 reservation 까지 영향이 번지기 때문
 
 ## Cross-Cutting Rules
 
