@@ -39,4 +39,7 @@ export class UserGeneralLoginResultDto {
 
     @ApiProperty({description: 'Refresh Token 만료일시 (ISO 8601)'})
     refresh_token_expires_at: string;
+
+    @ApiProperty({description: '비밀번호 변경 필요 여부(0: 불필요, 1: 필요) — 임시 비밀번호로 발급된 인력 계정은 1'})
+    is_password_change_required: number;
 }

@@ -2,12 +2,12 @@ import { BeforeInsert, BeforeUpdate, Column, Entity, JoinColumn, ManyToOne, Prim
 import { AuthEntity } from "./auth.entity";
 import { StateEntity } from "./state.entity";
 import { SnsEntity } from "./sns.entity";
+import { StoreEntity } from "@root/api/v1/store/entities/store.entity";
 
 @Entity({name: 't_user', comment: '사용자 정보'})
 @Unique('UK_User_LoginId', ['login_id'])
 @Unique('UK_User_UserSearchCode', ['user_search_code'])
 @Unique('UK_User_SnsSnsUserId', ['sns_id', 'sns_user_id'])
-@Unique('UK_User_Phone', ['phone'])
 export class UserEntity {
     @PrimaryColumn({name: 'user_id', length: 32, comment: '사용자 ID', primaryKeyConstraintName: 'PK_User'})
     user_id: string;
@@ -29,6 +29,10 @@ export class UserEntity {
 
     @Column({name: 'sns_user_id', length: 255, nullable: true, comment: 'SNS 사용자 ID'})
     sns_user_id: string | null;
+
+    @ManyToOne(() => StoreEntity, {nullable: true, onUpdate: 'CASCADE', onDelete: 'RESTRICT'})
+    @JoinColumn({name: 'store_id', referencedColumnName: 'store_id', foreignKeyConstraintName: 'FK_User_Store'})
+    store_id: string | null;
 
     @Column({name: 'login_id', length: 100, nullable: false, comment: '로그인 ID'})
     login_id: string;
@@ -56,6 +60,9 @@ export class UserEntity {
 
     @Column({name: 'device_token', length: 255, nullable: true, comment: '디바이스 토큰'})
     device_token: string | null;
+
+    @Column({name: 'is_password_change_required', type: 'tinyint', nullable: false, comment: '비밀번호 변경 필요 여부(0: 불필요, 1: 필요)', default: 0})
+    is_password_change_required: number;
 
     @Column({name: 'block_comment', length: 255, nullable: true, comment: '정지 사유'})
     block_comment: string | null;

@@ -39,7 +39,7 @@ export class UserLeaveCleanupService {
                 update.sns_user_id = masked;   // UK(sns_id,sns_user_id) — i 로 배치 내 구분
                 update.name = masked;
                 update.birth = masked;         // 컬럼 20자 한도 내
-                update.phone = masked;         // UK_User_Phone — i 로 배치 내 유일
+                update.phone = masked;         // PII 익명화 (UK_User_Phone 은 제거됨 — 유일성 목적 아님)
                 update.device_os = null;
                 update.device_token = null;
                 await this.userRepository.updateUser({user_id: user.user_id}, update);

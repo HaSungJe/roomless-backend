@@ -25,6 +25,9 @@ export class PassportUserResultDto {
     @ApiProperty({description: '권한 ID', required: true})
     auth_id: string;
 
+    @ApiProperty({description: '소속 가맹점 ID (인력 계정만 보유, 없으면 null)', required: true})
+    store_id: string | null;
+
     @ApiProperty({description: '상태 ID', required: true})
     state_id: string;
 

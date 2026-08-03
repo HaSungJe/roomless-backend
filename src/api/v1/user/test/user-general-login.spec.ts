@@ -93,6 +93,7 @@ describe('UserService - generalLogin (일반 로그인)', () => {
         user.sns_user_id = null;
         user.state_id = state_id;
         user.block_comment = block_comment;
+        user.is_password_change_required = 0;
         return user;
     };
 
@@ -143,6 +144,9 @@ describe('UserService - generalLogin (일반 로그인)', () => {
             expect(res.body.refresh_token).toBe('mock-refresh-token');
             expect(res.body.access_token_expires_at).toBe(ACCESS_EXP.toISOString());
             expect(res.body.refresh_token_expires_at).toBe(REFRESH_EXP.toISOString());
+
+            // 비밀번호 변경 필요 여부 — 임시 비밀번호로 발급된 인력 계정 판별용
+            expect(res.body.is_password_change_required).toBe(0);
 
             // findUser 호출 인자 검증 — login_id + state_id FindOperator(In)
             expect(userRepository.findUser).toHaveBeenCalledTimes(1);
@@ -221,6 +225,30 @@ describe('UserService - generalLogin (일반 로그인)', () => {
             expect(sessionEntity.device_token).toBeNull();
 
             expect(userRepository.insertSessionRefresh).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    // 임시 비밀번호로 발급된 인력 계정 — 클라이언트가 변경 화면으로 유도하도록 플래그를 실어보낸다.
+    // (서버는 차단하지 않는다 — 강제 수위 결정 사항)
+    describe('[SUCCESS] generalLogin — 비밀번호 변경 필요 계정', () => {
+        it('is_password_change_required=1 이 응답에 그대로 실린다', async () => {
+            const user = buildUser('ACTIVE');
+            user.is_password_change_required = 1;
+            userRepository.findUser.mockResolvedValueOnce(user);
+            userRepository.insertSession.mockResolvedValueOnce(undefined);
+            userRepository.insertSessionRefresh.mockResolvedValueOnce(undefined);
+            jwtServiceMock.sign
+                .mockReturnValueOnce('mock-access-token')
+                .mockReturnValueOnce('mock-refresh-token');
+
+            const res = await request(app.getHttpServer())
+                .post('/api/v1/user/general-login')
+                .send(VALID_DTO)
+                .expect(200);
+
+            expect(res.body.is_password_change_required).toBe(1);
+            // 차단이 아니라 통과 — 토큰은 정상 발급된다
+            expect(res.body.access_token).toBe('mock-access-token');
         });
     });
 

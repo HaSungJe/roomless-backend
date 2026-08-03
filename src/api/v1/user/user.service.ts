@@ -14,6 +14,7 @@ import { UserTokenRefreshDto, UserTokenRefreshResultDto } from './dto/user-token
 import { UserLeaveDto } from './dto/user-leave.dto';
 import { UserGeneralSignDto, UserGeneralSignResultDto } from './dto/user-general-sign.dto';
 import { UserGeneralLoginDto, UserGeneralLoginResultDto } from './dto/user-general-login.dto';
+import { UserPasswordDto } from './dto/user-password.dto';
 import { USER_REPOSITORY } from './user.symbols';
 import type { UserRepositoryInterface } from './interfaces/user.repository.interface';
 import { isAdult, generateSnsLoginId, issueAccessAndRefresh } from './user.util';
@@ -69,6 +70,7 @@ export class UserService {
         userEntity.nickname = dto.nickname;
         userEntity.device_os = dto.device_os ?? null;
         userEntity.device_token = dto.device_token ?? null;
+        userEntity.is_password_change_required = 0;
         await this.userRepository.insertUser(userEntity);
 
         // 4. t_user_setting 생성
@@ -146,6 +148,7 @@ export class UserService {
         userEntity.nickname = dto.nickname;
         userEntity.device_os = dto.device_os ?? null;
         userEntity.device_token = dto.device_token ?? null;
+        userEntity.is_password_change_required = 0;
         await this.userRepository.insertUser(userEntity);   // 아이디 중복은 UK_User_LoginId 분기 400
 
         // 4. t_user_setting 생성
@@ -322,6 +325,7 @@ export class UserService {
             refresh_token: tokens.refreshToken,
             access_token_expires_at: tokens.accessTokenExpiresAt.toISOString(),
             refresh_token_expires_at: tokens.refreshTokenExpiresAt.toISOString(),
+            is_password_change_required: user.is_password_change_required,
         };
     }
 
@@ -448,5 +452,35 @@ export class UserService {
         entity.leave_prev_state_id = null;
         entity.leave_comment = null;
         await this.userRepository.updateUser({user_id}, entity);
+    }
+
+    /**
+     * 비밀번호 변경 — 로그인 회원 공용. 성공 시 변경 필요 플래그를 함께 내린다.
+     */
+    @Transactional()
+    async changePassword(user_id: string, dto: UserPasswordDto): Promise<void> {
+        // 1. 대상 조회
+        const user = await this.userRepository.findUser({user_id});
+        if (!user) {
+            throw new NotFoundException({message: '회원 정보를 찾을 수 없습니다.'});
+        }
+
+        // 2. 현재 비밀번호 검증
+        const matched = await matchBcrypt(dto.current_password, user.login_pw);
+        if (!matched) {
+            throw new BadRequestException({message: '현재 비밀번호가 일치하지 않습니다.'});
+        }
+
+        // 3. 동일 비밀번호 차단
+        const same = await matchBcrypt(dto.new_password, user.login_pw);
+        if (same) {
+            throw new BadRequestException({message: '기존 비밀번호와 다른 비밀번호를 입력해주세요.'});
+        }
+
+        // 4. 변경 + 플래그 해제
+        const userEntity = new UserEntity();
+        userEntity.login_pw = await getBcrypt(dto.new_password);
+        userEntity.is_password_change_required = 0;
+        await this.userRepository.updateUser({user_id}, userEntity);
     }
 }

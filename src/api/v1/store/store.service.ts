@@ -1,14 +1,22 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Transactional } from 'typeorm-transactional';
 import { v4 } from 'uuid';
+import { In } from 'typeorm';
 import { Pagination } from '@root/common/utils/pagination';
+import { getBcrypt } from '@root/common/utils/bcrypt';
+import { UserEntity } from '@root/api/v1/user/entities/user.entity';
+import { UserSettingEntity } from '@root/api/v1/user/entities/user-setting.entity';
 import { StoreEntity } from './entities/store.entity';
 import { StoreRegisterDto, StoreRegisterResultDto } from './dto/store-register.dto';
 import { StoreListDto, StoreListResultDto } from './dto/store-list.dto';
 import { StoreDetailParamDto, StoreDetailResultDto } from './dto/store-detail.dto';
 import { StoreModifyParamDto, StoreModifyDto } from './dto/store-modify.dto';
 import { StoreRemoveParamDto } from './dto/store-remove.dto';
-import { buildStoreSearchWhere, buildStoreDeleteBackup } from './store.util';
+import { StoreHeadManagerRegisterDto, StoreHeadManagerRegisterResultDto } from './dto/store-head-manager-register.dto';
+import { StoreManagerRegisterDto, StoreManagerRegisterResultDto } from './dto/store-manager-register.dto';
+import { StoreStaffListDto, StoreStaffListResultDto } from './dto/store-staff-list.dto';
+import { StoreStaffRemoveParamDto } from './dto/store-staff-remove.dto';
+import { buildStoreSearchWhere, buildStoreDeleteBackup, buildStaffSearchWhere, generateTemporaryPassword } from './store.util';
 import { STORE_REPOSITORY } from './store.symbols';
 import type { StoreRepositoryInterface } from './interfaces/store.repository.interface';
 
@@ -142,5 +150,171 @@ export class StoreService {
         storeEntity.business_number = `DELETE_${store.store_id}`;
         storeEntity.delete_backup = buildStoreDeleteBackup(store);
         await this.storeRepository.updateStore({store_id: param.store_id}, storeEntity);
+    }
+
+    /**
+     * 총괄매니저 계정 생성 — ADMIN 이 업체를 지정해 만든다. 업체당 1명 고정.
+     * 임시 비밀번호를 발급해 응답에 1회 노출하고, 저장은 bcrypt 해시만 한다.
+     */
+    @Transactional()
+    async headManagerRegister(dto: StoreHeadManagerRegisterDto): Promise<StoreHeadManagerRegisterResultDto> {
+        // 1. 대상 가맹점 확인 (삭제된 가맹점에는 배정 불가)
+        const store = await this.storeRepository.findStore({store_id: dto.store_id, is_delete: 0});
+        if (!store) {
+            throw new NotFoundException({message: '가맹점을 찾을 수 없습니다.'});
+        }
+
+        // 2. 업체당 총괄매니저 1명 고정 — 이미 있으면 거부
+        const existing = await this.storeRepository.findStaff({store_id: dto.store_id, auth_id: 'HEAD_MANAGER', state_id: In(['ACTIVE', 'BLOCK', 'LEAVE_WAIT'])});
+        if (existing) {
+            throw new BadRequestException({message: '이미 총괄매니저가 지정된 가맹점입니다.'});
+        }
+
+        // 3. 계정 생성 (login_id 중복은 UK_User_LoginId 분기 400)
+        const temporary_password = generateTemporaryPassword();
+        const user_id = v4().replace(/-/g, '');
+        const userEntity = new UserEntity();
+        userEntity.user_id = user_id;
+        userEntity.user_search_code = v4().replace(/-/g, '');
+        userEntity.auth_id = 'HEAD_MANAGER';
+        userEntity.state_id = 'ACTIVE';
+        userEntity.store_id = dto.store_id;
+        userEntity.sns_id = null;
+        userEntity.sns_user_id = null;
+        userEntity.login_id = dto.login_id;
+        userEntity.login_pw = await getBcrypt(temporary_password);
+        userEntity.name = dto.name;
+        userEntity.gender = dto.gender;
+        userEntity.birth = dto.birth;
+        userEntity.phone = null;
+        userEntity.nickname = dto.nickname;
+        userEntity.device_os = null;
+        userEntity.device_token = null;
+        userEntity.is_password_change_required = 1;
+        await this.storeRepository.insertStaff(userEntity);
+
+        // 4. t_user_setting 동반 생성 — 없으면 getLoginUser 의 INNER JOIN 에서 걸려 로그인 불가
+        const userSettingEntity = new UserSettingEntity();
+        userSettingEntity.user_setting_id = v4().replace(/-/g, '');
+        userSettingEntity.user_id = user_id;
+        userSettingEntity.bio = null;
+        await this.storeRepository.insertStaffSetting(userSettingEntity);
+
+        return {user_id, login_id: dto.login_id, temporary_password};
+    }
+
+    /**
+     * 매니저 계정 생성 — 총괄매니저가 자기 업체에 만든다. store_id 는 요청자 것으로 자동 확정.
+     */
+    @Transactional()
+    async managerRegister(store_id: string, dto: StoreManagerRegisterDto): Promise<StoreManagerRegisterResultDto> {
+        // 1. 요청자 소속 확인 (데이터 이상 방어)
+        if (!store_id) {
+            throw new BadRequestException({message: '소속된 가맹점이 없습니다.'});
+        }
+
+        // 2. 대상 가맹점 확인 (폐점된 업체에는 충원 불가)
+        const store = await this.storeRepository.findStore({store_id, is_delete: 0});
+        if (!store) {
+            throw new NotFoundException({message: '가맹점을 찾을 수 없습니다.'});
+        }
+
+        // 3. 계정 생성 — 매니저 수 상한 없음
+        const temporary_password = generateTemporaryPassword();
+        const user_id = v4().replace(/-/g, '');
+        const userEntity = new UserEntity();
+        userEntity.user_id = user_id;
+        userEntity.user_search_code = v4().replace(/-/g, '');
+        userEntity.auth_id = 'MANAGER';
+        userEntity.state_id = 'ACTIVE';
+        userEntity.store_id = store_id;
+        userEntity.sns_id = null;
+        userEntity.sns_user_id = null;
+        userEntity.login_id = dto.login_id;
+        userEntity.login_pw = await getBcrypt(temporary_password);
+        userEntity.name = dto.name;
+        userEntity.gender = dto.gender;
+        userEntity.birth = dto.birth;
+        userEntity.phone = null;
+        userEntity.nickname = dto.nickname;
+        userEntity.device_os = null;
+        userEntity.device_token = null;
+        userEntity.is_password_change_required = 1;
+        await this.storeRepository.insertStaff(userEntity);
+
+        // 4. t_user_setting 동반 생성
+        const userSettingEntity = new UserSettingEntity();
+        userSettingEntity.user_setting_id = v4().replace(/-/g, '');
+        userSettingEntity.user_id = user_id;
+        userSettingEntity.bio = null;
+        await this.storeRepository.insertStaffSetting(userSettingEntity);
+
+        return {user_id, login_id: dto.login_id, temporary_password};
+    }
+
+    /**
+     * 업체 인력 목록 — ADMIN 은 전 업체(store_id 로 좁힐 수 있음), 총괄매니저는 자기 업체로 강제 고정.
+     */
+    async staffList(auth_id: string, my_store_id: string, dto: StoreStaffListDto): Promise<StoreStaffListResultDto> {
+        // 1. 스코프 결정 — 총괄매니저는 파라미터를 보내도 무시하고 자기 업체로 고정
+        const scoped_store_id = auth_id === 'HEAD_MANAGER' ? my_store_id : dto.store_id;
+        const where = buildStaffSearchWhere(scoped_store_id, dto.auth_id, dto.search_keyword);
+
+        // 2. 총 개수 → 페이지 계산
+        const total_count = await this.storeRepository.countStaff(where);
+        const pagination = new Pagination({
+            all_search_yn: dto.all_search_yn as 'Y' | 'N',
+            total_count,
+            page: dto.page,
+            size: dto.size,
+            page_size: dto.page_size,
+        });
+
+        // 3. 목록 조회
+        const staffs = await this.storeRepository.findStaffList(where, pagination.limit, pagination.offset);
+
+        // 4. 상호명 매핑 (한 번의 추가 조회로 해결 — 행마다 조회하지 않는다)
+        const store_ids = [...new Set(staffs.map((staff) => staff.store_id).filter((id) => !!id))];
+        const stores = store_ids.length > 0 ? await this.storeRepository.findStores({store_id: In(store_ids)}) : [];
+        const storeNames = new Map(stores.map((store) => [store.store_id, store.store_name]));
+
+        return {
+            list: staffs.map((staff) => ({
+                user_id: staff.user_id,
+                login_id: staff.login_id,
+                name: staff.name,
+                nickname: staff.nickname,
+                auth_id: staff.auth_id,
+                state_id: staff.state_id,
+                store_id: staff.store_id,
+                store_name: staff.store_id ? (storeNames.get(staff.store_id) ?? null) : null,
+                create_at: staff.create_at,
+            })),
+            pagination: pagination.getPagination(),
+        };
+    }
+
+    /**
+     * 인력 계정 삭제 — state_id 를 LEAVE 로 전이하는 soft delete.
+     * t_state 의 LEAVE 는 is_login_able=0 이라 getLoginUser 에서 걸러져 즉시 로그인이 차단된다.
+     * store_id 는 지우지 않는다 — 소속 이력 보존 + 미배정 계정을 만들지 않기 위해.
+     */
+    @Transactional()
+    async staffRemove(auth_id: string, my_store_id: string, param: StoreStaffRemoveParamDto): Promise<void> {
+        // 1. 대상 확인 (이미 LEAVE 면 404)
+        const staff = await this.storeRepository.findStaff({user_id: param.user_id, auth_id: In(['HEAD_MANAGER', 'MANAGER']), state_id: In(['ACTIVE', 'BLOCK', 'LEAVE_WAIT'])});
+        if (!staff) {
+            throw new NotFoundException({message: '인력을 찾을 수 없습니다.'});
+        }
+
+        // 2. 총괄매니저는 자기 업체의 MANAGER 만 삭제할 수 있다 (자신·타 총괄 삭제 불가)
+        if (auth_id === 'HEAD_MANAGER' && (staff.store_id !== my_store_id || staff.auth_id !== 'MANAGER')) {
+            throw new ForbiddenException({message: '접근 권한이 없습니다.'});
+        }
+
+        // 3. 상태 전이 — store_id 는 그대로 둔다
+        const userEntity = new UserEntity();
+        userEntity.state_id = 'LEAVE';
+        await this.storeRepository.updateStaff({user_id: param.user_id}, userEntity);
     }
 }

@@ -3,8 +3,13 @@ import { ApiTags, ApiOperation, ApiBody, ApiOkResponse, ApiNoContentResponse, Ap
 import { PassportJwtAuthGuard } from '@root/guards/passport.jwt.auth/passport.jwt.auth.guard';
 import { RolesGuard } from '@root/guards/roles/roles.guard';
 import { Roles } from '@root/guards/roles/roles.decorator';
+import { PassportUser } from '@root/guards/passport.jwt.auth/passport.jwt.auth.decorator';
 import { ApiBadRequestResultDto, ApiFailResultDto } from '@root/common/dto/global.result.dto';
 import { StoreService } from './store.service';
+import { StoreHeadManagerRegisterDto, StoreHeadManagerRegisterResultDto } from './dto/store-head-manager-register.dto';
+import { StoreManagerRegisterDto, StoreManagerRegisterResultDto } from './dto/store-manager-register.dto';
+import { StoreStaffListDto, StoreStaffListResultDto } from './dto/store-staff-list.dto';
+import { StoreStaffRemoveParamDto } from './dto/store-staff-remove.dto';
 import { StoreRegisterDto, StoreRegisterResultDto } from './dto/store-register.dto';
 import { StoreListDto, StoreListResultDto } from './dto/store-list.dto';
 import { StoreDetailParamDto, StoreDetailResultDto } from './dto/store-detail.dto';
@@ -106,5 +111,79 @@ export class StoreController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async remove(@Param() param: StoreRemoveParamDto): Promise<void> {
         return this.storeService.remove(param);
+    }
+
+    /**
+     * 총괄매니저 계정 생성 (SUPER_ADMIN / ADMIN 전용)
+     */
+    @Post('/head-manager/register')
+    @UseGuards(PassportJwtAuthGuard, RolesGuard)
+    @Roles('SUPER_ADMIN', 'ADMIN')
+    @HttpCode(200)
+    @ApiOperation({summary: '총괄매니저 계정 생성'})
+    @ApiBody({type: StoreHeadManagerRegisterDto})
+    @ApiOkResponse({type: StoreHeadManagerRegisterResultDto})
+    @ApiBadRequestResponse({type: ApiBadRequestResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async headManagerRegister(@Body() dto: StoreHeadManagerRegisterDto): Promise<StoreHeadManagerRegisterResultDto> {
+        return this.storeService.headManagerRegister(dto);
+    }
+
+    /**
+     * 매니저 계정 생성 (총괄매니저 전용 — 자기 업체에 충원)
+     */
+    @Post('/manager/register')
+    @UseGuards(PassportJwtAuthGuard, RolesGuard)
+    @Roles('HEAD_MANAGER')
+    @HttpCode(200)
+    @ApiOperation({summary: '매니저 계정 생성'})
+    @ApiBody({type: StoreManagerRegisterDto})
+    @ApiOkResponse({type: StoreManagerRegisterResultDto})
+    @ApiBadRequestResponse({type: ApiBadRequestResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async managerRegister(@PassportUser('store_id') store_id: string, @Body() dto: StoreManagerRegisterDto): Promise<StoreManagerRegisterResultDto> {
+        return this.storeService.managerRegister(store_id, dto);
+    }
+
+    /**
+     * 업체 인력 목록 조회 (ADMIN 전체 / 총괄매니저 자기 업체)
+     */
+    @Get('/staff/list')
+    @UseGuards(PassportJwtAuthGuard, RolesGuard)
+    @Roles('SUPER_ADMIN', 'ADMIN', 'HEAD_MANAGER')
+    @HttpCode(200)
+    @ApiOperation({summary: '업체 인력 목록 조회'})
+    @ApiOkResponse({type: StoreStaffListResultDto})
+    @ApiBadRequestResponse({type: ApiBadRequestResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async staffList(@PassportUser('auth_id') auth_id: string, @PassportUser('store_id') store_id: string, @Query() query: StoreStaffListDto): Promise<StoreStaffListResultDto> {
+        const dto = new StoreStaffListDto(query);
+        return this.storeService.staffList(auth_id, store_id, dto);
+    }
+
+    /**
+     * 인력 계정 삭제 (ADMIN 은 인력 전체 / 총괄매니저는 자기 업체 매니저만)
+     */
+    @Delete('/staff/remove/:user_id')
+    @UseGuards(PassportJwtAuthGuard, RolesGuard)
+    @Roles('SUPER_ADMIN', 'ADMIN', 'HEAD_MANAGER')
+    @HttpCode(204)
+    @ApiOperation({summary: '인력 계정 삭제'})
+    @ApiNoContentResponse()
+    @ApiBadRequestResponse({type: ApiBadRequestResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async staffRemove(@PassportUser('auth_id') auth_id: string, @PassportUser('store_id') store_id: string, @Param() param: StoreStaffRemoveParamDto): Promise<void> {
+        return this.storeService.staffRemove(auth_id, store_id, param);
     }
 }

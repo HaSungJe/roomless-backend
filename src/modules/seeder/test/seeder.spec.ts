@@ -28,6 +28,22 @@ describe('pickMissingRows (순수함수)', () => {
     });
 });
 
+describe('AUTH_SEED_DATA (권한 기본 데이터)', () => {
+    it('총괄매니저(HEAD_MANAGER)가 매니저 바로 위 level 로 포함된다', () => {
+        const headManager = AUTH_SEED_DATA.find((row) => row.auth_id === 'HEAD_MANAGER');
+        const manager = AUTH_SEED_DATA.find((row) => row.auth_id === 'MANAGER');
+
+        expect(headManager).toBeDefined();
+        expect(headManager.auth_name).toBe('총괄매니저');
+        expect(headManager.level).toBe(102);
+        expect(headManager.level).toBeGreaterThan(manager.level);
+    });
+
+    it('권한은 5종 — SUPER_ADMIN / ADMIN / HEAD_MANAGER / MANAGER / USER', () => {
+        expect(AUTH_SEED_DATA.map((row) => row.auth_id)).toEqual(['SUPER_ADMIN', 'ADMIN', 'HEAD_MANAGER', 'MANAGER', 'USER']);
+    });
+});
+
 describe('SeederService - onApplicationBootstrap', () => {
     const buildDataSource = (authExisting: any[], stateExisting: any[], snsExisting: any[]) => {
         const authRepo = makeRepo('auth_id', 't_auth', authExisting);

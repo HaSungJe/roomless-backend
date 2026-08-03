@@ -94,10 +94,10 @@
 
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 8 | 총괄매니저 계정 생성 | ADMIN 이 업체를 지정해 `HEAD_MANAGER` 계정을 만든다 — `store_id` 는 생성 시 확정. `t_auth` 에 `HEAD_MANAGER` 시드 추가 + `t_user.store_id` nullable FK 추가를 함께 가져간다. **업체당 총괄매니저 1명 고정** — 이미 있으면 400 | 초기 비밀번호 전달 방식(관리자 지정 vs 임시발급) — #9 가 그대로 따라감 | 1 | todo |
-| 9 | 매니저 계정 생성 (총괄매니저) | 총괄매니저가 자기 업체에 `MANAGER` 계정을 만든다 — `store_id` 는 자기 것으로 자동 확정. **위임의 핵심 유닛** | "내 업체" 판정을 JWT `store_id` 로 할지 매 요청 DB 조회로 할지 (아래 Open Decisions) | 8 | todo |
-| 10 | 업체 인력 목록 조회 | 업체별 총괄매니저·매니저 목록. ADMIN 은 전 업체, 총괄매니저는 자기 업체만 | 하나의 API 를 역할별로 스코프 분기할지, 엔드포인트를 나눌지 | 9 | todo |
-| 11 | 인력 계정 삭제 | ADMIN 은 총괄매니저를, 총괄매니저는 자기 업체 매니저를 삭제한다. 충원만 있고 삭제가 없으면 인력이 쌓이기만 한다 | soft(`state_id` → `LEAVE`) vs hard delete, 그리고 **총괄매니저 삭제 시 그 업체 매니저들의 처리** (권장: soft — `t_user` 의 기존 탈퇴 기계장치 재사용) | 9 | todo |
+| 8 | 총괄매니저 계정 생성 | ADMIN 이 업체를 지정해 `HEAD_MANAGER` 계정을 만든다 — `store_id` 는 생성 시 확정. `t_auth` 에 `HEAD_MANAGER` 시드 추가 + `t_user.store_id` nullable FK 추가를 함께 가져간다. **업체당 총괄매니저 1명 고정** — 이미 있으면 400 | 초기 비밀번호 전달 방식(관리자 지정 vs 임시발급) — #9 가 그대로 따라감 | 1 | in-progress |
+| 9 | 매니저 계정 생성 (총괄매니저) | 총괄매니저가 자기 업체에 `MANAGER` 계정을 만든다 — `store_id` 는 자기 것으로 자동 확정. **위임의 핵심 유닛** | "내 업체" 판정을 JWT `store_id` 로 할지 매 요청 DB 조회로 할지 (아래 Open Decisions) | 8 | in-progress |
+| 10 | 업체 인력 목록 조회 | 업체별 총괄매니저·매니저 목록. ADMIN 은 전 업체, 총괄매니저는 자기 업체만 | 하나의 API 를 역할별로 스코프 분기할지, 엔드포인트를 나눌지 | 9 | in-progress |
+| 11 | 인력 계정 삭제 | ADMIN 은 총괄매니저를, 총괄매니저는 자기 업체 매니저를 삭제한다. 충원만 있고 삭제가 없으면 인력이 쌓이기만 한다 | soft(`state_id` → `LEAVE`) vs hard delete, 그리고 **총괄매니저 삭제 시 그 업체 매니저들의 처리** (권장: soft — `t_user` 의 기존 탈퇴 기계장치 재사용) | 9 | in-progress |
 
 **Expected APIs**
 
@@ -128,9 +128,9 @@
 
 - [x] **soft delete 와 `UK_Store_BusinessNumber` 충돌** (#4, #5) — **해결(2026-07-27)**: `delete_backup`(mediumtext) 컬럼을 추가하고, 삭제 시 삭제 직전 스냅샷을 거기에 남긴 뒤 `business_number` 를 `DELETE_<store_id>` 로 마스킹해 UK 를 비운다. `business_number` 길이를 20 → 45 로 확장한다. `t_user.leave_backup` 선례와 같은 모양
 - [x] **목록 응답 래핑 구조** (#2, #10) — **해결(2026-07-27)**: `{list, pagination}`. `StoreListDto extends PaginationDto`, 응답 `pagination` 은 `Pagination.getPagination()` 결과(`PaginationResultDto`). 이후 전 목록 API 가 이 형태를 따른다
-- [ ] **JWT 에 `store_id` 를 실을 것인가** (#9, #10, #11 + 매니저 트랙 전체) — 매 요청 DB 조회를 피하려면 토큰에 담는 게 편하지만, 계정이 정지되거나 업체가 삭제돼도 기존 토큰이 옛 `store_id` 를 들고 다니는 스테일 문제가 생긴다. 토큰에 담고 변경 시 세션 무효화 / 매 요청 조회 둘 중 하나를 Phase 4 착수 전에 정해야 한다. 이 트랙에서 처음 정하지만 매니저 트랙의 모든 API 가 이 결정을 상속한다
-- [ ] **인력 자격증명 전달 방식** (#8, #9) — 비밀번호를 생성자가 직접 지정할지, 임시 비밀번호를 발급하고 최초 로그인 시 변경을 강제할지. #8(ADMIN→총괄) 에서 정한 방식을 #9(총괄→매니저) 가 그대로 따른다
-- [ ] **`HEAD_MANAGER` 권한 문자열과 level 값** (#8 이후 전 유닛) — 제안: `auth_id='HEAD_MANAGER'` / `auth_name='총괄매니저'` / `level=102` (기존 `MANAGER`=101 바로 위). `level` 은 현재 인가에 쓰이지 않으므로 순서 표기 용도
+- [x] ~~**JWT 에 `store_id` 를 실을 것인가**~~ — **질문 자체가 성립하지 않음(2026-07-28, 코드 확인)**: 이 프로젝트는 토큰 페이로드를 신뢰하지 않는다. `validate()` 가 `payload.user_id` 만 꺼내 **매 요청 `getLoginUser()` 로 DB 를 다시 읽으므로**([strategy:31](../../../src/guards/passport.jwt.auth/passport.jwt.auth.strategy.ts) → [service:20](../../../src/guards/passport.jwt.auth/passport.jwt.auth.service.ts)) `req.user` 는 항상 최신이고 **스테일 문제가 존재하지 않는다.** 조치는 SELECT 에 `u.store_id` 한 줄 + `PassportUserResultDto` 한 필드 추가뿐
+- [x] **인력 자격증명 전달 방식** (#8, #9) — **해결(2026-07-28)**: 서버가 임시 비밀번호를 발급해 **생성 응답에 1회 평문 노출**(저장은 bcrypt 해시만). `t_user.is_password_change_required` 플래그를 세우고 일반 로그인 응답에 실어 클라이언트가 변경을 유도한다 — **서버 차단은 하지 않는다.** 이에 따라 `PATCH /api/v1/user/password`(전체 회원 공용)가 같은 사이클에 포함된다
+- [x] **`HEAD_MANAGER` 권한 문자열과 level 값** — **확정(2026-07-28)**: `auth_id='HEAD_MANAGER'` / `auth_name='총괄매니저'` / `level=102`. 제안값 그대로 채택
 - [ ] **가맹점 삭제(#5)와 소속 인력의 관계** (#5, #11) — 업체를 soft delete 하면 귀속된 총괄매니저·매니저도 함께 삭제할지, 업체만 지우고 계정은 남길지. 귀속이 필수라는 전제상 "업체는 없는데 계정은 살아있는" 상태를 허용할지가 쟁점이다
 
 ## Notes / Risks

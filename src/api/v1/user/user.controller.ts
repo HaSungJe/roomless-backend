@@ -10,6 +10,7 @@ import { UserTokenRefreshDto, UserTokenRefreshResultDto } from './dto/user-token
 import { UserLeaveDto } from './dto/user-leave.dto';
 import { UserGeneralSignDto, UserGeneralSignResultDto } from './dto/user-general-sign.dto';
 import { UserGeneralLoginDto, UserGeneralLoginResultDto } from './dto/user-general-login.dto';
+import { UserPasswordDto } from './dto/user-password.dto';
 
 @ApiTags('회원')
 @Controller('/api/v1/user')
@@ -122,5 +123,22 @@ export class UserController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async cancelLeave(@PassportUser('user_id') user_id: string): Promise<void> {
         return this.userService.cancelLeave(user_id);
+    }
+
+    /**
+     * 비밀번호 변경 (로그인 회원 공용)
+     */
+    @Patch('/password')
+    @UseGuards(PassportJwtAuthGuard)
+    @HttpCode(204)
+    @ApiOperation({summary: '비밀번호 변경'})
+    @ApiBody({type: UserPasswordDto})
+    @ApiNoContentResponse()
+    @ApiBadRequestResponse({type: ApiBadRequestResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async changePassword(@PassportUser('user_id') user_id: string, @Body() dto: UserPasswordDto): Promise<void> {
+        return this.userService.changePassword(user_id, dto);
     }
 }

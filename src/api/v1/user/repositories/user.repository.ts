@@ -33,8 +33,6 @@ export class UserRepository implements UserRepositoryInterface {
                 throw new BadRequestException({message: '이미 존재하는 검색 코드입니다.'});
             } else if (error.errno === 1062 && error.sqlMessage.indexOf('UK_User_SnsSnsUserId') !== -1) {
                 throw new BadRequestException({message: '이미 가입된 SNS 계정입니다.'});
-            } else if (error.errno === 1062 && error.sqlMessage.indexOf('UK_User_Phone') !== -1) {
-                throw new BadRequestException({message: '이미 가입된 번호입니다.'});
             } else if (error.errno === 1452 && error.sqlMessage.indexOf('FK_User_Auth') !== -1) {
                 throw new BadRequestException({message: '존재하지 않는 권한입니다.'});
             } else if (error.errno === 1452 && error.sqlMessage.indexOf('FK_User_State') !== -1) {

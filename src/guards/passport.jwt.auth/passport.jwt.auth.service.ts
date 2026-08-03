@@ -24,8 +24,9 @@ export class PassPortJwtAuthService {
                 , u.name 
                 , u.gender
                 , u.birth
-                , u.nickname 
-                , a.auth_id 
+                , u.nickname
+                , u.store_id
+                , a.auth_id
                 , s.state_id 
                 , s.is_login_able 
             `);

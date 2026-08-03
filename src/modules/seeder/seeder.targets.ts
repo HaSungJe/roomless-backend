@@ -13,6 +13,7 @@ export interface SeedTarget<T extends ObjectLiteral = ObjectLiteral> {
 export const AUTH_SEED_DATA: AuthEntity[] = [
     {auth_id: 'SUPER_ADMIN', auth_name: '총괄관리자', level: 999},
     {auth_id: 'ADMIN', auth_name: '관리자', level: 998},
+    {auth_id: 'HEAD_MANAGER', auth_name: '총괄매니저', level: 102},
     {auth_id: 'MANAGER', auth_name: '매니저', level: 101},
     {auth_id: 'USER', auth_name: '이용자', level: 1},
 ];

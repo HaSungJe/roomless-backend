@@ -59,6 +59,8 @@ src/
 
 레이어: **controller → service → repository** 단방향. controller 는 라우팅·guard·swagger만(로직 0), service 는 비즈니스 로직 + 트랜잭션 경계, repository 는 모든 IO/SQL + DB 에러 변환. `@InjectRepository`(raw `Repository<T>`)는 repository 클래스 내부에만.
 
+**도메인 간 데이터 접근**: 다른 도메인 테이블이 필요하면 **소유 도메인의 repository 가 그 엔티티를 직접 다룬다**(service→service 호출 ❌ — 선례 없음). `forFeature` 에 남의 엔티티를 등록하되 남의 `@Module` 은 import 하지 않고, 메서드명은 소유 도메인 어휘를 쓴다(`t_user` 를 다뤄도 `insertStaff`). 최초 적용 [store.repository.ts](src/api/v1/store/repositories/store.repository.ts).
+
 → 상세(레이어/DI/시드/스케줄러/부트스트랩/새 도메인 절차): [docs/architecture.md](docs/architecture.md)
 
 ## Conventions

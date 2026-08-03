@@ -22,6 +22,23 @@ src/
 
 controller 는 repository 를 직접 호출하지 않고, service 는 raw `Repository<T>` 를 직접 쓰지 않는다.
 
+## 도메인 간 데이터 접근
+
+한 도메인의 기능이 **다른 도메인의 테이블에 접근해야 할 때**, 그 도메인의 repository 가 해당 엔티티를 직접 다룬다. service→service 호출은 하지 않는다.
+
+**최초 적용**: 가맹점 인력 관리 — `StoreRepository` 가 `t_user`·`t_user_setting` 을 처리한다([store.repository.ts](../src/api/v1/store/repositories/store.repository.ts) `insertStaff`/`findStaff`/`countStaff`/`findStaffList`/`updateStaff`/`insertStaffSetting`).
+
+**규칙**
+
+- **소유 도메인은 API 경로가 정한다.** `/api/v1/store/...` 로 노출되는 기능이면 store 도메인이 소유하고, 그 도메인의 repository 가 필요한 테이블을 전부 다룬다.
+- **`forFeature` 에 남의 엔티티를 등록한다** — `TypeOrmModule.forFeature([StoreEntity, UserEntity, UserSettingEntity])`([store.module.ts](../src/api/v1/store/store.module.ts)). 같은 엔티티를 여러 모듈이 `forFeature` 로 등록해도 무방하다(모듈별 repository provider).
+- **다른 도메인의 `@Module` 을 import 하지 않는다** — 엔티티 클래스만 가져온다. 모듈 간 순환 의존을 만들지 않기 위함.
+- **메서드명은 소유 도메인의 어휘를 쓴다** — `t_user` 를 다루더라도 `insertUser` 가 아니라 **`insertStaff`** 다. 같은 테이블이라도 도메인마다 의미가 다르고, 이름이 겹치면 어느 도메인의 계약인지 흐려진다.
+- **sibling 계약은 원 소유 도메인을 따른다** — 단건 조회는 `entity | null` 반환 + 500 만 throw(404 판단은 service), insert 는 errno 1062/1452 를 제약명별로 분기. 즉 [user.repository.ts](../src/api/v1/user/repositories/user.repository.ts) 의 책임 분리를 그대로 복제한다.
+- **엔티티 간 FK 는 양쪽 도메인을 잇는다** — `t_user.store_id` → `t_store`. 엔티티 파일의 import 는 단방향이어야 한다(`user.entity.ts` → `store.entity.ts`, 역방향 ❌).
+
+**왜 service→service 가 아닌가** — 이 프로젝트에는 service 가 다른 service 를 호출하는 선례가 없다. 도입하면 `controller → service → repository` 단방향 규약에 새 축이 생기고, 모듈 간 의존·순환 위험·트랜잭션 경계가 함께 복잡해진다. repository 확장은 기존 규약 안에서 끝난다.
+
 ## Repository DI (Symbol 토큰 패턴)
 
 ```ts
