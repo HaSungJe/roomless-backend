@@ -1,99 +1,156 @@
 # Data Layer
 
-TypeORM 0.3 (MySQL, `mysql2`) · 기본 비즈니스 DataSource([config/typeorm.config.ts](../src/config/typeorm.config.ts), `autoLoadEntities: true`). api-log 는 별도 DataSource(`name:'apiLog'`)로 격리.
+TypeORM 1.x · PostgreSQL 17 · `pg` 드라이버. 접속은 `DATABASE_URL` 하나 — 앱([DatabaseModule](../libs/database/src/database.module.ts))과 마이그레이션 실행기([data-source.ts](../libs/database/src/data-source.ts))가 같은 설정([typeorm.config.ts](../libs/database/src/typeorm.config.ts))을 쓴다. `synchronize` 는 항상 끄고 스키마는 마이그레이션으로만 바꾼다.
+
+## 위치
+
+```
+libs/database/src/
+├── entities/
+│   ├── user/        auth · state · sns(룩업) · user · user-setting · session · session-refresh
+│   ├── store/       store
+│   └── api-log/     api-log
+├── entities.ts      # ENTITIES — DataSource 에 등록할 엔티티 목록 (ESM 이라 glob 대신 명시)
+├── migrations/      # <timestamp>-<Name>.ts
+├── migrations.ts    # MIGRATIONS — 실행할 마이그레이션 목록
+├── typeorm.config.ts · data-source.ts · database.module.ts
+├── typeorm-error.ts # isUniqueViolation · isForeignKeyViolation
+└── seeder/          # 룩업 기본 데이터
+scripts/db-schema.mjs   # 오프라인 마이그레이션 생성 · 검사
+apps/user-service/src/migrate.ts   # 마이그레이션 실행기 (db:migrate · Docker migrate)
+```
+
+### 왜 엔티티가 앱이 아니라 libs 에 있나
+
+지금은 **공유 DB 단계**다. 한 테이블 = 엔티티 한 벌을 여러 앱이 같이 쓰고(예: user-service 의 회원이 admin-service 소유가 될 가맹점을 FK 로 참조), 앱끼리는 서로의 코드를 import 하지 않는다. 그래서 엔티티는 공용 라이브러리에 두되 **소유 도메인 폴더**로 나눈다.
+
+MSA 정석은 서비스별 DB(database per service)와 앱 안의 엔티티다. 이 구조는 그 전 단계이며, DB 를 나눌 때 `entities/<domain>/` 폴더를 담당 앱으로 옮기면 되도록 경계를 미리 그어 둔 것이다. 그때까지 지킬 규칙:
+
+- 한 서비스의 repository 는 **자기 소유 도메인의 엔티티만** 다룬다(같은 서비스 안의 도메인 간 접근은 [architecture.md](architecture.md) 규칙대로).
+- **다른 서비스 소유 테이블로 가는 FK 를 새로 만들지 않는다.** 필요하면 ID 컬럼만 두고 정합성은 내부 HTTP · 이벤트로 맞춘다. (기존 `t_user.store_id` FK 는 서비스 분리 때 끊을 대상이다)
 
 ## 엔티티
 
 ```ts
-@Entity({ name: 't_user', comment: '사용자 정보' })
-@Unique('UK_User_LoginId', ['login_id'])
-@Unique('UK_User_SnsSnsUserId', ['sns_id', 'sns_user_id'])   // 복합 UK
-export class UserEntity {
-    @PrimaryColumn({ name: 'user_id', length: 32, comment: '사용자 ID', primaryKeyConstraintName: 'PK_User' })
+@Entity({name: 't_user_setting', comment: '회원 설정'})
+@Unique('UK_UserSetting_UserId', ['user_id'])
+export class UserSettingEntity {
+    @PrimaryColumn({name: 'user_setting_id', length: 32, comment: '회원 설정 ID', primaryKeyConstraintName: 'PK_UserSetting'})
+    user_setting_id: string;
+
+    @ManyToOne(() => UserEntity, {nullable: false, onUpdate: 'CASCADE', onDelete: 'CASCADE'})
+    @JoinColumn({name: 'user_id', referencedColumnName: 'user_id', foreignKeyConstraintName: 'FK_UserSetting_User'})
     user_id: string;
 
-    @ManyToOne(() => AuthEntity, { nullable: false, onUpdate: 'CASCADE', onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'auth_id', referencedColumnName: 'auth_id', foreignKeyConstraintName: 'FK_User_Auth' })
-    auth_id: string;
+    @Column({name: 'bio', type: 'text', nullable: true, comment: '자기소개'})
+    bio: string | null;
 
-    @Column({ name: 'nickname', length: 50, nullable: false, comment: '닉네임' })
-    nickname: string;
-
-    @Column({ name: 'create_at', type: 'timestamp', nullable: false, comment: '등록일' })
+    @Column({name: 'create_at', type: 'timestamptz', nullable: false, comment: '등록일'})
     create_at: Date;
-    @Column({ name: 'update_at', type: 'timestamp', nullable: false, comment: '수정일' })
+
+    @Column({name: 'update_at', type: 'timestamptz', nullable: false, comment: '수정일'})
     update_at: Date;
 
+    /** insert 직전 등록일 · 수정일을 채운다. */
     @BeforeInsert()
-    insertTimestamp() { const now = new Date(); this.create_at = now; this.update_at = now; }
+    insertTimestamp(): void { const now = new Date(); this.create_at = now; this.update_at = now; }
+
+    /** update 직전 수정일을 갱신한다. */
     @BeforeUpdate()
-    updateTimestamp() { this.update_at = new Date(); }
+    updateTimestamp(): void { this.update_at = new Date(); }
 }
 ```
 
 규칙:
-- **테이블** `t_<domain>`, `@Entity({name, comment})`.
-- **제약명 PascalCase**: `PK_<Domain>` / `UK_<Domain>_<Cols>` / `FK_<Domain>_<Target>`. PK 는 `primaryKeyConstraintName`, UK 는 `@Unique('UK_…', [...])` 데코레이터(❌ `@Column({unique})`), FK 는 `@ManyToOne` + `@JoinColumn({foreignKeyConstraintName})`.
-- **모든 컬럼에 `comment`**.
-- **타임스탬프는 `@BeforeInsert`/`@BeforeUpdate` 훅**(❌ `@CreateDateColumn`/`@UpdateDateColumn`). insert 전용 시각만 있으면 `@BeforeInsert` 만 정의(예: `session.entity` `login_at`).
-- **룩업 엔티티**(`auth`/`state`/`sns`)는 구조 컬럼만, 시드 데이터·타임스탬프 훅 없음. 기본 데이터는 seeder 가 관리([architecture.md](architecture.md) 시드 절).
+- **파일** `entities/<domain>/<feature>.entity.ts`, 클래스 `<Feature>Entity`, 새 엔티티는 [entities.ts](../libs/database/src/entities.ts) `ENTITIES` 에 한 줄 추가.
+- **테이블** `t_<domain>`, `@Entity({name, comment})` — 테이블 주석도 DB COMMENT 로 들어간다.
+- **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
+- **모든 컬럼에 `comment`** — 마이그레이션 생성 시 `COMMENT ON` 으로 들어간다. FK 컬럼은 참조 대상 PK 의 주석을 따른다(TypeORM 동작).
+- **FK 는 문자열 속성 + `@ManyToOne(() => X)` + `@JoinColumn`** — 조회 시 `loadRelationIds: true` 로 ID 를 채운다. 관계 속성을 엔티티 타입(`auth: AuthEntity`)으로 두지 않는다: ESM 에서 데코레이터 메타데이터가 클래스를 즉시 참조해 순환 import 가 깨진다. 역방향(`@OneToMany`)도 두지 않는다.
+- **타입** — 문자열 `length: n`(nullable 이면 `type: 'varchar'` 명시), 긴 문자열 `text`, 시각 `timestamptz`, 플래그 `smallint`(0/1), 자동 증가 `bigint` + `@PrimaryGeneratedColumn`(값은 문자열로 온다), JSON `jsonb`.
+- **타임스탬프는 `@BeforeInsert`/`@BeforeUpdate` 훅**(❌ `@CreateDateColumn`/`@UpdateDateColumn`). 훅은 `insert`/`update` 에 **엔티티 인스턴스**를 넘길 때만 돈다 — 그래서 service 는 `new XEntity()` + 할당으로 만든다.
+- **룩업 엔티티**(auth/state/sns)는 구조 컬럼만. 기본 데이터는 seeder.
 
-근거: [user.entity.ts](../src/api/v1/user/entities/user.entity.ts), [user-setting.entity.ts](../src/api/v1/user/entities/user-setting.entity.ts), [session.entity.ts](../src/api/v1/user/entities/session.entity.ts).
+## 마이그레이션
+
+적용은 **사용자 몫**이다. Claude 는 DB 없이 파일까지 만든다.
+
+1. 엔티티를 고친다(새 엔티티면 `ENTITIES` 등록).
+2. `npm run db:generate -- <PascalCase 이름>` — user-service 를 빌드한 뒤 [db-schema.mjs](../scripts/db-schema.mjs) 가 PGlite(WASM PostgreSQL)를 프로세스 안에 띄워 기존 마이그레이션을 적용하고, 엔티티 기준으로 남은 DDL(컬럼 · 제약 · 인덱스 · COMMENT 포함)을 `libs/database/src/migrations/<ts>-<Name>.ts` 로 쓴 뒤 `MIGRATIONS` 에 등록한다. `typeorm migration:generate` 와 같은 계산이다.
+3. 생성 파일 상단 JSDoc 의 TODO 를 바꾼 내용 설명으로 고친다.
+4. `npm run db:check` — 엔티티와 마이그레이션이 일치하면 통과, 남은 차이가 있으면 DDL 을 출력하고 실패한다.
+5. 적용(사용자): Docker 로 띄우면 `migrate` 컨테이너가 자동 적용, 로컬은 `npm run db:migrate`, 되돌리기 `npm run db:revert`. 운영은 배포 절차에서 같은 실행기(`migrate.js`)를 돌린다.
+
+- 데이터 이전 · 파티셔닝처럼 엔티티로 표현할 수 없는 작업은 생성된 파일에 `queryRunner.query(...)` 를 직접 추가한다.
+- 마이그레이션 목록 테이블은 `t_migration`.
 
 ## Repository
 
 ```ts
 @Injectable()
 export class UserRepository implements UserRepositoryInterface {
-    constructor(
-        @InjectRepository(UserEntity)
-        private readonly userRepository: Repository<UserEntity>,
-        // … 엔티티별 raw Repository 주입 (이 클래스 내부에만)
-    ) {}
+    constructor(private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>) {}
 
+    /** t_user repository (현재 트랜잭션 기준) */
+    private get users(): Repository<UserEntity> {
+        return this.txHost.tx.getRepository(UserEntity);
+    }
+
+    /** 회원 등록 — UK/FK 위반을 제약명별 400 으로 바꾼다. */
     async insertUser(entity: UserEntity): Promise<void> {
         try {
-            await this.userRepository.insert(entity);
+            await this.users.insert(entity);
         } catch (error) {
-            if (error.errno === 1062 && error.sqlMessage.indexOf('UK_User_LoginId') !== -1) {
-                throw new BadRequestException({ message: '이미 존재하는 로그인 ID입니다.' });
-            } else if (error.errno === 1452 && error.sqlMessage.indexOf('FK_User_Auth') !== -1) {
-                throw new BadRequestException({ message: '존재하지 않는 권한입니다.' });
+            if (isUniqueViolation(error, 'UK_User_LoginId')) {
+                throw new BadRequestException({message: '이미 존재하는 로그인 ID입니다.'});
+            } else if (isForeignKeyViolation(error, 'FK_User_Auth')) {
+                throw new BadRequestException({message: '존재하지 않는 권한입니다.'});
             } else {
-                throw new InternalServerErrorException({ message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.' });
+                throw new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'});
             }
         }
     }
 
+    /** 회원 단건 조회 */
     async findUser(where: FindOptionsWhere<UserEntity>): Promise<UserEntity | null> {
         try {
-            return await this.userRepository.findOne({ where, loadRelationIds: true });
-        } catch (error) {
-            throw new InternalServerErrorException({ message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.' });
+            return await this.users.findOne({where, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'});
         }
     }
 }
 ```
 
 규칙:
-- **모든 메서드 try/catch**. 최종 실패는 통일 문구 `throw new InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'})`(도메인별 동사 ❌).
-- **insert/update 는 errno 분기**: `1062`(UK 중복)·`1452`(FK 위반)를 **제약명별 `if` 분기**로 `BadRequestException` 매핑. 멱등 upsert 는 UK 중복을 `return` 으로 무시 가능(예: `insertUserSetting`).
-- **범용 메서드 우선**(`insert/find/findOne/update`). WHERE 조건은 service 가 구성하고 repository 는 실행만.
-- WHERE 타입 `FindOptionsWhere<XEntity>`(❌ `Partial`).
+- **`txHost.tx.getRepository(XEntity)` 로만 접근** — `@Transactional()` 범위면 트랜잭션 EntityManager, 밖이면 기본 EntityManager. `@InjectRepository` 는 쓰지 않는다(트랜잭션 전파가 안 된다). 엔티티별 private getter 로 묶는다.
+- **모든 메서드 try/catch**, 최종 실패는 통일 500 문구.
+- **insert/update 의 제약 위반은 제약명별 `if` 분기** — `isUniqueViolation(error, 'UK_…')`(23505) · `isForeignKeyViolation(error, 'FK_…')`(23503). 멱등 insert 는 UK 중복을 `return` 으로 무시(`insertUserSetting`).
+- **범용 메서드 우선**(`insertX`/`findX`/`findXs`/`updateX`). WHERE 는 service 가 `FindOptionsWhere<XEntity>`(❌ `Partial`)로 만들고 repository 는 실행만.
 - 조회 시 `loadRelationIds: true`.
-- `update(where, entity)` 의 `entity` 는 호출자(service/스케줄러)가 `new XEntity()`+할당으로 만들어 전달(`@BeforeUpdate` 트리거).
-- `@InjectRepository` 는 repository 클래스에만. service 는 인터페이스 토큰으로만 접근.
+- `update(where, entity)` 의 `entity` 는 호출자가 `new XEntity()` + 바꿀 필드만 할당해 넘긴다(`@BeforeUpdate` 트리거). `undefined` 필드는 건드리지 않고 `null` 은 NULL 로 비운다 — 수정 API 의 선택 필드는 `?? null`.
+- **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery`)하고 Data-Access Smoke spec 으로 SQL 을 고정한다([testing.md](testing.md)).
+- 메서드명은 소유 도메인 어휘.
 
-근거: [user.repository.ts](../src/api/v1/user/repositories/user.repository.ts).
+## 트랜잭션
+
+- service 쓰기 메서드에 `@Transactional()`(`@nestjs-cls/transactional`). 그 안에서 호출된 repository 의 `txHost.tx` 가 같은 트랜잭션을 쓴다.
+- DB 를 쓰는 앱 루트 모듈은 `DatabaseModule` 을 import 한다 — `TypeOrmModule.forRootAsync(buildDataSourceOptions)` + `ClsModule.forRoot({plugins: [new ClsPluginTransactional({adapter: new TransactionalAdapterTypeOrm({dataSourceToken: getDataSourceToken()})})]})`.
+- 큐 경로에서 5xx 로 재시도해도 롤백 덕분에 안전하다.
+
+## 기본 데이터 시드
+
+[SeederService](../libs/database/src/seeder/seeder.service.ts)(`OnApplicationBootstrap`)가 [seeder.targets.ts](../libs/database/src/seeder/seeder.targets.ts) `SEED_TARGETS` 의 엔티티별 기본 데이터 중 **PK 기준으로 없는 행만** insert 한다(`pickMissingRows`). 대상별 실패는 경고 로그만 남기고 부팅을 막지 않는다. DB 를 소유한 서비스 한 곳(user-service)에서만 등록한다.
+
+- 새 기본 데이터: 엔티티는 그대로 두고 `<X>_SEED_DATA` 배열 + `SEED_TARGETS` 에 `{entity, data}` 한 줄. FK 부모를 먼저.
+- 시드 행은 엔티티 타입의 객체 리터럴로 쓴다(정적 정의 데이터 — `new XEntity()` 규칙의 유일한 예외).
 
 ## Pagination / 목록 조회
 
-`common/dto/pagination.dto.ts` + `common/utils/pagination.ts`. 최초 적용은 가맹점 목록([store.service.ts](../src/api/v1/store/store.service.ts) `list`)이며, 이후 모든 목록 API 가 아래 형태를 따른다.
+목록 API 는 다음 형태를 따른다(공통 `PaginationDto` · `Pagination` util 은 첫 목록 API 이식 때 `.back/src/common` 에서 `libs/common` 으로 옮긴다).
 
-- **응답은 `{list, pagination}` 래핑** — `list` 는 기능별 항목 DTO 배열, `pagination` 은 `Pagination.getPagination()` 결과(`PaginationResultDto`).
-- **호출 순서는 count → Pagination → 목록**. `Pagination` 생성자가 `total_count` 를 입력으로 받아 `limit`/`offset` 을 산출하는 구조라 순서가 강제된다. repository 는 `countStore(where)` 와 `findStoreList(where, limit, offset)` 처럼 **개수와 목록을 분리한 두 메서드**로 둔다(`findAndCount` ❌ — Pagination 이 총 개수를 먼저 요구한다).
-- **Query DTO 는 `extends PaginationDto`** — 페이지 기본값은 부모 생성자가 담당한다(`all_search_yn='N'`, `page=1`, `size=20`, `page_size=10`). 상세: [conventions.md](conventions.md) "Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다".
-- **검색 WHERE 는 도메인 util 이 조립**하고 repository 는 실행만 한다([store.util.ts](../src/api/v1/store/store.util.ts) `buildStoreSearchWhere`). 통합검색(전체)은 `FindOptionsWhere<T>[]` 배열 = OR 로 표현한다.
-- 목록 조회의 기본 필터는 `is_delete = 0`, 정렬은 `create_at DESC`.
-
-근거: [store.service.ts](../src/api/v1/store/store.service.ts) · [store.repository.ts](../src/api/v1/store/repositories/store.repository.ts) · [store-list.dto.ts](../src/api/v1/store/dto/store-list.dto.ts).
+- 응답 `{list, pagination}`.
+- 순서 **count → `Pagination` → 목록** — `Pagination` 이 `total_count` 로 `limit`/`offset` 을 산출한다. repository 는 `countX(where)` 와 `findXList(where, limit, offset)` 두 메서드로 둔다(`findAndCount` ❌).
+- Query DTO 는 `extends PaginationDto`(기본값은 부모 생성자).
+- 검색 WHERE 는 도메인 util 이 `FindOptionsWhere<X>` 로 조립(통합검색은 배열 = OR), repository 는 실행만. `Like()` · 관계 필드 where 를 쓰면 Data-Access Smoke 대상이다.
+- 기본 필터 `is_delete = 0`, 정렬 `create_at DESC`.

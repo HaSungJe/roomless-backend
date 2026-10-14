@@ -15,23 +15,30 @@
     "outDir": "./dist",
     "incremental": true,
     "skipLibCheck": true,
-    "strictNullChecks": false,
-    "forceConsistentCasingInFileNames": true,
-    "noImplicitAny": false,
-    "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false,
-    "useUnknownInCatchVariables": false,
-    "paths": {
-      "@root/*": [
-        "./src/*"
-      ],
-      "@util/*": [
-        "./src/util/*"
-      ]
-    },
+    "strict": true,
+    "strictPropertyInitialization": false,
     "types": [
-      "jest",
+      "vitest/globals",
       "node"
-    ]
-  }
+    ],
+    "paths": {
+      "@app/common/*": [
+        "./libs/common/src/*"
+      ],
+      "@app/contracts/*": [
+        "./libs/contracts/src/*"
+      ],
+      "@app/database/*": [
+        "./libs/database/src/*"
+      ],
+      "@app/messaging/*": [
+        "./libs/messaging/src/*"
+      ]
+    }
+  },
+  "exclude": [
+    ".back",
+    "node_modules",
+    "dist"
+  ]
 }

@@ -21,15 +21,16 @@
 
 ## 개발 로드맵
 
-전체 개발 순서와 진척도는 [docs/roadmap.md](docs/roadmap.md) 에서 관리한다(살아있는 문서). 역할 정의(ADMIN=업체 관리 / MANAGER=객실·사물 관리 / USER=예약·제어)와 횡단 결정사항(매니저 1명=업체 1곳, 객실별 요금상품, 시간 기반 사전예약, Redis pub/sub 사물제어, PG 추상화)의 기준점이다. 기능 하나가 ship 될 때마다 해당 체크박스를 갱신한다.
+전체 개발 순서와 진척도는 [docs/roadmap.md](docs/roadmap.md) 에서 관리한다(살아있는 문서). 역할 정의(ADMIN=업체 관리 / MANAGER=객실·사물 관리 / USER=예약·제어)와 횡단 결정사항의 기준점이다. 기능 하나가 ship 될 때마다 해당 체크박스를 갱신한다.
 
 ---
 
 ## ⚠️ 주의사항
 
-- `npm run start*` / `nest start` / 서버 기동 명령은 **반드시 사용자가 직접 실행** (Claude 실행 금지).
-- DB 마이그레이션·배포(로컬 build 후 dist 업로드)도 사용자 몫. `t_user.phone` 등 nullable 변경·삭제된 테이블/컬럼 정리는 실제 스키마에서 사용자가 처리.
-- 단 `npm test` 는 예외 — 구현 완료 후 Claude 가 Bash 도구로 직접 실행해 검증한다.
+- **서버 · 인프라 기동은 반드시 사용자가 직접 실행** — `npm run start:*` / `nest start` / `npm run docker:up` · `docker:infra`(`docker compose up`) 를 Claude 가 실행하지 않는다. `docker compose config` 검증 · `docker build` 는 해도 된다(컨테이너를 띄우지 않음).
+- **DB 마이그레이션 적용 · 배포는 사용자 몫** — `npm run db:migrate` · `db:revert` 와 Docker 의 migrate 컨테이너는 실제 DB 를 바꾸므로 Claude 가 실행하지 않는다. Claude 는 엔티티 수정과 마이그레이션 파일 생성(`npm run db:generate -- <Name>` — DB 없이 PGlite 로 계산)까지만 한다([docs/data-layer.md](docs/data-layer.md) 마이그레이션 절).
+- 예외 — Claude 가 Bash 로 직접 실행해 검증한다: `npm test` · `npm run typecheck` · `npm run build` · `npm run lint` · `npm run db:check` · `npm run db:generate`.
+- **`.back/` 은 NestJS 11 + TypeORM 0.3 시절 코드 보관소** — 이식할 때 참고만 한다. 수정 · import 금지(tsconfig · Vitest 에서 제외돼 있다). git 에서도 제외(`.gitignore` 의 `/.back`)된 로컬 전용 폴더라 다른 PC 에는 없다 — 원본은 커밋 e108425 까지의 기록에 남아 있다.
 
 ## 커밋 메시지
 
@@ -43,124 +44,157 @@
 
 ## Architecture
 
-NestJS 11 + TypeORM 0.3(MySQL, `mysql2`) + passport-jwt + Swagger + `@nestjs/schedule` + typeorm-transactional. 도메인 **`user` · `store`** + 인프라 모듈(api-log·queue(미적용)·typeorm·seeder). 다국어(i18n) 없음 — 모든 사용자 노출 메시지는 한국어 리터럴.
+NestJS 12 **모노레포**(ESM, `"type": "module"`) + TypeORM 1.x(PostgreSQL, pg) + RabbitMQ(amqplib 2) + nestjs-cls 트랜잭션 + passport-jwt + Swagger + `@nestjs/schedule` + Vitest. 다국어(i18n) 없음 — 모든 사용자 노출 메시지는 한국어 리터럴.
 
 ```
-src/
-├── api/v1/user/   # 유일한 도메인: controller→service→repository + 스케줄러(leave-cleanup)
-├── common/        # 비도메인 공통: dto, utils(순수함수)
-├── config/        # typeorm.config.ts (기본 비즈니스 DataSource)
-├── exception/     # CustomErrorFilter (전역 @Catch)
-├── guards/        # passport.jwt.auth(적용), roles(적용)
-├── modules/       # 인프라: api-log(@Global,별도 DataSource), queue(BullMQ,미적용), typeorm, seeder
-├── app.module.ts  # 유일한 모듈 집합점
-└── main.ts        # 부트스트랩
+apps/
+├── gateway/src/
+│   ├── api/v1/<domain>/      # 공개 라우트(controller) — 경로 선택: 동기(내부 HTTP) | 큐(RabbitMQ + 요청 단위 SSE)
+│   ├── guards/               # passport.jwt.auth(JWT) · roles(권한)
+│   └── modules/transport/    # InternalHttpClient · CommandStreamService
+└── user-service/src/
+    ├── user/                 # 회원 도메인: controller(내부 HTTP) · handler(RabbitMQ) · crontabs/ → 같은 UserService
+    └── migrate.ts            # 마이그레이션 실행기
+libs/
+├── common/       # 실패 응답 DTO · toFailResult · 예외 필터 · ValidationPipe 팩토리 · 순수 util · 내부 요청 가드
+├── contracts/    # 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type, 메시지 봉투, 내부 헤더
+├── database/     # entities/<domain>/ · migrations/ · DatabaseModule · typeorm-error · seeder
+└── messaging/    # RabbitMQ 연결 · 발행 · 소비 · @OnCommand · CommandDispatcher
+scripts/db-schema.mjs   # 오프라인 마이그레이션 생성 · 검사 (PGlite)
 ```
 
-레이어: **controller → service → repository** 단방향. controller 는 라우팅·guard·swagger만(로직 0), service 는 비즈니스 로직 + 트랜잭션 경계, repository 는 모든 IO/SQL + DB 에러 변환. `@InjectRepository`(raw `Repository<T>`)는 repository 클래스 내부에만.
+- **모노레포 ≠ 모놀리스**: 앱마다 `nest build <app>` 으로 따로 빌드 · 배포 · 확장한다. 공유 코드는 libs 한 곳에서 import.
+- **두 전달 경로**: 즉시 끝나는 요청(조회 · 로그인 · 토큰 재발급 · 게이트웨이 인증 조회)은 게이트웨이 → 서비스 **내부 HTTP**(동기), 상태를 바꾸는 쓰기는 **RabbitMQ 명령 → 결과 이벤트 → 요청 단위 SSE**. 어느 라우트가 어느 경로인지는 게이트웨이 controller 가 정한다.
+- **헥사고날 경계(포트·어댑터)**: 인바운드 어댑터(controller · `@OnCommand` handler · crontab)는 service 로 위임만 하고, service 는 아웃바운드 포트(repository 인터페이스 Symbol 토큰)만 안다. 같은 service 를 HTTP 와 RabbitMQ 양쪽에서 부른다. 폴더 배치(api · guards · modules)는 헥사고날과 무관한 정리 기준이다. 순수 도메인 객체 분리(클린 아키텍처)는 하지 않는다.
+- 레이어: **adapter(controller/handler/crontab) → service → repository** 단방향. repository 만 TypeORM(`txHost.tx`)을 쓴다.
+- **엔티티는 `libs/database/src/entities/<domain>/`** — 공유 DB 단계라 여러 앱이 같은 엔티티를 쓰므로 앱이 아니라 공용 라이브러리 안의 소유 도메인 폴더에 둔다.
+- **도메인 간 데이터 접근**: 다른 도메인 테이블이 필요하면 소유 도메인의 repository 가 그 엔티티를 직접 다룬다(service→service ❌). 메서드명은 소유 도메인 어휘(`t_user` 를 다뤄도 `insertStaff`).
 
-**도메인 간 데이터 접근**: 다른 도메인 테이블이 필요하면 **소유 도메인의 repository 가 그 엔티티를 직접 다룬다**(service→service 호출 ❌ — 선례 없음). `forFeature` 에 남의 엔티티를 등록하되 남의 `@Module` 은 import 하지 않고, 메서드명은 소유 도메인 어휘를 쓴다(`t_user` 를 다뤄도 `insertStaff`). 최초 적용 [store.repository.ts](src/api/v1/store/repositories/store.repository.ts).
-
-→ 상세(레이어/DI/시드/스케줄러/부트스트랩/새 도메인 절차): [docs/architecture.md](docs/architecture.md)
+→ 상세(앱 구성 · 경로 선택 · 모듈 · 부트스트랩 · 새 도메인 절차): [docs/architecture.md](docs/architecture.md) · 메시징: [docs/messaging.md](docs/messaging.md)
 
 ## Conventions
 
-- **파일명**: 레이어 `<domain>.<role>.ts`(`user.controller.ts`, `user.symbols.ts`), DTO/엔티티 kebab `<domain>-<feature>.dto.ts`/`<feature>.entity.ts`. 클래스 `<Domain><Feature><Role>` — 응답은 항상 `ResultDto`(❌ `ResponseDto`).
-- **DTO 독립 명명**: 기능당 DTO 1개, 모양 같아도 독립 선언(재사용/alias ❌).
-- **snake_case 전 레이어 통일**: DTO 필드·entity 컬럼·path/query param·JWT payload 키 모두 snake_case. camelCase 는 지역 변수/util 함수명만.
-- **라우트**: `@Controller('/api/v1/<domain>')`(앞 `/`), 핸들러도 앞 `/`+다단어 kebab, snake path param.
-- **컨트롤러 입력은 항상 DTO 타입**(`any`·`@Param('key')` 금지). 인증은 `@PassportUser('user_id')` 첫 파라미터, 파라미터 한 줄.
+- **ESM**: 상대 · alias import 는 **`.js` 확장자 필수**(`./user.service.js`, `@app/common/utils/jwt.js`), 패키지 import 는 확장자 없음. 타입만 쓰는 import 는 `import type`. CJS 패키지는 default import(`import bcrypt from 'bcrypt'`). `__dirname`/`require` ❌.
+- **Import alias**: 앱 간 공유는 `@app/<lib>/<경로>.js`(`@app/common` · `@app/contracts` · `@app/database` · `@app/messaging`). 앱 · 도메인 내부는 상대경로. barrel(`index.ts`) 없음.
+- **게이트웨이 폴더**: 공개 라우트 `src/api/v1/<domain>/`, 가드 `src/guards/<guard>/`, 인프라 `src/modules/<module>/` (기존 `.back` 구조와 같다).
+- **파일명**: 레이어 `<domain>.<role>.ts`(`user.controller.ts`, `user.handler.ts`, `user.symbols.ts`), DTO kebab `<domain>-<feature>.dto.ts`, 엔티티 kebab `<feature>.entity.ts`, crontab `<domain>-<feature>.crontab.ts`. 클래스 `<Domain><Feature><Role>` — 응답은 항상 `ResultDto`(❌ `ResponseDto`).
+- **DTO 는 `libs/contracts/src/<domain>/dto/`** — 게이트웨이(검증)와 서비스(타입)가 같은 클래스를 쓴다. 기능당 DTO 1개, 모양 같아도 독립 선언.
+- **snake_case 전 레이어 통일**: DTO 필드 · entity 컬럼 · path/query param · JWT payload · 메시지 봉투 · 실패 본문(`validation_errors`) 키 모두 snake_case. camelCase 는 지역 변수 · util 함수명만.
+- **라우트**: 공개 `@Controller('/api/v1/<domain>')`(게이트웨이), 내부 `@Controller('/internal/v1/<domain>')`(서비스). 핸들러 앞 `/` + 다단어 kebab, snake path param.
+- **컨트롤러 입력은 항상 DTO 타입**(`any`·`@Param('key')` 금지), 파라미터 한 줄.
+- 코드 스타일: Prettier(4칸, 200자, `bracketSpacing: false`) + oxlint.
 
-→ 상세(명명/검증순서/금지형식): [docs/conventions.md](docs/conventions.md)
+→ 상세: [docs/conventions.md](docs/conventions.md)
 
 ## 서비스(비즈니스) 계층 규칙
 
-- **public 메서드 1개 = controller 핸들러 1개 = API 1개**. 실측 예외: controller 없는 스케줄러 전용 service([user.leave-cleanup.service.ts](src/api/v1/user/user.leave-cleanup.service.ts)).
-- **service 내부 private 헬퍼 금지** — 재사용·순수 변환은 `<domain>.util.ts`(도메인) 또는 `src/common/utils/`(전역)로 추출.
-- service 는 `new XEntity()`+필드 할당으로 엔티티를 만들고(객체 리터럴 ❌), repository 를 인터페이스 토큰으로 호출하며, 규칙 위반 시 HTTP 예외 throw.
+- **public 메서드 1개 = API(또는 명령) 1개**. crontab 은 service 가 아니라 인바운드 어댑터다(도메인 `crontabs/` 폴더).
+- **service 내부 private 헬퍼 금지** — 재사용 · 순수 변환은 `<domain>.util.ts`(도메인) 또는 `libs/common/src/utils/`(전역)로 추출.
+- service 는 `new XEntity()`+필드 할당으로 엔티티를 만들고(객체 리터럴 ❌), WHERE 는 `FindOptionsWhere<XEntity>`(`In` · `LessThanOrEqual` 등)로 만들어 repository 를 인터페이스 토큰으로 호출하며, 규칙 위반 시 HTTP 예외 throw.
+- 쓰기 메서드에 `@Transactional()`(`@nestjs-cls/transactional`). 큐 경로에서도 HTTP 예외를 그대로 던지면 failed 결과로 바뀐다.
+- service 는 `Request`/`Response`/AMQP 채널 같은 전송 계층 객체를 받지 않고 값만 받는다.
 
 ## 공통 로직 분리
 
-- **순수 함수(stateless) → util**: 전역 `src/common/utils/*.ts`(`bcrypt`/`hash`/`cipher`/`jwt`/`validation` 등), 도메인 전용 `src/api/v1/<domain>/<domain>.util.ts`. util 은 `@Injectable` 없이 named `function` export.
-- **DI/lifecycle/외부연동 → `@Module`/`@Injectable`**: 인프라성은 `src/modules/`.
-- barrel(`index.ts`) 없음 — 모든 import 직접 경로. 용어: "공통 모듈"=`@Module`, "공통 로직/범용 함수"=util.
+- **순수 함수(stateless) → util**: 전역 `libs/common/src/utils/*.ts`(`bcrypt` · `hash` · `cipher` · `jwt` · `validation` · `fail-result`), 도메인 전용 `apps/<app>/src/<domain>/<domain>.util.ts`. `@Injectable` 없이 named `function` export.
+- **DI/lifecycle/외부연동 → `@Module`/`@Injectable`**: 여러 앱이 쓰는 인프라는 `libs/`, 앱 전용은 그 앱 안(`src/modules/`).
 
 ## Validation
 
 - `class-validator` 데코레이터. 사용: `@IsNotEmpty`/`@IsOptional`/`@IsIn`/`@Matches`/`@MaxLength`(+`@ValidateIf`). **`@IsString`/`@IsNumber`/`@Type`/`@Transform` 미사용**(존재+형식/길이+enum 만).
 - **모든 검증 데코레이터에 `message: '<한국어 문자열>'` 리터럴 필수**. `@IsOptional()` 만 `message` 없음.
 - **데코레이터 순서**: `@ApiProperty` → 제약 → `@IsNotEmpty`(맨 마지막). optional 은 `@ApiProperty` → `@IsOptional()` → 제약.
-- **`@Query()` DTO 는 생성자를 세트로 갖고, 컨트롤러가 `const dto = new 클래스명(query);` 로 만들어 service 에 넘긴다**(호출부 `new` 인라인 ❌) — 쿼리는 키가 통째로 빠질 수 있고 그 누락은 정상 요청이라 잡아줄 검증기가 없다. `ValidationPipe` 설정은 그대로 두고 기본값 책임만 생성자로 옮긴다(검증=파이프, 기본값=생성자). **생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — 파이프가 내부적으로 `new targetType()` 을 인자 없이 호출하므로 필수로 두면 매 요청 500. 기본값을 `Pagination` 의 NaN 폴백에 맡기지 않는다. 페이지 기본값은 `PaginationDto` 생성자가 담당하고 기능별 Query DTO 는 `super(data)` 후 자기 필드만 추가(부모 필드 재선언 ❌ — `useDefineForClassFields` 로 값이 덮인다). `@Body()`/`@Param()` 은 해당 없음(누락이 곧 검증 실패).
+- **검증 위치**: 공개 입력은 게이트웨이의 ValidationPipe 에서 1회. 큐 경로 서비스 핸들러는 다시 검증하지 않는다(내부 HTTP 컨트롤러는 같은 DTO 로 한 번 더 검증 — 방어).
+- **`@Query()` DTO 는 생성자를 세트로 갖고, 컨트롤러가 `const dto = new 클래스명(query);` 로 만들어 넘긴다**(호출부 `new` 인라인 ❌). **생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — 파이프가 `new targetType()` 을 인자 없이 호출한다. 페이지 기본값은 `PaginationDto` 생성자, 기능별 Query DTO 는 `super(data)` 후 자기 필드만(부모 필드 재선언 ❌). `@Body()`/`@Param()` 은 해당 없음.
+- 전역 ValidationPipe 는 `transform: true` + `forbidNonWhitelisted: true` + `exceptionFactory: validationExceptionFactory`(main.ts · spec 공용). `whitelist` 는 켜지 않는다 — 그래서 선언 안 된 필드는 걸러지지 않는다.
 
 → 상세: [docs/conventions.md](docs/conventions.md)
 
 ## Error & Response
 
-- **repository**: 모든 메서드 try/catch, 최종 실패는 통일 `InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'})`. insert/update errno 1062(UK)/1452(FK)를 제약명별 if 분기로 `BadRequestException` 매핑.
-- **service**: 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw, body `{message: '<한국어 문자열>'}`. controller 는 throw 안 함.
-- **`validationErrors` 기준**: 사용자 입력 필드 오류만 포함, 비즈니스·내부값 오류는 `{message}` 단독.
-- 상태코드는 핸들러마다 `@HttpCode(200|204)` 명시. **응답 필드 생략 금지 — 없으면 `null` 포함**(`x: T | null`).
+- **실패 본문은 전송 경로와 무관하게 하나**: `ApiFailResultDto {message, validation_errors: ValidationErrorResultDto[] | null, ...기능별 추가 필드}`. 모든 예외는 `toFailResult()` 를 거친다 — HTTP 는 `CustomErrorFilter` 가 상태 코드 + 본문으로, 큐 경로는 `CommandDispatcher` 가 failed 결과로, 게이트웨이가 SSE `failed` 이벤트(`{status_code, ...본문}`)로 내보낸다.
+- **repository**: 모든 메서드 try/catch, 최종 실패는 통일 `InternalServerErrorException({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'})`. 제약 위반은 `isUniqueViolation(error, 'UK_…')` · `isForeignKeyViolation(error, 'FK_…')`(PostgreSQL 23505/23503)로 **제약명별 if 분기** → `BadRequestException`.
+- **service**: 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw, body `{message: '<한국어 문자열>'}`(+필요 시 추가 필드). controller · handler 는 throw 안 함.
+- **4xx 는 비즈니스, 5xx 는 인프라**: 큐 경로에서 4xx 는 즉시 failed 회신, 5xx 는 재시도(최대 3회) 후 failed + DLQ.
+- **`validation_errors` 기준**: 사용자 입력 필드 오류만, 비즈니스 · 내부값 오류는 `null`.
+- 상태코드는 동기 핸들러마다 `@HttpCode(200|204)` 명시. **응답 필드 생략 금지 — 없으면 `null` 포함**(`x: T | null`).
 
 → 상세: [docs/error-handling.md](docs/error-handling.md)
 
 ## API & Docs
 
-- **모든 함수/메서드에 주석 필수**(레이어 무관 JSDoc/한 줄), controller 핸들러에 Swagger 데코레이터 필수.
+- **모든 함수/메서드에 주석 필수**(JSDoc/한 줄). 공개 controller(게이트웨이) 핸들러에 Swagger 데코레이터 필수. 내부 controller(`/internal/...`)는 Swagger 없음.
 - 클래스: `@ApiTags('<한글>')` → `@Controller(...)`.
-- 메서드: HTTP verb → `@UseGuards`(인증 시) → `@Roles`(권한 제한 시) → `@HttpCode` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse`/`@ApiNoContentResponse` → 에러 응답들. 응답 데코레이터는 `type` 만(❌ `description`), `@ApiOperation` 은 `summary` 만.
+- 동기 핸들러: HTTP verb → `@UseGuards` → `@Roles` → `@HttpCode` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → 에러 응답들(`type: ApiFailResultDto`).
+- **큐 핸들러**: HTTP verb → `@UseGuards` → `@ApiBearerAuth`(인증 시) → `@ApiOperation` → `@ApiBody` → `@ApiProduces('text/event-stream')` → `@ApiOkResponse({type: done 의 data DTO})`(void 면 생략) → 에러 응답들. `@HttpCode` 없음. 시그니처 `(@PassportActor() actor, @Body() dto, @Ip() ip, @Res() res)` + `commandStream.dispatch(res, {...})`.
 
 → 상세: [docs/api.md](docs/api.md)
 
 ## Data Layer
 
-- **엔티티**: 테이블 `t_<domain>`, 제약 PascalCase(`PK_`/`UK_`/`FK_`), 모든 컬럼 `comment`, `@Unique()` 데코레이터(❌ `@Column({unique})`), FK 는 `@ManyToOne`+`@JoinColumn({foreignKeyConstraintName})`, 타임스탬프 `@BeforeInsert`/`@BeforeUpdate` 훅(❌ `@CreateDateColumn`). 룩업 엔티티(auth/state/sns)는 구조 컬럼만(시드 데이터·타임스탬프 없음).
-- **repository**: 범용 메서드 우선, WHERE 는 service 가 구성·repository 는 실행만, where 타입 `FindOptionsWhere<XEntity>`(❌ `Partial`), 조회 시 `loadRelationIds: true`, `update(where, entity)` 는 `new XEntity()`+할당으로 호출.
-- **Pagination**: 최초 적용은 가맹점 목록([store.service.ts](src/api/v1/store/store.service.ts) `list`). 응답은 `{list, pagination}` 래핑, 호출 순서는 **count → `Pagination` → 목록**(생성자가 `total_count` 를 받아 `limit`/`offset` 을 산출하므로 순서 강제), repository 는 개수·목록 두 메서드로 분리(`findAndCount` ❌). Query DTO 는 `extends PaginationDto`.
+- **엔티티** `libs/database/src/entities/<domain>/<feature>.entity.ts`, `ENTITIES`(entities.ts)에 등록: 테이블 `t_<domain>`, `@Entity({name, comment})`, 제약 PascalCase(`primaryKeyConstraintName: 'PK_…'` · `@Unique('UK_…')` · `@JoinColumn({foreignKeyConstraintName: 'FK_…'})` · `@Index('IDX_…')`), **모든 컬럼 `comment`**(→ DB COMMENT), 타임스탬프 `@BeforeInsert`/`@BeforeUpdate` 훅(❌ `@CreateDateColumn`), 시각 `timestamptz`, 플래그 `smallint`. FK 는 문자열 속성 + `@ManyToOne(() => X)` + `@JoinColumn`(관계 속성을 엔티티 타입으로 두지 않는다 — ESM 순환 import 회피). 룩업 엔티티는 구조 컬럼만.
+- **repository**: `TransactionHost<TransactionalAdapterTypeOrm>` 주입, `this.txHost.tx.getRepository(XEntity)` 로만 접근. 조회 `findOne`/`find` + `loadRelationIds: true`, 쓰기 `insert(entity)` · `update(where, entity)`(엔티티 인스턴스라야 훅이 돈다). where 타입 `FindOptionsWhere<XEntity>`(❌ `Partial`). 조인 · raw select 는 QueryBuilder 빌더 메서드로 분리하고 Data-Access Smoke spec 으로 SQL 고정.
+- **마이그레이션**: 스키마는 마이그레이션으로만 바꾼다(`synchronize` 항상 off). 엔티티 수정 → `npm run db:generate -- <Name>`(DB 없이 PGlite 로 계산해 `libs/database/src/migrations/<ts>-<Name>.ts` 생성 + `MIGRATIONS` 등록, COMMENT 변경 포함) → `npm run db:check` 로 일치 확인 → 적용은 사용자(`db:migrate` 또는 Docker migrate 컨테이너).
+- **Pagination**: 응답 `{list, pagination}`, 순서 **count → `Pagination` → 목록**, repository 는 개수 · 목록 두 메서드(`findAndCount` ❌). Query DTO 는 `extends PaginationDto`. (공통 Pagination 은 첫 목록 API 이식 시 `.back/src/common` 에서 옮긴다)
 
 → 상세: [docs/data-layer.md](docs/data-layer.md)
 
 ## Auth
 
-- 인증은 **핸들러 단위** `@UseGuards(PassportJwtAuthGuard)`(컨트롤러 전체 아님). 공개 엔드포인트(sign/login/token-refresh)는 guard 생략, 보호 엔드포인트(leave/cancelLeave)는 부착.
-- 로그인 회원은 반드시 `@PassportUser('user_id') user_id: string`(raw `@Req()` ❌). import: `@root/guards/passport.jwt.auth/passport.jwt.auth.decorator`.
-- **역할 기반 권한**(`@Roles`+`RolesGuard`, `src/guards/roles/`): 관리자 전용 API 는 `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles('SUPER_ADMIN', 'ADMIN')` 를 **한 세트로** 부착(가드 순서 = 인증 → 권한). 권한값은 `t_auth` PK 문자열(SUPER_ADMIN/ADMIN/MANAGER/USER, [seeder.targets.ts](src/modules/seeder/seeder.targets.ts)). `RolesGuard` 는 불일치 시 `ForbiddenException({message: '접근 권한이 없습니다.'})` 로 403. 적용 예: [store.controller.ts](src/api/v1/store/store.controller.ts).
+- **JWT 검증 · 권한은 게이트웨이에서만**(`apps/gateway/src/guards/`). 서비스는 외부에 열리지 않으며 actor(내부 헤더 · 메시지 봉투)를 신뢰한다.
+- 게이트웨이: 핸들러 단위 `@UseGuards(PassportJwtAuthGuard)`. 서비스로 넘기는 핸들러는 `@PassportActor() actor: Actor` 를 첫 파라미터로, 게이트웨이 안에서만 쓰면 `@PassportUser('user_id')`. JWT 전략은 회원 상태를 user-service `GET /internal/v1/user/auth-user/:user_id` 로 확인한다.
+- **역할 기반 권한**: 관리자 전용 API 는 `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles('SUPER_ADMIN', 'ADMIN')`(`guards/roles/roles.decorator.ts`)를 **한 세트로**(인증 → 권한). 권한값은 `t_auth` PK(SUPER_ADMIN/ADMIN/HEAD_MANAGER/MANAGER/USER). 불일치 403 `{message: '접근 권한이 없습니다.'}`.
+- 서비스 내부 HTTP: 로그인 회원은 `@InternalActor('user_id')`, IP 는 `@ClientIp()`.
 
-## 비동기 / 스케줄러
+### 서비스는 게이트웨이를 거친 요청만 받는다
 
-- **스케줄러**: `@nestjs/schedule`. `ScheduleModule.forRoot()` 는 `app.module.ts` 에 **1회만**. 실사용: leave 자동처리 `@Cron(EVERY_HOUR)`(운영 가드), api-log 파티션 월별 `@Cron`.
-- **BullMQ 큐**(`src/modules/queue/`): 인프라 완비(`@UseQueue`/`WriteQueueRegistry`)이나 **적용 service 0건 — 미적용/규약**. Redis 미기동 시 빈 모듈로 graceful.
+- **내부 HTTP**: 서비스 루트 모듈에 `{provide: APP_GUARD, useClass: InternalAuthGuard}` — 모든 HTTP 요청에 게이트웨이의 `x-internal-token`(INTERNAL_API_TOKEN, 시간차 안전 비교)을 요구한다. 컨트롤러마다 붙이지 않는다. 바인딩 주소는 `USER_SERVICE_HOST`(기본 127.0.0.1), Docker 에서는 게이트웨이와만 공유하는 `service` 네트워크(internal)로 닿는다. 서비스에는 CORS 를 두지 않는다.
+- **큐(명령)**: 앱마다 다른 브로커 계정(`BROKER_USER`: gateway · user-service, 비밀번호 `RABBITMQ_<계정>_PASSWORD`). `roomless.cmd` 에 쓸 수 있는 계정은 gateway 뿐이다(권한: [docker/rabbitmq/init.sh](docker/rabbitmq/init.sh)). 연결 모듈은 발행하는 모든 메시지에 자기 계정을 `user_id` 로 붙이고, 브로커가 접속 계정과 대조한다. 서비스 소비자는 `user_id !== 'gateway'` 인 명령을 처리 · 회신 없이 DLQ 로 보낸다.
+- **CORS** 는 브라우저 규칙이라 서버 간 호출을 막지 못한다 — 게이트웨이에만 `CORS_ORIGINS`(프론트 주소, 비우면 모두 차단)로 건다.
+
+## 메시징 / 스케줄러
+
+- **RabbitMQ**(`libs/messaging`): exchange `roomless.cmd`(명령 — gateway 계정만 발행) · `roomless.event`(결과 · 도메인 이벤트 — 서비스 계정만 발행) · `roomless.dlx`. 서비스 명령 큐는 quorum(`x-delivery-limit: 3`), 게이트웨이 결과 큐는 인스턴스별 exclusive(`q.gw.result.<인스턴스>`). 라우팅 키 `<server>.<resource>.<action>`, 결과는 `result.<인스턴스>.<type>.<done|failed>`.
+- 명령 추가: `libs/contracts/src/<domain>/<domain>.commands.ts` 에 type 상수 → 서비스 `<domain>.handler.ts` 에 `@OnCommand(TYPE)` 메서드(service 위임만) → 게이트웨이 controller 에서 `commandStream.dispatch`.
+- **요청 단위 SSE**: 큐 경로 응답 = `event: accepted` → `done | failed | pending` → 종료. 상태 저장소 · 상시 연결 없음. 대기 시간 초과(30초)면 pending, 클라이언트는 리소스를 재조회한다.
+- **스케줄러**: 도메인 안 `crontabs/` 폴더에 `<domain>-<feature>.crontab.ts`(`@Cron`), 도메인 모듈 providers 에 등록. `ScheduleModule.forRoot()` 는 앱 루트 모듈에 1회.
+
+→ 상세: [docs/messaging.md](docs/messaging.md)
 
 ## Key Patterns
 
-- **Repository DI**: Symbol 토큰(`<domain>.symbols.ts`) + 모듈 `{provide: TOKEN, useClass: XRepository}` + service `@Inject(TOKEN) … : XRepositoryInterface`(인터페이스는 `import type`).
-- **모듈 등록**: 도메인 모듈에 `@SetMetadata('type','API')`/`description`/`path` → `main.ts` 가 reflector 로 Swagger 자동 생성. `app.module.ts` imports 에 추가.
-- **Transaction**: `@Transactional()`(typeorm-transactional)을 쓰기 메서드에 부착. 부트스트랩 `initializeTransactionalContext()` + `addTransactionalDataSource()`.
-- **Import alias**: `@root/*` → `src/*`. 도메인 내부는 상대경로.
-- **api-log**: `@Global` 모듈 + 전역 `ApiLogInterceptor`, **별도 `apiLog` DataSource** 로 로그 격리.
-- **기본 데이터 시드**: `OnApplicationBootstrap` 의 `SeederService` 가 [seeder.targets.ts](src/modules/seeder/seeder.targets.ts) `SEED_TARGETS` 의 기본 데이터(`<X>_SEED_DATA`)를 PK 기준 멱등 입력. 기본 데이터는 seeder 한 곳에서 관리(엔티티는 보유 ❌), 시드 행은 객체 리터럴 허용(유일 예외).
+- **Repository DI**: Symbol 토큰(`<domain>.symbols.ts`) + 모듈 `{provide: TOKEN, useClass: XRepository}` + service `@Inject(TOKEN) … : XRepositoryInterface`(인터페이스는 `import type`). 메시징 포트(`COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`)도 같은 패턴.
+- **Transaction**: service 쓰기 메서드에 `@Transactional()`, repository 는 `txHost.tx`. DB 를 쓰는 앱 루트 모듈은 `DatabaseModule`(TypeOrmModule + ClsModule `TransactionalAdapterTypeOrm`)을 import 한다.
+- **기본 데이터 시드**: `libs/database/src/seeder/seeder.targets.ts` 의 `<X>_SEED_DATA` + `SEED_TARGETS` 를 DB 소유 서비스(user-service)의 `SeederService` 가 부팅 시 PK 기준 멱등 입력. 시드 행은 객체 리터럴 허용(유일 예외).
+- **Docker 실행**: `Dockerfile` 하나를 `APP` 빌드 인자(gateway · user-service)로 나눠 이미지 2개를 만든다(Node 24 slim, 운영 의존성만). `docker-compose.yml` = postgres · rabbitmq · rabbitmq-init(브로커 계정 · 권한) · migrate(1회 `migrate.js`) · user-service(내부 전용) · gateway(:3000). 네트워크 `edge`(gateway) · `service`(gateway ↔ user-service, internal) · `broker` · `data`(게이트웨이는 DB 에 닿지 않음), 각 앱에는 쓰지 않는 비밀값을 빈 값으로 덮어 전달하지 않는다. 컨테이너 간 주소(DATABASE_URL · RABBITMQ_HOST · USER_SERVICE_URL)는 compose 가 서비스 이름으로 덮어쓴다. 앱 코드 개발 중에는 `npm run docker:infra` 로 인프라만 띄우고 `npm run start:*` 로 로컬 실행해도 된다.
 
 ## Testing
 
-- jest + ts-jest + `@nestjs/testing` + `supertest`. 위치 `<domain>/test/<feature>.spec.ts`(kebab), 인프라는 `src/modules/<m>/test/`. 실행 `npm test`, 단일 `npm test -- --testPathPatterns=<패턴>`.
-- 지배적 스타일: ① controller 기능은 실제 controller+service+ValidationPipe+필터 부팅 후 **repository 만 Symbol 토큰으로 `jest.fn()` 주입**(외부 util 은 `jest.spyOn`+`mockRestore`, guard 는 `.overrideGuard`, 상단 `typeorm-transactional` mock). ② controller 없는 service(스케줄러·seeder)는 mock DataSource/repository 로 직접 `new`.
-- 강도: 상태코드만 검사 금지 — mock 호출 횟수·인자(write 는 entity 컬럼 값)·실패 후 `.not.toHaveBeenCalled()` 까지 단언. 메시지는 한국어 리터럴로 단언. `[SUCCESS]`/`[FAIL:*]` describe 분류. **실DB·외부 IO 금지.**
-- **Data-Access Smoke**: 매핑 민감 쿼리(관계 필드 where·`Like`/QueryBuilder·동적 조립) 메서드는 repository-mock spec 만으로 커버 금지 — TypeORM 무연결 쿼리 빌드 smoke 케이스 필수. 최초 적용 [store-list.spec.ts](src/api/v1/store/test/store-list.spec.ts)(정의·방법: [docs/testing.md](docs/testing.md)).
-- 공유 service 생성자에 DI 추가 시 그 service 를 부팅하는 기존 모든 spec 의 providers 에 mock 추가(grep 전수).
+- **Vitest 4** + `@nestjs/testing` + `supertest`. 위치 `<app|lib>/src/<domain>/test/<feature>.spec.ts`. 실행 `npm test`, 단일 `npm test -- <파일명 일부>`.
+- 전역 setup([vitest.setup.ts](vitest.setup.ts)): `@Transactional()` pass-through mock + Nest 로거 끔. spec 마다 반복하지 않는다.
+- **큐 경로**: 실제 handler · service · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅하고 **repository 만 Symbol 토큰으로 `vi.fn()` 주입**, 봉투를 `dispatcher.dispatch()` 에 넣어 판정(ack/requeue/dead)과 done/failed 결과를 단언.
+- **동기 경로**: 실제 controller + service + ValidationPipe + 필터 + InternalAuthGuard 부팅, repository 만 mock.
+- **게이트웨이**: 가짜 브로커(FakeBroker)로 SSE 이벤트 순서를 실제 HTTP 로 단언, InternalHttpClient 는 mock.
+- 외부 util 은 `vi.mock('<alias 경로>.js', ...)` + `vi.mocked(fn).mockReturnValue`(ESM 이라 `spyOn(모듈)` 불가). 시간은 `vi.useFakeTimers({toFake: ['Date']})`.
+- 강도: 상태코드만 검사 금지 — mock 호출 횟수 · 인자(쓰기는 엔티티 컬럼 값, `toBeInstanceOf(XEntity)`) · 실패 후 `.not.toHaveBeenCalled()` 까지. 메시지는 한국어 리터럴. `[SUCCESS]`/`[FAIL:*]` describe 분류. **실 DB · 브로커 · 외부 IO 금지.**
+- **Data-Access Smoke**: 매핑 민감 쿼리(관계 필드 where · QueryBuilder · raw select · 동적 조립) 메서드는 repository-mock spec 만으로 커버 금지 — DB 연결 없이 `new DataSource(...)` + `buildMetadatas()` 로 SQL 을 빌드해 고정하는 smoke 케이스 필수. 최초 적용 [user.repository.spec.ts](apps/user-service/src/user/test/user.repository.spec.ts) `findLoginUser`.
+- 엔티티 ↔ 마이그레이션 일치는 `npm run db:check` 로 확인한다(테스트와 별도).
 
 → 상세: [docs/testing.md](docs/testing.md)
 
 ## Checklist
 
-- [ ] 파일/클래스명: 레이어 `<domain>.<role>.ts`, DTO/엔티티 kebab, 클래스 `<Domain><Feature><Role>Dto`(응답 `ResultDto`)
-- [ ] 컨트롤러 입력 DTO 타입(`any`·`@Param('key')` 금지), 파라미터 한 줄, 인증 `@PassportUser('user_id')` 첫 파라미터
-- [ ] 라우트 `@Controller('/api/v1/<domain>')` + 핸들러 앞 `/`, snake path param
-- [ ] DTO 검증: `message: '<한국어 문자열>'` 리터럴 필수, `@IsNotEmpty` 맨 마지막, `@IsString` 미사용
-- [ ] Entity: `@Entity({name:'t_…', comment})`, 제약명 `PK_/UK_/FK_`, `@Unique()`/`@JoinColumn({foreignKeyConstraintName})`, `@BeforeInsert/@BeforeUpdate` 타임스탬프, 모든 컬럼 comment
-- [ ] Repository: try/catch + 통일 500, errno 1062/1452 분기, `FindOptionsWhere`, `loadRelationIds:true`, `update` 는 `new XEntity()` 전달
-- [ ] Service: public=API 1:1, private 헬퍼 없이 util 분리, 쓰기 `@Transactional()`, 엔티티는 `new`+할당
-- [ ] Error: repository 통일/매핑, service throw 는 `{message: '<한국어 문자열>'}`, `validationErrors` 는 입력 필드 오류만
-- [ ] Swagger: 클래스 `@ApiTags`, 메서드 순서·`type`만, `@HttpCode(200|204)`, void 는 `@ApiNoContentResponse`
-- [ ] Repository DI: Symbol 토큰 + `useClass`/`@Inject`, 모듈 `@SetMetadata('type','API')` + `app.module.ts` 등록
-- [ ] 응답 필드 생략 금지 — 없으면 `null` 포함(`x: T | null`)
-- [ ] 기본 데이터 추가 시 seeder.targets.ts(`<X>_SEED_DATA`+`SEED_TARGETS`)에만 정의(엔티티 보유 ❌)
-- [ ] 테스트: repository mock 주입, 호출 횟수·인자·미호출 단언, 한국어 리터럴 메시지 단언, `npm test` 통과
+- [ ] ESM: 상대 · alias import `.js` 확장자, 타입 전용 `import type`, alias 는 `@app/<lib>/...`
+- [ ] 파일/클래스명: 레이어 `<domain>.<role>.ts`, DTO kebab(`libs/contracts`), 엔티티 `libs/database/src/entities/<domain>/<feature>.entity.ts`, crontab `crontabs/<domain>-<feature>.crontab.ts`, 응답 `ResultDto`
+- [ ] 게이트웨이: 라우트 `api/v1/<domain>/`, 가드 `guards/`, 인프라 `modules/`
+- [ ] 경로 선택: 큐(쓰기 · 상태 변경) vs 동기(즉시 응답 · 조회)를 게이트웨이 controller 에서 결정
+- [ ] 컨트롤러 입력 DTO 타입, 파라미터 한 줄, 인증은 `@PassportActor()`/`@PassportUser()` 첫 파라미터
+- [ ] DTO 검증: `message: '<한국어 문자열>'` 필수, `@IsNotEmpty` 맨 마지막, `@IsString` 미사용
+- [ ] Entity: `@Entity({name:'t_…', comment})`, 제약명 `PK_/UK_/FK_/IDX_`, 모든 컬럼 comment, `@BeforeInsert/@BeforeUpdate`, `ENTITIES` 등록, 마이그레이션 생성 + `db:check` 통과
+- [ ] Repository: `txHost.tx.getRepository`, try/catch + 통일 500, `isUniqueViolation`/`isForeignKeyViolation` 제약명 분기, `FindOptionsWhere`, `loadRelationIds:true`, `update` 는 엔티티 인스턴스 전달
+- [ ] Service: public=API/명령 1:1, private 헬퍼 없이 util, 쓰기 `@Transactional()`, 엔티티는 `new`+할당
+- [ ] Error: 실패 본문 `{message, validation_errors}` 하나, `validation_errors` 는 입력 필드 오류만
+- [ ] Swagger: 공개 핸들러 필수, 큐 핸들러는 `@ApiProduces('text/event-stream')`, 응답 데코레이터는 `type` 만
+- [ ] 메시징: 명령 type 은 contracts, 서비스 handler 는 `@OnCommand` + 위임만, 로그인 필요 명령은 `requireActor()`
+- [ ] 응답 필드 생략 금지 — 없으면 `null`
+- [ ] 테스트: repository mock, 호출 횟수 · 인자 · 미호출 단언, 한국어 리터럴, 매핑 민감 쿼리는 Smoke, `npm test` + `npm run typecheck` 통과

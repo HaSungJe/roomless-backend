@@ -65,3 +65,7 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # pm2
 ecosystem.config.js
+# legacy (NestJS 11) snapshot — 로컬 참고용, 저장소에 올리지 않는다
+.back
+*.tsbuildinfo
+

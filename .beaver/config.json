@@ -1,9 +1,13 @@
 {
   "project_name": "roomless-backend",
-  "stack": ["nestjs", "typeorm", "mysql"],
+  "stack": [
+    "nestjs",
+    "typeorm",
+    "mysql"
+  ],
   "commands": {
     "test": "npm test",
-    "test_one": "npm test -- --testPathPatterns=$NAME",
+    "test_one": "npm test -- $NAME",
     "build": "npm run build",
     "lint": "npm run lint"
   },
