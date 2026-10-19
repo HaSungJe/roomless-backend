@@ -6,7 +6,7 @@
 - **user-service** — 회원 도메인(:4001, 내부망). PostgreSQL 을 소유한다.
 
 스택: NestJS 12 (ESM) · TypeORM 1.x + PostgreSQL 17 · RabbitMQ 4 · Vitest · oxlint.
-규약과 구조는 [CLAUDE.md](CLAUDE.md) 와 [docs/](docs/) 를 본다.
+규약과 구조는 [AGENTS.md](AGENTS.md) 와 [docs/](docs/) 를 본다.
 
 ## 실행 (Docker)
 

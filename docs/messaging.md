@@ -23,6 +23,7 @@ Client          Gateway                       RabbitMQ                      user
 - 결과가 발행 confirm 보다 먼저 도착해도 accepted 다음에 쓴다(스트림 등록을 발행 전에 한다).
 - 대기 시간(`COMMAND_STREAM_TIMEOUT_MS`, 기본 30초)을 넘기면 `event: pending` 후 종료. 처리는 서비스에서 계속될 수 있으므로 클라이언트는 리소스를 재조회한다.
 - 클라이언트가 끊으면(새로고침 등) 등록을 해제하고, 늦게 온 결과는 버린다. 결과를 다시 받을 방법은 없다(의도된 제약).
+- 게이트웨이가 종료되면(`onModuleDestroy`) 남은 스트림에 `event: pending` 을 쓰고 닫는다.
 
 ## SSE 이벤트 (`COMMAND_STREAM_EVENT`)
 
@@ -42,16 +43,19 @@ POST 는 `EventSource` 로 열 수 없으므로 클라이언트는 `fetch` 응�
 | 이름 | 종류 | 선언 | 비고 |
 |---|---|---|---|
 | `roomless.cmd` | topic exchange | 모든 앱(연결 시 멱등) | 명령 |
-| `roomless.event` | topic exchange | 모든 앱 | 결과 회신 · 도메인 이벤트 |
+| `roomless.event` | topic exchange | 모든 앱 | 결과 회신 (도메인 이벤트는 아직 발행하지 않는다) |
 | `roomless.dlx` | topic exchange | 모든 앱 | dead-letter |
 | `q.dead` | queue | 모든 앱 | `roomless.dlx` 에 `#` 바인딩 |
 | `q.user.cmd` | quorum queue | user-service | `user.#`, `x-dead-letter-exchange: roomless.dlx`, `x-delivery-limit: 3` |
 | `q.gw.result.<인스턴스>` | exclusive · auto-delete | 게이트웨이 인스턴스마다 | `result.<인스턴스>.#` |
 
 - 라우팅 키: 명령 `<server>.<resource>.<action>`(예: `user.member.sign`), 결과 `result.<게이트웨이 인스턴스>.<명령 type>.<done|failed>`.
-- 게이트웨이 인스턴스 ID: `GATEWAY_INSTANCE_ID` 또는 `gw-<호스트>-<pid>`. 명령의 `meta.reply_to` 에 실려 결과가 그 인스턴스로만 돌아온다 — 게이트웨이를 여러 대 띄워도 sticky session 이 필요 없다. Docker 에서는 compose 가 `GATEWAY_INSTANCE_ID` 를 비워 컨테이너 호스트명으로 정한다.
+- 게이트웨이 인스턴스 ID: `GATEWAY_INSTANCE_ID` 또는 `gw-<호스트>-<pid>`(영숫자 · `-` 외 문자는 `-`). 명령의 `meta.reply_to` 에 실려 결과가 그 인스턴스로만 돌아온다 — 게이트웨이를 여러 대 띄워도 sticky session 이 필요 없다. Docker 에서는 compose 가 `GATEWAY_INSTANCE_ID` 를 비워 `gw-<컨테이너 호스트명>-<pid>` 가 된다.
 - user-service 를 여러 대 띄우면 모두 같은 `q.user.cmd` 를 소비한다(경쟁 소비) — 브로커가 prefetch 범위 안에서 나눠 주고, 한 인스턴스가 죽으면 미확인(unacked) 명령은 다른 인스턴스로 다시 전달된다.
-- 연결: `RabbitMqConnection` 1개를 앱이 공유한다. 접속 정보는 `RABBITMQ_HOST` · `RABBITMQ_PORT` + 앱 계정(`BROKER_ACCOUNT`)의 비밀번호다. 연결 이름(`connection_name`)으로 계정 = 서비스 이름을 보내, 관리 화면 Connections 탭의 Name 칸에 브로커가 보는 `IP:포트` 와 그 아래 서비스 이름(gateway · user-service)이 함께 표시된다. 포트는 접속 후에야 정해지므로 앱이 이름에 넣지 않고 브로커 표시에 맡긴다. amqplib 2 의 `recovery` 로 끊기면 자동 재연결하고, 재연결마다 공통 토폴로지 → 발행 confirm 채널 → 등록된 준비 작업(결과 큐 · 명령 큐 소비)을 다시 세운다. 브로커가 내려가 있어도 앱 부팅은 막지 않는다.
+- 연결: `RabbitMqConnection` 1개를 앱이 공유한다. 접속 정보는 `RABBITMQ_HOST` · `RABBITMQ_PORT` + 앱 계정(`BROKER_ACCOUNT`)의 비밀번호다. 연결 이름(`connection_name`)으로 계정 = 서비스 이름을 보내, 관리 화면 Connections 탭의 Name 칸에 브로커가 보는 `IP:포트` 와 그 아래 서비스 이름(gateway · user-service)이 함께 표시된다. 포트는 접속 후에야 정해지므로 앱이 이름에 넣지 않고 브로커 표시에 맡긴다. amqplib 2 의 `recovery` 로 끊기면 자동 재연결하고, 재연결마다 공통 토폴로지 → 발행 confirm 채널 → 등록된 준비 작업(결과 큐 · 명령 큐 소비)을 다시 세운다. 브로커가 내려가 있어도 앱 부팅은 막지 않는다(`waitForConnect: false`). 그동안 발행은 503 `BROKER_UNAVAILABLE_MESSAGE`.
+- 준비 작업 등록 규약: 결과 수신기 · 명령 소비자 같은 provider 는 `onModuleInit` 에서 `connection.register(setup)` 만 하고, 연결은 모든 등록이 끝난 `onApplicationBootstrap` 에서 연다.
+- 명령 소비자 옵션(`CommandConsumerOptions`): `queue` · `binding_keys` · `broker_user`(필수), `prefetch`(기본 10) · `trusted_publisher`(기본 `'gateway'`, 운영 설정 0건 — 테스트에서만 바꾼다).
+- `@OnCommand(type)` 은 `SetMetadata('roomless:on-command', type)` 이다. `CommandHandlerRegistry` 가 부팅 때 앱 전체 provider 를 스캔해 등록하고, **같은 type 이 두 번 등록되면 부팅이 실패한다**.
 
 ## 브로커 계정과 권한 — 명령은 게이트웨이만 넣을 수 있다
 
@@ -113,7 +117,7 @@ AMQP 속성에도 `messageId` · `correlationId`(=request_id) · `replyTo` · `t
 
 1. `libs/contracts/src/<domain>/<domain>.commands.ts` — `<DOMAIN>_COMMAND.<X>: '<server>.<resource>.<action>'` (+ 새 서비스면 큐 이름 · 바인딩 키).
 2. 서비스 `<domain>.handler.ts` — `@OnCommand(<DOMAIN>_COMMAND.X)` 메서드에서 service 로 위임만. 로그인 필요 명령은 `requireActor(command).user_id`, IP 는 `command.meta.client_ip ?? ''`.
-3. 게이트웨이 controller — `@Res() res` + `await this.commandStream.dispatch(res, {type, actor, payload: dto, client_ip: ip})`, Swagger `@ApiProduces('text/event-stream')`.
+3. 게이트웨이 `<domain>.controller.queue.ts` — `@Res() res` + `await this.commandStream.dispatch(res, {type, actor, payload: dto, client_ip: ip})`(비인증은 `actor: null`, 입력 없는 명령은 `payload: {}`), Swagger `@ApiProduces('text/event-stream')`.
 4. 테스트 — 서비스: `runCommand()` 로 done/failed · ack/requeue/dead, 게이트웨이: FakeBroker 로 이벤트 순서([testing.md](testing.md)).
 
 ## 운영 메모

@@ -15,6 +15,7 @@ libs/database/src/
 ├── migrations.ts    # MIGRATIONS — 실행할 마이그레이션 목록
 ├── typeorm.config.ts · data-source.ts · database.module.ts
 ├── typeorm-error.ts # isUniqueViolation · isForeignKeyViolation
+├── job-lock/        # JobLockService — 인스턴스 여러 대 중 1대만 실행하는 잠금(crontab 용)
 └── seeder/          # 룩업 기본 데이터
 scripts/db-schema.mjs   # 오프라인 마이그레이션 생성 · 검사
 apps/user-service/src/migrate.ts   # 마이그레이션 실행기 (db:migrate · Docker migrate)
@@ -63,12 +64,14 @@ export class UserSettingEntity {
 
 규칙:
 - **파일** `entities/<domain>/<feature>.entity.ts`, 클래스 `<Feature>Entity`, 새 엔티티는 [entities.ts](../libs/database/src/entities.ts) `ENTITIES` 에 한 줄 추가.
-- **테이블** `t_<domain>`, `@Entity({name, comment})` — 테이블 주석도 DB COMMENT 로 들어간다.
+- **테이블** `t_<feature snake>` — 엔티티 파일명과 같은 이름이다(`t_user` · `t_user_setting` · `t_session_refresh` 모두 user 도메인). `@Entity({name, comment})` — 테이블 주석도 DB COMMENT 로 들어간다.
 - **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
 - **모든 컬럼에 `comment`** — 마이그레이션 생성 시 `COMMENT ON` 으로 들어간다. FK 컬럼은 참조 대상 PK 의 주석을 따른다(TypeORM 동작).
-- **FK 는 문자열 속성 + `@ManyToOne(() => X)` + `@JoinColumn`** — 조회 시 `loadRelationIds: true` 로 ID 를 채운다. 관계 속성을 엔티티 타입(`auth: AuthEntity`)으로 두지 않는다: ESM 에서 데코레이터 메타데이터가 클래스를 즉시 참조해 순환 import 가 깨진다. 역방향(`@OneToMany`)도 두지 않는다.
+- **FK 는 문자열 속성 + `@ManyToOne(() => X, {nullable, onUpdate: 'CASCADE', onDelete})` + `@JoinColumn({name, referencedColumnName, foreignKeyConstraintName})`** — `nullable: false` 면 `onDelete: 'CASCADE'`, `nullable: true` 면 `onDelete: 'RESTRICT'`(user.entity.ts:23-39, 6건 모두). 조회 시 `loadRelationIds: true` 로 ID 를 채운다. 관계 속성을 엔티티 타입(`auth: AuthEntity`)으로 두지 않는다: ESM 에서 데코레이터 메타데이터가 클래스를 즉시 참조해 순환 import 가 깨진다. 역방향(`@OneToMany`)도 두지 않는다.
+- **컬럼 이름은 항상 명시** — `@Column({name: 'bio', ...})`.
 - **타입** — 문자열 `length: n`(nullable 이면 `type: 'varchar'` 명시), 긴 문자열 `text`, 시각 `timestamptz`, 플래그 `smallint`(0/1), 자동 증가 `bigint` + `@PrimaryGeneratedColumn`(값은 문자열로 온다), JSON `jsonb`.
-- **타임스탬프는 `@BeforeInsert`/`@BeforeUpdate` 훅**(❌ `@CreateDateColumn`/`@UpdateDateColumn`). 훅은 `insert`/`update` 에 **엔티티 인스턴스**를 넘길 때만 돈다 — 그래서 service 는 `new XEntity()` + 할당으로 만든다.
+  - 예외(기존 컬럼): `t_user.leave_reserved_at` 은 `varchar(40)` 에 dayjs `'YYYY-MM-DD HH:mm:ss'` 문자열을 넣고 문자열 비교로 경과를 판단한다(user.entity.ts:78, user-leave-cleanup.crontab.ts:43-44). 새 시각 컬럼은 `timestamptz`.
+- **타임스탬프는 `@BeforeInsert`/`@BeforeUpdate` 훅**(❌ `@CreateDateColumn`/`@UpdateDateColumn`). 훅 메서드 이름은 `insertTimestamp()` · `updateTimestamp()`. 훅은 `insert`/`update` 에 **엔티티 인스턴스**를 넘길 때만 돈다 — 그래서 service 는 `new XEntity()` + 할당으로 만든다.
 - **룩업 엔티티**(auth/state/sns)는 구조 컬럼만. 기본 데이터는 seeder.
 
 ## 마이그레이션
@@ -124,8 +127,9 @@ export class UserRepository implements UserRepositoryInterface {
 
 규칙:
 - **`txHost.tx.getRepository(XEntity)` 로만 접근** — `@Transactional()` 범위면 트랜잭션 EntityManager, 밖이면 기본 EntityManager. `@InjectRepository` 는 쓰지 않는다(트랜잭션 전파가 안 된다). 엔티티별 private getter 로 묶는다.
-- **모든 메서드 try/catch**, 최종 실패는 통일 500 문구.
-- **insert/update 의 제약 위반은 제약명별 `if` 분기** — `isUniqueViolation(error, 'UK_…')`(23505) · `isForeignKeyViolation(error, 'FK_…')`(23503). 멱등 insert 는 UK 중복을 `return` 으로 무시(`insertUserSetting`).
+- **DB 를 실행하는 메서드는 모두 try/catch**, 최종 실패는 통일 500 — 문구는 파일 상수 `SERVER_ERROR_MESSAGE`(user.repository.ts:14). 조회 · update 는 `catch {` + 500.
+- **제약 위반은 그 제약이 걸릴 수 있는 쓰기에서 제약명별 `if … else if … else` 분기** — `isUniqueViolation(error, 'UK_…')`(23505) · `isForeignKeyViolation(error, 'FK_…')`(23503), 마지막 else 는 500. 지금은 insert 만 분기하고 update 2개는 500 만 던진다(user.repository.ts:230-250). 멱등 insert 는 UK 중복을 `return` 으로 무시(`insertUserSetting`).
+- **QueryBuilder 빌더 메서드는 예외** — 쿼리만 만들고 실행하지 않으므로 try/catch 없이 public 으로 두고 포트 인터페이스에 넣지 않는다(`buildLoginUserQuery` — user.repository.ts:177). 실행하는 메서드(`findLoginUser`)가 try/catch 를 가진다. 빌더를 public 으로 두는 이유는 Data-Access Smoke spec 이 SQL 을 고정하기 위해서다.
 - **범용 메서드 우선**(`insertX`/`findX`/`findXs`/`updateX`). WHERE 는 service 가 `FindOptionsWhere<XEntity>`(❌ `Partial`)로 만들고 repository 는 실행만.
 - 조회 시 `loadRelationIds: true`.
 - `update(where, entity)` 의 `entity` 는 호출자가 `new XEntity()` + 바꿀 필드만 할당해 넘긴다(`@BeforeUpdate` 트리거). `undefined` 필드는 건드리지 않고 `null` 은 NULL 로 비운다 — 수정 API 의 선택 필드는 `?? null`.
@@ -134,7 +138,8 @@ export class UserRepository implements UserRepositoryInterface {
 
 ## 트랜잭션
 
-- service 쓰기 메서드에 `@Transactional()`(`@nestjs-cls/transactional`). 그 안에서 호출된 repository 의 `txHost.tx` 가 같은 트랜잭션을 쓴다.
+- service 의 쓰기가 있는 메서드에 `@Transactional()`(`@nestjs-cls/transactional`) — 세션을 insert 하는 로그인 · 토큰 재발급도 포함(8개), 읽기만 하는 `getLoginUser` 는 없음. 그 안에서 호출된 repository 의 `txHost.tx` 가 같은 트랜잭션을 쓴다.
+- crontab 은 트랜잭션 없이 건별로 처리한다(한 건 실패가 나머지를 막지 않도록).
 - DB 를 쓰는 앱 루트 모듈은 `DatabaseModule` 을 import 한다 — `TypeOrmModule.forRootAsync(buildDataSourceOptions)` + `ClsModule.forRoot({plugins: [new ClsPluginTransactional({adapter: new TransactionalAdapterTypeOrm({dataSourceToken: getDataSourceToken()})})]})`.
 - 큐 경로에서 5xx 로 재시도해도 롤백 덕분에 안전하다.
 
@@ -145,9 +150,9 @@ export class UserRepository implements UserRepositoryInterface {
 - 새 기본 데이터: 엔티티는 그대로 두고 `<X>_SEED_DATA` 배열 + `SEED_TARGETS` 에 `{entity, data}` 한 줄. FK 부모를 먼저.
 - 시드 행은 엔티티 타입의 객체 리터럴로 쓴다(정적 정의 데이터 — `new XEntity()` 규칙의 유일한 예외).
 
-## Pagination / 목록 조회
+## Pagination / 목록 조회 (미적용 규약)
 
-목록 API 는 다음 형태를 따른다(공통 `PaginationDto` · `Pagination` util 은 첫 목록 API 이식 때 `.back/src/common` 에서 `libs/common` 으로 옮긴다).
+> 현재 목록 API · `PaginationDto` · `Pagination` · `@Query()` 모두 0건. 첫 목록 API 에서 공통 `PaginationDto` · `Pagination` util 을 `libs/common` 에 만들고 이 형태를 따른다. Query DTO 생성자 규칙은 [conventions.md](conventions.md).
 
 - 응답 `{list, pagination}`.
 - 순서 **count → `Pagination` → 목록** — `Pagination` 이 `total_count` 로 `limit`/`offset` 을 산출한다. repository 는 `countX(where)` 와 `findXList(where, limit, offset)` 두 메서드로 둔다(`findAndCount` ❌).

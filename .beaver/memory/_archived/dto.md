@@ -1,4 +1,4 @@
-# dto
+# dto (archived)
 
 ## Query DTO 는 생성자를 갖고, 컨트롤러가 new 로 만들어 넘긴다
 
@@ -19,3 +19,4 @@
 - Rationale: User feedback 2026-07-27 — "get형태의 Query로 받는 Dto는, 생성자가 필요해. 그래야 기본값 설정이 가능함. 페이지가 null인데 생성자가 없어 new XX()를 못하니 페이지가 없어서 오류날거야. 이 부분은 코드베이스 명시해야함" (store-crud 기획 중, `Pagination` 최초 적용 시점)
 - CLAUDE.md application: applied(CLAUDE.md "Validation" 절 + docs/conventions.md "Query DTO 는 생성자에서 기본값을 설정한다" 절 — 초안 마커 부착, ship 에서 확정)
 - Priority: takes precedence over CLAUDE.md/defaults
+- Archived: 2026-10-19 beaver analyze — docs/conventions.md "Query DTO" · "Validation" 절 + AGENTS.md "Validation" 요약으로 이동 (대조 완료: 20개 조항)

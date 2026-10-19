@@ -1,4 +1,4 @@
-# controller
+# controller (archived)
 
 ## 게이트웨이 공개 controller 는 전달 경로별로 파일을 나눈다
 
@@ -12,3 +12,4 @@
 - Rationale: User feedback 2026-10-19 — "컨트롤러 분리를 해야할듯. user-controller에서 두개로 분리. HTTP통신은 user-controller에 넣고, 큐로 통신하는건 user-controller.queue.ts로. 이건 프로젝트 룰로 고정해야할듯". 파일명은 기존 레이어 명명(`user.controller.ts`)에 맞춰 `user.controller.queue.ts` 로 적용.
 - CLAUDE.md application: applied(CLAUDE.md "Conventions" · "API & Docs" · "메시징" · Checklist + docs/conventions.md · api.md · architecture.md · testing.md)
 - Priority: takes precedence over CLAUDE.md/defaults
+- Archived: 2026-10-19 beaver analyze — AGENTS.md "Conventions" · docs/conventions.md · docs/testing.md 로 이동 (대조 완료: 5개 조항)

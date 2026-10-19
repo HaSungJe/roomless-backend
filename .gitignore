@@ -28,12 +28,8 @@ lerna-debug.log*
 .settings/
 *.sublime-workspace
 
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# IDE - VSCode (개인 설정은 VS Code 전역 설정으로 — 프로젝트에 커밋하지 않는다)
+.vscode/
 
 # Claude Code - 개인 오버라이드 (팀 공유 X)
 .claude/settings.local.json
@@ -51,8 +47,10 @@ lerna-debug.log*
 .temp
 .tmp
 
-# beaver
+# beaver (로컬 상태 · 기기별 설정 · stick 워크트리)
 .beaver/.auto-branch-state.json
+.beaver/config.json
+.claude/worktrees/
 
 # Runtime data
 pids
