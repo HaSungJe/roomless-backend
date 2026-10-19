@@ -1,5 +1,6 @@
 import {LessThanOrEqual} from 'typeorm';
 import {Test} from '@nestjs/testing';
+import {JobLockService} from '@app/database/job-lock/job-lock.service.js';
 import {UserLeaveCleanupCrontab} from '../crontabs/user-leave-cleanup.crontab.js';
 import {USER_REPOSITORY} from '../user.symbols.js';
 import {createUserRepositoryMock, UserRepositoryMock} from './user.test-helper.js';
@@ -9,13 +10,16 @@ const NOW = new Date(2026, 0, 15, 9, 30, 0);
 describe('UserLeaveCleanupCrontab — 탈퇴 자동처리', () => {
     let repo: UserRepositoryMock;
     let crontab: UserLeaveCleanupCrontab;
+    let jobLock: {runExclusive: ReturnType<typeof vi.fn>};
     const originalEnv = process.env.NODE_ENV;
 
     beforeEach(async () => {
         vi.useFakeTimers({toFake: ['Date']});
         vi.setSystemTime(NOW);
         repo = createUserRepositoryMock();
-        const module = await Test.createTestingModule({providers: [UserLeaveCleanupCrontab, {provide: USER_REPOSITORY, useValue: repo}]}).compile();
+        // 기본: 이 인스턴스가 잠금을 잡아 작업을 실행한다
+        jobLock = {runExclusive: vi.fn(async (_key: string, job: () => Promise<void>) => (await job(), true))};
+        const module = await Test.createTestingModule({providers: [UserLeaveCleanupCrontab, {provide: USER_REPOSITORY, useValue: repo}, {provide: JobLockService, useValue: jobLock}]}).compile();
         crontab = module.get(UserLeaveCleanupCrontab);
     });
 
@@ -30,6 +34,18 @@ describe('UserLeaveCleanupCrontab — 탈퇴 자동처리', () => {
 
         await crontab.processLeaveWait();
 
+        expect(jobLock.runExclusive).not.toHaveBeenCalled();
+        expect(repo.findUsers).not.toHaveBeenCalled();
+        expect(repo.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('[SKIP] 다른 user-service 인스턴스가 잠금을 잡고 있으면 이번 회차를 건너뛴다', async () => {
+        process.env.NODE_ENV = 'production';
+        jobLock.runExclusive.mockResolvedValueOnce(false);
+
+        await crontab.processLeaveWait();
+
+        expect(jobLock.runExclusive).toHaveBeenCalledWith('user.leave-cleanup', expect.any(Function));
         expect(repo.findUsers).not.toHaveBeenCalled();
         expect(repo.updateUser).not.toHaveBeenCalled();
     });
@@ -44,6 +60,8 @@ describe('UserLeaveCleanupCrontab — 탈퇴 자동처리', () => {
 
         await crontab.processLeaveWait();
 
+        expect(jobLock.runExclusive).toHaveBeenCalledTimes(1);
+        expect(jobLock.runExclusive).toHaveBeenCalledWith('user.leave-cleanup', expect.any(Function));
         expect(repo.findUsers).toHaveBeenCalledWith({state_id: 'LEAVE_WAIT', leave_reserved_at: LessThanOrEqual('2026-01-15 09:30:00')});
         expect(repo.updateUser).toHaveBeenCalledTimes(2);
         expect(repo.updateUser).toHaveBeenNthCalledWith(

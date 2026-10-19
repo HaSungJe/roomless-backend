@@ -12,7 +12,9 @@ export class UserController { ... }
 
 `@ApiTags('<한글>')` → `@Controller(...)`.
 
-## 동기 핸들러
+게이트웨이 공개 controller 는 전달 경로별로 2파일이다 — 동기 `<domain>.controller.ts`(`UserController`), 큐 `<domain>.controller.queue.ts`(`UserQueueController`). 둘 다 같은 `@ApiTags` · 경로 접두를 쓰므로 Swagger 에는 한 태그로 묶여 보인다.
+
+## 동기 핸들러 (`<domain>.controller.ts`)
 
 ```ts
 @Post('/login')
@@ -32,7 +34,7 @@ async login(@Body() dto: UserLoginDto, @Ip() ip: string): Promise<UserLoginResul
 
 순서: **HTTP verb → `@UseGuards` → `@Roles` → `@HttpCode` → `@ApiBearerAuth`(인증 시) → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse`/`@ApiNoContentResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse`/`@ApiForbiddenResponse`/`@ApiNotFoundResponse` → `@ApiServiceUnavailableResponse` → `@ApiInternalServerErrorResponse`**.
 
-## 큐 핸들러 (요청 단위 SSE)
+## 큐 핸들러 (`<domain>.controller.queue.ts`, 요청 단위 SSE)
 
 ```ts
 @Delete('/leave')

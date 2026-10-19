@@ -43,7 +43,10 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 
 ## 스타일 ③ — 게이트웨이
 
-- 라우트: 실제 `UserController` + `CommandStreamService` + 필터 + 파이프, **`FakeBroker`** 를 `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER` 로, `InternalHttpClient` 는 `useValue` mock, 인증 가드는 `.overrideGuard(PassportJwtAuthGuard)` 로 `request.user` 주입.
+- 라우트 spec 은 controller 파일과 같이 나눈다. 둘 다 필터 + 파이프를 실제로 부팅한다.
+  - 동기 `test/<domain>.controller.spec.ts`: 실제 `UserController`, `InternalHttpClient` 는 `useValue` mock.
+  - 큐 `test/<domain>.controller.queue.spec.ts`: 실제 `UserQueueController` + `CommandStreamService`, **`FakeBroker`** 를 `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER` 로.
+  - 인증 가드는 `.overrideGuard(PassportJwtAuthGuard)` 로 `request.user` 주입. 다른 경로의 라우트는 404 인지도 단언한다(섞여 들어가지 않았는지).
 - SSE 는 supertest 가 스트림 종료까지 받은 본문을 `parseSse()` 로 읽어 이벤트 순서(accepted → done/failed)와 data 를 단언한다.
 - 발행된 명령(`broker.published[0]`)의 type · actor · payload · `meta.reply_to` 를 단언한다.
 - `CommandStreamService` 단위: 가짜 express 응답으로 경쟁(결과가 confirm 보다 먼저) · 타임아웃(`vi.useFakeTimers()`) · 클라이언트 끊김 · 종료를 단언.
@@ -52,7 +55,7 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 ## 스타일 ④ — 직접 인스턴스화
 
 controller 가 없는 대상은 부팅 없이 `new` 또는 providers 만 띄운다.
-- crontab: `Test.createTestingModule({providers: [Crontab, {provide: USER_REPOSITORY, useValue: repo}]})`, `NODE_ENV` 토글로 운영 가드 단언.
+- crontab: `Test.createTestingModule({providers: [Crontab, {provide: USER_REPOSITORY, useValue: repo}, {provide: JobLockService, useValue: jobLock}]})` — `jobLock.runExclusive` 는 기본으로 작업을 실행하고 true, 다른 인스턴스가 잡은 경우는 `mockResolvedValueOnce(false)` 로 미실행을 단언. `NODE_ENV` 토글로 운영 가드 단언.
 - seeder · repository · 메시징 어댑터: 손수 만든 가짜(`txHost.tx` · 채널 · 연결)를 생성자에 주입.
 
 ## mock 규칙

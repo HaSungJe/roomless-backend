@@ -1,0 +1,68 @@
+# RabbitMQ + 브로커 계정 초기화 — 가상 운영 환경용 브로커. 단독 실행
+#   npm run docker:rabbitmq   (rabbitmq 가 healthy 가 될 때까지 기다린 뒤 rabbitmq-init 을 1회 실행)
+#   docker compose -f compose.rabbitmq.yml up -d   (직접 실행해도 rabbitmq-init 이 함께 돈다)
+#
+# 설정은 .env 를 그대로 쓴다(compose 가 값을 바꾸지 않는다). 필수값이 비어 있으면 띄우지 않는다.
+# 실제 운영 브로커(Amazon MQ 등)를 쓰면 이 묶음은 띄우지 않는다 — 그 브로커에 init.sh 와 같은 계정 · 권한을 만들고
+# .env 의 RABBITMQ_HOST · RABBITMQ_PORT 를 그 주소로 둔다. 앱 쪽 설정은 그대로다.
+#
+# roomless-broker 네트워크에 붙는다. 관리 화면 http://localhost:15672 (관리자 계정 RABBITMQ_USER/PASSWORD)
+name: roomless-rabbitmq
+
+x-logging: &logging
+    driver: json-file
+    options:
+        max-size: '10m'
+        max-file: '5'
+
+services:
+    rabbitmq:
+        image: rabbitmq:4-management-alpine
+        container_name: roomless-rabbitmq
+        # 노드 이름(rabbit@<hostname>)이 바뀌면 볼륨의 데이터를 못 읽으므로 고정한다
+        hostname: roomless-rabbitmq
+        environment:
+            # 관리자 계정 — 관리 화면 · rabbitmq-init 전용. 앱은 쓰지 않는다
+            RABBITMQ_DEFAULT_USER: '${RABBITMQ_USER:?.env 에 RABBITMQ_USER 가 필요합니다}'
+            RABBITMQ_DEFAULT_PASS: '${RABBITMQ_PASSWORD:?.env 에 RABBITMQ_PASSWORD 가 필요합니다}'
+        ports:
+            - '127.0.0.1:${RABBITMQ_PORT:-5672}:5672'
+            - '127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672'
+        volumes:
+            - rabbitmq-data:/var/lib/rabbitmq
+        networks: [broker]
+        healthcheck:
+            test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        logging: *logging
+        restart: unless-stopped
+
+    # 브로커 계정(gateway · user-service)과 권한을 만든다 (1회 실행 후 종료, 다시 돌려도 같은 결과) — docker/rabbitmq/init.sh
+    rabbitmq-init:
+        image: curlimages/curl:8.11.1
+        entrypoint: ['/bin/sh', '/init.sh']
+        volumes:
+            - ./docker/rabbitmq/init.sh:/init.sh:ro
+        environment:
+            RABBITMQ_API: http://rabbitmq:15672/api
+            RABBITMQ_ADMIN_USER: '${RABBITMQ_USER:?.env 에 RABBITMQ_USER 가 필요합니다}'
+            RABBITMQ_ADMIN_PASSWORD: '${RABBITMQ_PASSWORD:?.env 에 RABBITMQ_PASSWORD 가 필요합니다}'
+            RABBITMQ_GATEWAY_PASSWORD: '${RABBITMQ_GATEWAY_PASSWORD:?.env 에 RABBITMQ_GATEWAY_PASSWORD 가 필요합니다}'
+            RABBITMQ_USER_SERVICE_PASSWORD: '${RABBITMQ_USER_SERVICE_PASSWORD:?.env 에 RABBITMQ_USER_SERVICE_PASSWORD 가 필요합니다}'
+        networks: [broker]
+        depends_on:
+            rabbitmq:
+                condition: service_healthy
+        logging: *logging
+        restart: 'no'
+
+networks:
+    broker:
+        name: roomless-broker
+        external: true
+
+volumes:
+    rabbitmq-data:
+        name: roomless-rabbitmq-data

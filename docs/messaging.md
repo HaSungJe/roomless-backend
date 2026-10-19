@@ -49,7 +49,8 @@ POST 는 `EventSource` 로 열 수 없으므로 클라이언트는 `fetch` 응�
 | `q.gw.result.<인스턴스>` | exclusive · auto-delete | 게이트웨이 인스턴스마다 | `result.<인스턴스>.#` |
 
 - 라우팅 키: 명령 `<server>.<resource>.<action>`(예: `user.member.sign`), 결과 `result.<게이트웨이 인스턴스>.<명령 type>.<done|failed>`.
-- 게이트웨이 인스턴스 ID: `GATEWAY_INSTANCE_ID` 또는 `gw-<호스트>-<pid>`. 명령의 `meta.reply_to` 에 실려 결과가 그 인스턴스로만 돌아온다 — 게이트웨이를 여러 대 띄워도 sticky session 이 필요 없다.
+- 게이트웨이 인스턴스 ID: `GATEWAY_INSTANCE_ID` 또는 `gw-<호스트>-<pid>`. 명령의 `meta.reply_to` 에 실려 결과가 그 인스턴스로만 돌아온다 — 게이트웨이를 여러 대 띄워도 sticky session 이 필요 없다. Docker 에서는 compose 가 `GATEWAY_INSTANCE_ID` 를 비워 컨테이너 호스트명으로 정한다.
+- user-service 를 여러 대 띄우면 모두 같은 `q.user.cmd` 를 소비한다(경쟁 소비) — 브로커가 prefetch 범위 안에서 나눠 주고, 한 인스턴스가 죽으면 미확인(unacked) 명령은 다른 인스턴스로 다시 전달된다.
 - 연결: `RabbitMqConnection` 1개를 앱이 공유한다. 접속 정보는 `RABBITMQ_HOST` · `RABBITMQ_PORT` + 앱 계정(`BROKER_ACCOUNT`)의 비밀번호다. 연결 이름(`connection_name`)으로 계정 = 서비스 이름을 보내, 관리 화면 Connections 탭의 Name 칸에 브로커가 보는 `IP:포트` 와 그 아래 서비스 이름(gateway · user-service)이 함께 표시된다. 포트는 접속 후에야 정해지므로 앱이 이름에 넣지 않고 브로커 표시에 맡긴다. amqplib 2 의 `recovery` 로 끊기면 자동 재연결하고, 재연결마다 공통 토폴로지 → 발행 confirm 채널 → 등록된 준비 작업(결과 큐 · 명령 큐 소비)을 다시 세운다. 브로커가 내려가 있어도 앱 부팅은 막지 않는다.
 
 ## 브로커 계정과 권한 — 명령은 게이트웨이만 넣을 수 있다

@@ -12,18 +12,22 @@
 
 ```bash
 cp .env.example .env        # JWT_SECRET · BCRYPT_CODE · TOKEN_CIPHER_KEY · INTERNAL_API_TOKEN · RABBITMQ_*_PASSWORD · CORS_ORIGINS 채우기
-npm run docker:up           # postgres · rabbitmq · migrate · user-service · gateway 빌드 + 실행
+npm run docker:up           # 공용 네트워크 → postgres → rabbitmq → user-service → gateway 순서로 빌드 + 실행
 ```
 
+- `.env` 하나가 곧 서버 설정이다. Docker 는 값을 바꾸지 않고 그대로 쓰며, 필수값이 비어 있으면 띄우지 않는다. 가상 운영(같은 서버의 postgres · rabbitmq 묶음)과 실제 운영(RDS · Amazon MQ 등)은 `.env` 의 접속정보로 고른다.
+- postgres · rabbitmq · user-service · gateway 는 compose 파일이 따로 있어 각자 띄우고 내린다(`npm run docker:<묶음>`).
+- gateway · user-service 는 여러 대(`GATEWAY_REPLICAS` · `USER_SERVICE_REPLICAS`, 기본 2)로 뜨고 앞에 nginx 로드밸런서가 붙는다.
 - 게이트웨이 http://localhost:3000 · Swagger http://localhost:3000/swagger · RabbitMQ 관리 화면 http://localhost:15672
 - user-service 는 게이트웨이만 닿는다(전역 내부 토큰 가드 + internal 네트워크). 큐 명령도 gateway 브로커 계정이 발행한 것만 처리한다.
-- 마이그레이션은 `migrate` 컨테이너가 user-service 보다 먼저 1회 적용한다.
+- 마이그레이션은 `migrate` 컨테이너가 user-service 인스턴스보다 먼저 1회 적용한다.
+- 자세한 구성: [docs/architecture.md](docs/architecture.md) 의 "실행 (Docker)".
 
 앱을 로컬에서 watch 로 개발할 때는 인프라만 띄운다.
 
 ```bash
 npm install
-npm run docker:infra        # postgres + rabbitmq + 브로커 계정 초기화
+npm run docker:infra        # 공용 네트워크 + postgres + rabbitmq + 브로커 계정 초기화
 npm run db:migrate
 npm run start:user-service  # :4001
 npm run start:gateway       # :3000
@@ -40,8 +44,11 @@ npm run start:gateway       # :3000
 | `npm run start:prod:gateway` · `start:prod:user-service` | 빌드 산출물 실행 |
 | `npm run db:migrate` · `db:revert` | 마이그레이션 적용 · 마지막 1건 되돌리기 (실제 DB) |
 | `npm run db:generate -- <Name>` · `db:check` | 엔티티 변경분 마이그레이션 생성 · 일치 검사 (DB 없이 PGlite) |
-| `npm run docker:up` · `docker:down` · `docker:logs` | 전체(인프라 + 두 앱) 컨테이너 실행 · 종료 · 로그 |
-| `npm run docker:infra` | postgres · rabbitmq · rabbitmq-init 만 실행 (앱 로컬 개발용) |
+| `npm run docker:up` · `docker:down` | 네 묶음 모두 실행 · 종료 |
+| `npm run docker:network` | 공용 Docker 네트워크 4개 만들기 (이미 있으면 건너뜀) |
+| `npm run docker:postgres` · `docker:rabbitmq` · `docker:user-service` · `docker:gateway` | 묶음 하나만 실행 |
+| `npm run docker:infra` | 공용 네트워크 · postgres · rabbitmq(+계정 초기화) 만 실행 (앱 로컬 개발용) |
+| `npm run docker:logs:gateway` · `docker:logs:user-service` | 앱 · 로드밸런서 로그 |
 | `npm run broker:check` | 브로커 계정 권한 점검 (gateway 만 명령 발행 · user_id 위조 거부) |
 
 ## 구조

@@ -29,7 +29,10 @@
 - `user.controller.ts`(내부 HTTP) · `user.handler.ts`(RabbitMQ) · `user.service.ts` · `user.module.ts` · `user.symbols.ts` · `user.util.ts`
 - repository `repositories/user.repository.ts`, 포트 `interfaces/user.repository.interface.ts`
 - crontab `crontabs/<domain>-<feature>.crontab.ts` (예: `user-leave-cleanup.crontab.ts`, 클래스 `UserLeaveCleanupCrontab`)
-- 게이트웨이 공개 라우트 `apps/gateway/src/<domain>/<domain>.controller.ts`
+- 게이트웨이 공개 라우트 `apps/gateway/src/api/v1/<domain>/` — **전달 경로별로 파일을 나눈다(한 파일에 섞지 않는다)**:
+  - 동기(내부 HTTP) `<domain>.controller.ts` · 클래스 `<Domain>Controller` — `InternalHttpClient` 만 주입
+  - 큐(RabbitMQ + 요청 단위 SSE) `<domain>.controller.queue.ts` · 클래스 `<Domain>QueueController` — `CommandStreamService` 만 주입
+  - 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<domain>')`, 도메인 모듈 `controllers: [<Domain>Controller, <Domain>QueueController]`. 테스트도 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts` 로 나눈다.
 
 **DTO 파일** — `libs/contracts/src/<domain>/dto/<domain>-<feature>.dto.ts` (kebab). 요청 DTO 와 응답 `ResultDto` 는 같은 파일에 함께 export.
 
@@ -38,7 +41,7 @@
 **클래스명** — `<Domain><Feature><Role>`:
 - 요청 `UserSignDto` · path param `UserAuthUserParamDto` · 목록 query `XListDto`(PaginationDto 상속)
 - 응답은 항상 `ResultDto`: `UserSignResultDto` (❌ `ResponseDto`)
-- 핸들러 `UserCommandHandler`, crontab `UserLeaveCleanupCrontab`
+- 게이트웨이 controller `UserController`(동기) · `UserQueueController`(큐), 서비스 핸들러 `UserCommandHandler`, crontab `UserLeaveCleanupCrontab`
 
 **DTO 독립 명명**: 기능당 DTO 1개. 모양이 같아도(토큰 응답 4종 등) 독립 재선언하고 재사용 · alias 하지 않는다.
 

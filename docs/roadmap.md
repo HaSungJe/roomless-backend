@@ -71,6 +71,7 @@
 - [x] 게이트웨이 전달 계층(내부 HTTP · 요청 단위 SSE) · JWT/권한 가드 · Swagger
 - [x] 전송 중립 실패 본문(`ApiFailResultDto` · `toFailResult`)
 - [x] docker-compose(PostgreSQL 17 · RabbitMQ 4) · `.env.example`
+- [x] Docker 4묶음 분리(postgres · rabbitmq · user-service · gateway) + gateway · user-service 로드밸런싱(nginx) · crontab 단일 실행 잠금(JobLockService)
 - [x] Vitest 테스트 체계(큐 경로 · 동기 경로 · FakeBroker)
 
 ---
