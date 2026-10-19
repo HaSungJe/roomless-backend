@@ -14,9 +14,9 @@ flowchart LR
   P1 --> P6["Phase 6 · admin-service 기반 (4)"]:::todo
   P1 --> P7["Phase 7 · store 스키마 (5)"]:::todo
   P1 --> P21["Phase 21 · api-log (1)"]:::todo
-  P3 --> P5["Phase 5 · 계정 · 인증 (4)"]:::todo
+  P3 --> P5["Phase 5 · 계정·인증 (4)"]:::todo
   P4 --> P5
-  P3 --> P8["Phase 8 · 업체 입점 · 관리 (5)"]:::todo
+  P3 --> P8["Phase 8 · 업체 입점·관리 (5)"]:::todo
   P4 --> P8
   P6 --> P8
   P7 --> P8
@@ -29,7 +29,7 @@ flowchart LR
   P12 --> P14["Phase 14 · 사물 관리 (3)"]:::todo
   P13 --> P14
   P11 --> P15["Phase 15 · reservation 기반 (4)"]:::todo
-  P12 --> P16["Phase 16 · 예약 · 결제 (7)"]:::todo
+  P12 --> P16["Phase 16 · 예약·결제 (7)"]:::todo
   P15 --> P16
   P16 --> P17["Phase 17 · discovery (4)"]:::todo
   P14 --> P18["Phase 18 · 이용 (6)"]:::todo
@@ -52,10 +52,10 @@ flowchart LR
 - Phase 2 — 회원 기반 · 유닛 7개 · 의존: Phase 1 · 푼다: Phase 4 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1/user, apps/gateway/src/guards · done
 - Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 5, 8, 10 · 파일 집합: libs/common · todo
 - Phase 4 — 회원 스키마 확장 · 유닛 3개 · 의존: Phase 2 · 푼다: Phase 5, 8 · 파일 집합: libs/database/src/entities/user, libs/database/src/seeder, libs/database/src/migrations · todo
-- Phase 5 — 계정 · 인증 · 유닛 4개 · 의존: Phase 3, 4 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
+- Phase 5 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
 - Phase 6 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 8 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · todo
 - Phase 7 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 8, 11 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · todo
-- Phase 8 — 업체 입점 · 관리 · 유닛 5개 · 의존: Phase 3, 4, 6, 7 · 푼다: Phase 9 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store, libs/contracts/src/store · todo
+- Phase 8 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 6, 7 · 푼다: Phase 9 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store, libs/contracts/src/store · todo
 - Phase 9 — 업체 인력 · 유닛 2개 · 의존: Phase 8 · 푼다: Phase 10, 19 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store · todo
 - Phase 10 — 업체 운영 설정 · 유닛 4개 · 의존: Phase 9 (+ Phase 3) · 푼다: Phase 12 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store · todo
 - Phase 11 — room 스키마 · 유닛 5개 · 의존: Phase 7 · 푼다: Phase 12, 13, 15 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
@@ -63,7 +63,7 @@ flowchart LR
 - Phase 13 — device 기반 · 유닛 2개 · 의존: Phase 11 · 푼다: Phase 14 · 파일 집합: libs/database/src/entities/device, libs/database/src/migrations, apps/admin-service/src/device(포트) · todo
 - Phase 14 — 사물 관리 · 유닛 3개 · 의존: Phase 12, 13 · 푼다: Phase 18 · 파일 집합: apps/admin-service/src/device, apps/gateway/src/api/v1/device · todo
 - Phase 15 — reservation 기반 · 유닛 4개 · 의존: Phase 11 · 푼다: Phase 16 · 파일 집합: libs/database/src/entities/reservation, libs/database/src/migrations, apps/user-service/src/reservation(포트) · todo
-- Phase 16 — 예약 · 결제 · 유닛 7개 · 의존: Phase 12, 15 (+ Phase 3, 10) · 푼다: Phase 17, 18, 20 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/reservation · todo
+- Phase 16 — 예약·결제 · 유닛 7개 · 의존: Phase 12, 15 (+ Phase 3, 10) · 푼다: Phase 17, 18, 20 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/reservation · todo
 - Phase 17 — discovery · 유닛 4개 · 의존: Phase 16 · 푼다: — · 파일 집합: apps/admin-service/src/discovery, apps/gateway/src/api/v1/discovery · todo
 - Phase 18 — 이용 · 유닛 6개 · 의존: Phase 14, 16 · 푼다: Phase 20 · 파일 집합: apps/user-service/src/reservation(crontabs), apps/gateway/src/api/v1/reservation · todo
 - Phase 19 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 5, 9 · 푼다: — · 파일 집합: apps/user-service/src/user(관리), apps/gateway/src/api/v1/user · todo
@@ -101,7 +101,7 @@ flowchart LR
 - **하드웨어 설치 · 배선** — 도어락 · QR 리더 · 전등 · 에어컨 설치는 업체 몫. 우리는 `DeviceGateway` 포트로 명령만 보낸다(이번 범위는 mock).
 - **실제 외부 연동** — 이메일 · 푸시 · 문자 · 이미지 저장 · 결제는 포트 + mock 이 이 트랙의 범위다. 실제 서비스(AWS SES · S3 · 알림톡 · 토스) 연동은 채널이 정해진 뒤.
 - **프론트엔드** — 관리자 페이지 · 이용자 페이지(Next.js)는 별도 레포.
-- **후순위(별도 기획)** — notify-service(이벤트 구독 · 실제 발송), 토스 실연동, 업체 정산, 리뷰 · 평점, 특정 날짜 임시휴무 · 특별영업, 서비스별 DB 분리.
+- **후순위(별도 기획)** — Phases & Units 끝의 "후순위" 표.
 
 ## Phases & Units
 
@@ -172,7 +172,7 @@ flowchart LR
 | #22 | `t_user_password_reset`(가칭) | 토큰 해시 · 만료 시각 |
 | #23 | seeder | 총관리자 1행 |
 
-### Phase 5 — 계정 · 인증 (페이지별 로그인 · 연령 제한 · 이메일 찾기) · depends: Phase 3, Phase 4
+### Phase 5 — 계정·인증 (페이지별 로그인 · 연령 제한 · 이메일 찾기) · depends: Phase 3, Phase 4
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 24 | 관리자 · 이용자 페이지 로그인 분리 | 관리자 페이지는 관리자 역할만, 이용자 페이지는 `USER` 만 | 라우트 분리 방식(Open Decisions) | 23 | todo |
@@ -209,7 +209,7 @@ flowchart LR
 
 **Expected data contract**: `t_store_application` · `t_store_state` · `t_store` · `t_store_image` · `t_store_hour` · `t_store_break`.
 
-### Phase 8 — 업체 입점 · 관리 (신청 → 승인 → 업체 등록) · depends: Phase 3, Phase 4, Phase 6, Phase 7
+### Phase 8 — 업체 입점·관리 (신청 → 승인 → 업체 등록) · depends: Phase 3, Phase 4, Phase 6, Phase 7
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 37 | 입점 신청 · 내 신청 상태 | 이용자 페이지 하단, 로그인 필요 | — | 32 | todo |
@@ -295,7 +295,7 @@ flowchart LR
 
 **Expected data contract**: `t_reservation_state` · `t_reservation` · `t_payment`, 포트 `PaymentGateway`.
 
-### Phase 16 — 예약 · 결제 (가용성 · 예약 · 취소 · 업체 측 변경) · depends: Phase 12, Phase 15 (+ Phase 3, Phase 10)
+### Phase 16 — 예약·결제 (가용성 · 예약 · 취소 · 업체 측 변경) · depends: Phase 12, Phase 15 (+ Phase 3, Phase 10)
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 67 | 가용성 · 가격 · 환불 util | 점유 구간 겹침 · 정비시간 · 브레이크타임 · 호실 상태 · 기간 가격 · 환불 규정 | 기간 가격 기준일 | 64 | todo |
@@ -361,6 +361,16 @@ flowchart LR
 
 **Expected entry points**: 게이트웨이 전역 인터셉터 · `t_api_log` 월별 파티션.
 
+### 후순위 (별도 기획 — 이 트랙 밖)
+| # | Unit | Goal | Key decision | Depends | Status |
+|---|------|------|--------------|---------|--------|
+| — | notify-service | `roomless.event` 도메인 이벤트 구독, 실제 푸시 · 휴대폰 메시지 · 이메일 발송(그 전까지는 Phase 3 포트의 mock) | 채널 | Phase 3 | 후순위 |
+| — | 토스 테스트결제 실연동 | `PaymentGateway` 어댑터 추가 | — | Phase 15 | 후순위 |
+| — | 업체 정산 | 수수료 · 정산 주기 · 지급 내역 | — | Phase 16 | 후순위 |
+| — | 리뷰 · 평점 | 이용 완료 후 | — | Phase 18 | 후순위 |
+| — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 10 | 후순위 |
+| — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
+
 **Progress**: 16/87 units done (2/21 phases)
 **Next up**: Phase 3 공통 인프라 포트 — 의존이 모두 끝났고, 뒤의 Phase 대부분(계정 · 입점 · 운영 설정 · 예약 · 이용)이 이 포트를 기다린다. `/beaver:direct 공통 인프라 포트` 로 시작한다(한 기획이 유닛 4개를 모두 덮는다).
 
@@ -368,27 +378,25 @@ flowchart LR
 
 ## Cross-Cutting Rules
 
-| 항목 | 규칙 |
-|---|---|
-| **서버 분할** | 게이트웨이(유일한 진입점) + 서비스. 서비스 경계는 데이터 소유권 — user-service(회원 · 예약 · 결제 · 이용), admin-service(업체 · 객실 · 요금상품 · 사물), notify-service(후순위). 총관리자는 별도 서버가 아니라 권한(`@Roles`)으로 가른다 |
-| **전달 경로** | 즉시 응답 · 조회는 내부 HTTP, 상태를 바꾸는 쓰기 · 몰리는 작업은 RabbitMQ 명령 + 요청 단위 SSE |
-| **페이지 구분** | 관리자 페이지(총관리자 · 업체 총관리자 · 업체 관리자)와 이용자 페이지(이용자). 관리자 페이지 로그인은 관리자 역할만, 이용자 페이지는 `USER` 만 |
-| **관리자 API 권한** | `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles(...)` 를 한 세트로 — 첫 관리자 API 에서 처음 적용한다 |
-| **매니저 소속** | 매니저 1명 = 업체 1곳(`t_user.store_id`). 업체 관리자 API 인가는 "요청 대상이 내 `store_id` 와 일치하는가" |
-| **업체 공개** | 등록되고 활성화된 업체만 이용자에게 보인다. 영업중지 · 탈퇴 업체는 표시하지 않는다 |
-| **첫 총관리자 · 업체 총관리자 계정** | 시드 `admin` / `1234` 후 직접 변경. 업체 총관리자는 이메일 필수, 아이디 · 비밀번호 찾기는 이메일, 비밀번호는 초기화 방식 |
-| **연령 제한** | 성인만 가입한다(SNS 로그인의 생년월일로 판정) |
-| **객실 모델** | 객실 그룹 단위로 상품(이름 · 이용시간 · 가격)을 정하고 그룹 안 호실은 같은 상품을 쓴다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 업체가 그룹 상품마다 기간 가격(성수기 등)을 따로 정한다 |
-| **이용 단위 · 사전 예약** | 항상 시간 기반(숙박도 긴 상품). 6개월 앞 예약까지 받는다 |
-| **정비시간 · 재고 판정** | 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 점유 구간 겹침 없음 + 영업시간 내 · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 스탠바이도). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다 |
-| **호실 선택** | 이용자가 호실을 직접 고른다 |
-| **취소 · 환불** | 업체 취소 100%, 이용자는 시작 1시간 전까지 100%, 그 이후 50% |
-| **체크인 · 연장** | 시작 5분 전 휴대폰으로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 같은 상품 단위로 이어서 예약 |
-| **업체 측 예약 변경** | 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 푸시 |
-| **통계** | 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체 |
-| **외부 연동** | 이메일 · 알림 · 이미지 · 결제 · 기기는 포트 + mock 부터 |
-| **목록 · 시드 · 규약** | 모든 목록 API 는 `PaginationDto`(Phase 3 이후). 룩업 기본 데이터는 seeder.targets.ts 한 곳. 규약은 [AGENTS.md](../../../AGENTS.md) 전면 준수 |
-| **영업시간 단위** | 요일 반복만(특정 날짜 임시휴무 · 특별영업은 후순위) |
+- **서버 분할** — 게이트웨이(유일한 진입점) + 서비스. 서비스 경계는 데이터 소유권 — user-service(회원 · 예약 · 결제 · 이용), admin-service(업체 · 객실 · 요금상품 · 사물), notify-service(후순위). 총관리자는 별도 서버가 아니라 권한(`@Roles`)으로 가른다
+- **전달 경로** — 즉시 응답 · 조회는 내부 HTTP, 상태를 바꾸는 쓰기 · 몰리는 작업은 RabbitMQ 명령 + 요청 단위 SSE
+- **페이지 구분** — 관리자 페이지(총관리자 · 업체 총관리자 · 업체 관리자)와 이용자 페이지(이용자). 관리자 페이지 로그인은 관리자 역할만, 이용자 페이지는 `USER` 만
+- **관리자 API 권한** — `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles(...)` 를 한 세트로 — 첫 관리자 API 에서 처음 적용한다
+- **매니저 소속** — 매니저 1명 = 업체 1곳(`t_user.store_id`). 업체 관리자 API 인가는 "요청 대상이 내 `store_id` 와 일치하는가"
+- **업체 공개** — 등록되고 활성화된 업체만 이용자에게 보인다. 영업중지 · 탈퇴 업체는 표시하지 않는다
+- **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 직접 변경. 업체 총관리자는 이메일 필수, 아이디 · 비밀번호 찾기는 이메일, 비밀번호는 초기화 방식
+- **연령 제한** — 성인만 가입한다(SNS 로그인의 생년월일로 판정)
+- **객실 모델** — 객실 그룹 단위로 상품(이름 · 이용시간 · 가격)을 정하고 그룹 안 호실은 같은 상품을 쓴다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 업체가 그룹 상품마다 기간 가격(성수기 등)을 따로 정한다
+- **이용 단위 · 사전 예약** — 항상 시간 기반(숙박도 긴 상품). 6개월 앞 예약까지 받는다
+- **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 점유 구간 겹침 없음 + 영업시간 내 · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 스탠바이도). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
+- **호실 선택** — 이용자가 호실을 직접 고른다
+- **취소 · 환불** — 업체 취소 100%, 이용자는 시작 1시간 전까지 100%, 그 이후 50%
+- **체크인 · 연장** — 시작 5분 전 휴대폰으로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 같은 상품 단위로 이어서 예약
+- **업체 측 예약 변경** — 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 푸시
+- **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
+- **외부 연동** — 이메일 · 알림 · 이미지 · 결제 · 기기는 포트 + mock 부터
+- **목록 · 시드 · 규약** — 모든 목록 API 는 `PaginationDto`(Phase 3 이후). 룩업 기본 데이터는 seeder.targets.ts 한 곳. 규약은 [AGENTS.md](../../../AGENTS.md) 전면 준수
+- **영업시간 단위** — 요일 반복만(특정 날짜 임시휴무 · 특별영업은 후순위)
 
 ## Open Decisions (roadmap-level)
 
