@@ -81,7 +81,7 @@ flowchart LR
 
 서버 분할(Phase 5)부터 — crontab 을 scheduler 서버로 빼고, 인증번호 확인의 DB 연결 풀 교착(리뷰 #1, High)을 고친다. **운영 배포 전에 끝낸다**
 - 시작 — `/beaver:direct 서버 분할`
-- 정하기 — 교착 해결 방식(#91): 틀린 인증번호를 에러 대신 결과(`is_verified: 0` · 남은 횟수)로 돌려주고 UPDATE 한 번 · 연결 1개로 끝내기(추천) / 동시 명령 수를 DB 연결 풀보다 작게 묶기
+- #91 은 정해졌다 — 틀린 인증번호를 throw 대신 return(HttpException) → 트랜잭션 커밋 + dispatcher 가 failed(400) 회신, RequiresNew 제거
 - 사용자 — Phase 4 마이그레이션 2개 적용(`npm run db:migrate` 또는 Docker migrate), 실제 SMS 발송 전에 `docs/guides/aws-setup.md` 대로 AWS 세팅
 
 ## Scope & Actors
@@ -193,7 +193,7 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 | 88 | scheduler 앱 | crontab 만 도는 서버 — 컨트롤러 · HTTP 리스너 · 큐 소비 없음(들어오는 연결 0), DB 에 직접 붙어 작업(자체 repository), `ScheduleModule` · `DatabaseModule` · `JobLockService` | — | — | todo |
 | 89 | 탈퇴 자동처리 crontab 이전 | user-service → scheduler. user-service 에서 `ScheduleModule` · crontabs 를 뺀다 | — | 15, 88 | todo |
 | 90 | scheduler Docker 묶음 · 인스턴스 수 | `compose.scheduler.yml`(data 네트워크만) · `SCHEDULER_REPLICAS`(기본 1). 인스턴스: gateway 2 · user-service 2 · admin-service 1 · scheduler 1 (`.env` 의 `*_REPLICAS`) | — | 88 | todo |
-| 91 | 인증번호 확인 교착 수정 (리뷰 261020-3 #1) | 확인 명령 10건이 동시에 오면 DB 연결 풀이 교착된다 — 고치고, 풀 연결 대기 시간도 제한한다 | 해결 방식: 틀린 번호를 결과로 돌려주고 UPDATE 한 번(추천) / 동시 명령 수 < 풀 (Open Decisions) | 26, 27 | todo |
+| 91 | 인증번호 확인 교착 수정 (리뷰 261020-3 #1) | 틀린 인증번호 · 횟수 초과는 예외를 throw 하지 않고 return — 트랜잭션은 커밋돼 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 failed(400)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개로 끝낸다. 풀 연결 대기 시간도 제한한다 | — | 26, 27 | todo |
 
 **Expected entry points**: `apps/scheduler/src/main.ts`(`NestFactory.createApplicationContext` — listen 없음) · `scheduler.module.ts` · `compose.scheduler.yml`.
 
@@ -423,7 +423,7 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 
 - [ ] **업체 계정 생성 위치** — 입점 승인(#39)과 업체 관리자 관리(#42)는 `t_user`(user-service 소유)에 계정을 만든다. admin-service 가 공유 DB 의 `t_user` 를 직접 쓸지, user-service 에 명령으로 요청할지. (Phase 9 · 10)
 - [ ] **예약 · 조회가 객실 데이터를 읽는 방법** — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
-- [ ] **인증번호 확인 교착 해결 방식** — 확인 명령은 트랜잭션 연결을 잡은 채 시도 횟수 저장용 연결(RequiresNew)을 하나 더 기다려, 동시에 풀만큼 몰리면 멈춘다. 추천: 틀린 번호를 에러 대신 결과(`is_verified: 0` · 남은 횟수)로 돌려주고 UPDATE 한 번 · 트랜잭션 1개 · 연결 1개로 끝낸다(RequiresNew 제거, "규칙 위반은 4xx" 의 예외 1개). 다른 안: 인스턴스당 동시 명령 수(env)를 항상 DB 연결 풀보다 작게. 어느 쪽이든 풀 연결 대기 시간은 제한한다. (Phase 5 · #91)
+- [x] **인증번호 확인 교착 해결 방식** — 확인 명령은 트랜잭션 연결을 잡은 채 시도 횟수 저장용 연결(RequiresNew)을 하나 더 기다려, 동시에 풀만큼 몰리면 멈췄다. 틀린 인증번호(커밋해야 하는 실패)는 예외를 throw 하지 않고 return 한다 — `@Transactional()` 이 커밋해 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 throw 와 같은 failed 결과(400 · `validation_errors`)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개. 그 밖의 실패(SMS 503 등)는 지금처럼 throw → 롤백. 풀 연결 대기 시간은 따로 제한한다. (결정 2026-10-20 · Phase 5 #91)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
 - [ ] **관리자 / 이용자 API 라우트 분리** — 추천: 관리자 페이지 `/api/v1/admin/<domain>`, 이용자 페이지 `/api/v1/<domain>`. (Phase 6 이후 전부)
 - [x] **발송 채널 · 휴대폰 번호** — SMS만(이메일 · 알림톡 · 푸시 없음). 일반 가입은 휴대폰 번호 필수, SNS 가입은 선택이지만 가입 후 SMS 인증을 해야 이용할 수 있다. (결정 2026-10-20)
