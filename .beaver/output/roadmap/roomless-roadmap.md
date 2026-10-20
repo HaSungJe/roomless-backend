@@ -9,7 +9,7 @@
 ```mermaid
 flowchart LR
   P1["Phase 1 · MSA 기반 (9)"]:::done --> P2["Phase 2 · 회원 기반 (7)"]:::done
-  P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::inprog
+  P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::done
   P2 --> P4["Phase 4 · 회원 스키마 확장 (3)"]:::todo
   P1 --> P6["Phase 6 · admin-service 기반 (4)"]:::todo
   P1 --> P7["Phase 7 · store 스키마 (5)"]:::todo
@@ -50,7 +50,7 @@ flowchart LR
 
 - Phase 1 — MSA 기반 · 유닛 9개 · 의존: — · 푼다: Phase 2, 3, 6, 7, 21 · 파일 집합: apps/, libs/, compose.*.yml, docker/, scripts/ · done
 - Phase 2 — 회원 기반 · 유닛 7개 · 의존: Phase 1 · 푼다: Phase 4 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1/user, apps/gateway/src/guards · done
-- Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 5, 8, 10 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · in-progress
+- Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 5, 8, 10 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · done
 - Phase 4 — 회원 스키마 확장 · 유닛 3개 · 의존: Phase 2 · 푼다: Phase 5, 8 · 파일 집합: libs/database/src/entities/user, libs/database/src/seeder, libs/database/src/migrations · todo
 - Phase 5 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
 - Phase 6 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 8 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · todo
@@ -70,16 +70,16 @@ flowchart LR
 - Phase 20 — 통계 · 유닛 1개 · 의존: Phase 16, 18 · 푼다: — · 파일 집합: apps/user-service/src/stats, apps/gateway/src/api/v1/stats · todo
 - Phase 21 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 
-동시 가능: Phase 3·Phase 4·Phase 6 (지금 바로) / Phase 12·Phase 13 / Phase 14·Phase 15 / Phase 17·Phase 18 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 7 · 11 · 13 · 15 · 21).
+동시 가능: Phase 4·Phase 6 (지금 바로) / Phase 12·Phase 13 / Phase 14·Phase 15 / Phase 17·Phase 18 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 7 · 11 · 13 · 15 · 21).
 
-지금: Phase 3 진행 중 · Next up: Phase 3
+지금: Phase 3 완료 · Next up: Phase 4
 
 ## 지금 할 일
 
-공통 인프라 포트(SMS 발송 · 파일 저장 · 페이지네이션) 기획 중 — 뒤의 Phase 대부분이 기다린다
-- 발송은 SMS 하나(AWS SNS), 사진은 AWS S3 — mock 없이 실제 연동 코드. AWS 세팅은 나중에 `docs/guides/aws-setup.md` 대로 하고 `.env` 만 채운다
-- build 완료 — report(`.beaver/output/report/common/common-infra-ports-report.md`)를 보고 `/beaver:ship` (Phase 4 · 6 과 동시에 돌려도 된다)
-- 만족하면 "ok" → 커밋 · 푸시하고 Phase 4 · 6 으로
+회원 스키마 확장(Phase 4)부터 — 계정·인증과 업체 입점이 이 스키마를 기다린다
+- 정하기 — 휴대폰 인증 규칙(인증번호 자릿수 · 유효시간 · 재발송 · 시도 제한, 인증 전 회원이 할 수 있는 것) · 비밀번호 초기화 방식 (아래 Open Decisions)
+- 시작 — `/beaver:direct 회원 스키마 확장` (admin-service 기반 Phase 6 과 동시에 돌려도 된다)
+- AWS 세팅은 SMS 를 처음 보내는 Phase 5 전까지 `docs/guides/aws-setup.md` 대로 하고 `.env` 를 채운다
 
 ## Scope & Actors
 
@@ -142,10 +142,10 @@ flowchart LR
 ### Phase 3 — 공통 인프라 포트 (AWS SMS · S3 연동 + 페이지네이션) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 17 | `SmsSender` 포트 + Amazon SNS 어댑터 | 모든 발송을 SMS로 — 휴대폰 인증 · 아이디 찾기 · 비밀번호 초기화 · 업체 계정 안내 · 예약 변경 안내 · 입장 QR 링크 | — | 18 | in-progress |
-| 18 | `libs/integration` 토대 | 외부 연동 공용 라이브러리 — `@app/integration` alias · 전역 `SmsModule` · `StorageModule` · AWS SDK 의존성 · `.env` AWS 키 · AWS 세팅 가이드 · 규약 문서 | — | — | in-progress |
-| 19 | `StorageGateway` 포트 + S3 어댑터 | 업체 · 객실 그룹 사진 — presigned URL 로 클라이언트가 S3 에 직접 올린다 | — | 18 | in-progress |
-| 20 | 공통 Pagination | `PaginationDto`(생성자 기본값) · `Pagination` util — 첫 목록 API 전에 | — | — | in-progress |
+| 17 | `SmsSender` 포트 + Amazon SNS 어댑터 | 모든 발송을 SMS로 — 휴대폰 인증 · 아이디 찾기 · 비밀번호 초기화 · 업체 계정 안내 · 예약 변경 안내 · 입장 QR 링크 | — | 18 | done |
+| 18 | `libs/integration` 토대 | 외부 연동 공용 라이브러리 — `@app/integration` alias · 전역 `SmsModule` · `StorageModule` · AWS SDK 의존성 · `.env` AWS 키 · AWS 세팅 가이드 · 규약 문서 | — | — | done |
+| 19 | `StorageGateway` 포트 + S3 어댑터 | 업체 · 객실 그룹 사진 — presigned URL 로 클라이언트가 S3 에 직접 올린다 | — | 18 | done |
+| 20 | 공통 Pagination | `PaginationDto`(생성자 기본값) · `Pagination` util — 첫 목록 API 전에 | — | — | done |
 
 **Expected interfaces** (이름 수준):
 
@@ -156,7 +156,7 @@ flowchart LR
 | #19 | 포트 | `StorageGateway.createUploadUrl(...)` · `exists(...)` · `getPublicUrl(...)` · `remove(...)` | 업로드 주소 · 업로드 확인 · 공개 주소 · 삭제 |
 | #20 | DTO · util | `PaginationDto` · `Pagination` | 목록 공통 |
 
-build 완료 (2026-10-20) — report: `.beaver/output/report/common/common-infra-ports-report.md`. done 표시는 ship 때.
+ship 완료 (2026-10-20, 커밋 c60fdfb) — report: `.beaver/output/report/common/common-infra-ports-report.md` · review: `.beaver/output/review/main-review-261020-2.md`.
 
 ### Phase 4 — 회원 스키마 확장 (휴대폰 인증 · 인증번호 · 첫 총관리자) · depends: Phase 2
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -371,10 +371,10 @@ build 완료 (2026-10-20) — report: `.beaver/output/report/common/common-infra
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 10 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 16/87 units done (2/21 phases)
-**Next up**: Phase 3 공통 인프라 포트 — 의존이 모두 끝났고, 뒤의 Phase 대부분(계정 · 입점 · 운영 설정 · 예약 · 이용)이 이 포트를 기다린다. `/beaver:direct 공통 인프라 포트` 로 시작한다(한 기획이 유닛 4개를 모두 덮는다).
+**Progress**: 20/87 units done (3/21 phases)
+**Next up**: Phase 4 회원 스키마 확장 — 의존이 모두 끝났고, 계정·인증과 업체 입점·관리가 이 스키마(휴대폰 인증 상태 · 인증번호 · 첫 총관리자)를 기다린다. `/beaver:direct 회원 스키마 확장` 으로 시작한다(한 기획이 유닛 3개를 모두 덮는다).
 
-함께 시작할 수 있는 것: 회원 스키마 확장(Phase 4) · admin-service 기반(Phase 6) — 파일이 겹치지 않아 서브에이전트로 동시에 돌릴 수 있다.
+함께 시작할 수 있는 것: admin-service 기반(Phase 6) — 파일이 겹치지 않아 서브에이전트로 동시에 돌릴 수 있다. store 스키마(Phase 7)는 마이그레이션 등록 파일이 겹쳐 Phase 4 뒤에 돌린다.
 
 ## Cross-Cutting Rules
 
