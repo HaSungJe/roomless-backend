@@ -40,7 +40,7 @@ flowchart LR
   P10 --> P20
   P17 --> P21["Phase 21 · 통계 (1)"]:::todo
   P19 --> P21
-  P3 -. 동시 가능 .- P4
+  P5 -. 동시 가능 .- P6
   P6 -. 동시 가능 .- P8
   P13 -. 동시 가능 .- P14
   P15 -. 동시 가능 .- P16
@@ -54,7 +54,7 @@ flowchart LR
 - Phase 2 — 회원 기반 · 유닛 7개 · 의존: Phase 1 · 푼다: Phase 4 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1/user, apps/gateway/src/guards · done
 - Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 6, 9, 11 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · done
 - Phase 4 — 회원 스키마 확장 · 유닛 5개 · 의존: Phase 2, 3 · 푼다: Phase 5, 6, 9 · 파일 집합: libs/database(entities · migrations · seeder), libs/contracts/src/user, apps/user-service/src/user, apps/gateway/src/api/v1/user, AGENTS.md, docs/ · done
-- Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, libs/database, .env.example, README.md, AGENTS.md, docs/ · todo
+- Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), libs/messaging(CommandDispatcher), libs/database(연결 대기 제한), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, .env.example, README.md, AGENTS.md, docs/ · todo
 - Phase 6 — 계정·인증 · 유닛 2개 · 의존: Phase 3, 4 · 푼다: Phase 20 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
 - Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · todo
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · todo
@@ -73,15 +73,15 @@ flowchart LR
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/user-service/src/stats, apps/gateway/src/api/v1/stats · todo
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 
-동시 가능: Phase 6·Phase 8 (Phase 5 와도 동시에) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
+동시 가능: Phase 5·Phase 6·Phase 8 (지금 바로) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
 지금: Phase 4 완료 · Next up: Phase 5
 
 ## 지금 할 일
 
-서버 분할(Phase 5)부터 — crontab 을 scheduler 서버로 빼고, 인증번호 확인의 DB 연결 풀 교착(리뷰 #1, High)을 고친다. **운영 배포 전에 끝낸다**
+서버 분할(Phase 5)부터 — 운영 배포 전에 끝낸다
 - 시작 — `/beaver:direct 서버 분할`
-- #91 은 정해졌다 — 틀린 인증번호를 throw 대신 return(HttpException) → 트랜잭션 커밋 + dispatcher 가 failed(400) 회신, RequiresNew 제거
+- 담는 것 — scheduler 서버(crontab 이전) · 인스턴스 수 · 인증번호 확인 교착 수정(#91 — 틀린 번호는 throw 대신 return, 방식은 정해짐)
 - 사용자 — Phase 4 마이그레이션 2개 적용(`npm run db:migrate` 또는 Docker migrate), 실제 SMS 발송 전에 `docs/guides/aws-setup.md` 대로 AWS 세팅
 
 ## Scope & Actors
@@ -192,7 +192,7 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 |---|------|------|--------------|---------|--------|
 | 88 | scheduler 앱 | crontab 만 도는 서버 — 컨트롤러 · HTTP 리스너 · 큐 소비 없음(들어오는 연결 0), DB 에 직접 붙어 작업(자체 repository), `ScheduleModule` · `DatabaseModule` · `JobLockService` | — | — | todo |
 | 89 | 탈퇴 자동처리 crontab 이전 | user-service → scheduler. user-service 에서 `ScheduleModule` · crontabs 를 뺀다 | — | 15, 88 | todo |
-| 90 | scheduler Docker 묶음 · 인스턴스 수 | `compose.scheduler.yml`(data 네트워크만) · `SCHEDULER_REPLICAS`(기본 1). 인스턴스: gateway 2 · user-service 2 · admin-service 1 · scheduler 1 (`.env` 의 `*_REPLICAS`) | — | 88 | todo |
+| 90 | scheduler Docker 묶음 · 인스턴스 수 | `compose.scheduler.yml`(data 네트워크만) · `.env` 의 `SCHEDULER_REPLICAS`(기본 1 — 여러 대여도 `JobLockService` 로 회차마다 1대만 실행). 인스턴스 수는 서버마다 `.env` 의 `*_REPLICAS` 로 정한다 | — | 88 | todo |
 | 91 | 인증번호 확인 교착 수정 (리뷰 261020-3 #1) | 틀린 인증번호 · 횟수 초과는 예외를 throw 하지 않고 return — 트랜잭션은 커밋돼 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 failed(400)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개로 끝낸다. 풀 연결 대기 시간도 제한한다 | — | 26, 27 | todo |
 
 **Expected entry points**: `apps/scheduler/src/main.ts`(`NestFactory.createApplicationContext` — listen 없음) · `scheduler.module.ts` · `compose.scheduler.yml`.
@@ -213,7 +213,7 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 28 | admin-service 앱 | nest-cli 프로젝트 · 루트 모듈(`InternalAuthGuard` · `MessagingModule.forService`) | — | — | todo |
-| 29 | Docker 묶음 | `compose.admin-service.yml` · nginx LB · 공용 네트워크 · `ADMIN_SERVICE_REPLICAS`(기본 1) | — | 28 | todo |
+| 29 | Docker 묶음 | `compose.admin-service.yml` · nginx LB · 공용 네트워크 · `.env` 의 `ADMIN_SERVICE_REPLICAS`(기본 1) | — | 28 | todo |
 | 30 | 브로커 계정 | `BROKER_USER` · init.sh 권한 · `broker:check` 대상 추가 | — | 28 | todo |
 | 31 | 게이트웨이 연결 | `InternalHttpClient` 의 `InternalService` · `SERVICE_URL` 에 admin | — | 28 | todo |
 
@@ -398,7 +398,7 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 
 ## Cross-Cutting Rules
 
-- **서버 분할** — 게이트웨이(유일한 진입점) + 서비스 + scheduler. user-service = 이용자(회원 · 예약 · 결제 · 이용 — 트래픽이 몰려 로드밸런싱), admin-service = 총관리자 + 업체(객실) 관리자(업체 · 객실 · 요금상품 · 사물), scheduler = crontab 만(들어오는 연결 없음 — 컨트롤러 · 큐 소비 없음, DB 직접), notify-service(후순위). 인스턴스 수는 `.env` 의 `*_REPLICAS` — gateway 2 · user-service 2 · admin-service 1 · scheduler 1. 총관리자와 업체 관리자는 같은 admin-service 에서 권한(`@Roles`)으로 가른다 (결정 2026-10-20)
+- **서버 분할** — gateway · user-service(이용자 — 회원 · 예약 · 결제 · 이용, 트래픽이 몰려 로드밸런싱) · admin-service(총관리자 + 업체 관리자 — 업체 · 객실 · 상품 · 사물, 둘은 권한 `@Roles` 로 구분) · scheduler(crontab 만, 들어오는 연결 없음 · DB 직접) · notify-service(후순위). 게이트웨이가 유일한 진입점. 인스턴스 수는 고정하지 않고 모두 `.env` 로 정한다 — `GATEWAY_REPLICAS`(기본 2) · `USER_SERVICE_REPLICAS`(기본 2) · `ADMIN_SERVICE_REPLICAS`(기본 1) · `SCHEDULER_REPLICAS`(기본 1) (결정 2026-10-20)
 - **전달 경로** — 즉시 응답 · 조회는 내부 HTTP, 상태를 바꾸는 쓰기 · 몰리는 작업은 RabbitMQ 명령 + 요청 단위 SSE
 - **페이지 구분** — 관리자 페이지(총관리자 · 업체 총관리자 · 업체 관리자)와 이용자 페이지(이용자). 관리자 페이지 로그인은 관리자 역할만, 이용자 페이지는 `USER` 만
 - **관리자 API 권한** — `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles(...)` 를 한 세트로 — 첫 관리자 API 에서 처음 적용한다
@@ -423,22 +423,23 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 
 - [ ] **업체 계정 생성 위치** — 입점 승인(#39)과 업체 관리자 관리(#42)는 `t_user`(user-service 소유)에 계정을 만든다. admin-service 가 공유 DB 의 `t_user` 를 직접 쓸지, user-service 에 명령으로 요청할지. (Phase 9 · 10)
 - [ ] **예약 · 조회가 객실 데이터를 읽는 방법** — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
-- [x] **인증번호 확인 교착 해결 방식** — 확인 명령은 트랜잭션 연결을 잡은 채 시도 횟수 저장용 연결(RequiresNew)을 하나 더 기다려, 동시에 풀만큼 몰리면 멈췄다. 틀린 인증번호(커밋해야 하는 실패)는 예외를 throw 하지 않고 return 한다 — `@Transactional()` 이 커밋해 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 throw 와 같은 failed 결과(400 · `validation_errors`)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개. 그 밖의 실패(SMS 503 등)는 지금처럼 throw → 롤백. 풀 연결 대기 시간은 따로 제한한다. (결정 2026-10-20 · Phase 5 #91)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
 - [ ] **관리자 / 이용자 API 라우트 분리** — 추천: 관리자 페이지 `/api/v1/admin/<domain>`, 이용자 페이지 `/api/v1/<domain>`. (Phase 6 이후 전부)
-- [x] **발송 채널 · 휴대폰 번호** — SMS만(이메일 · 알림톡 · 푸시 없음). 일반 가입은 휴대폰 번호 필수, SNS 가입은 선택이지만 가입 후 SMS 인증을 해야 이용할 수 있다. (결정 2026-10-20)
-- [x] **SMS 발송 업체 = AWS(Amazon SNS)** — 서울 리전. 한국은 AWS 전용 발신번호가 없어 국제 경로로만 나간다(수신 화면 국제발신, 발신번호 지정 불가, 한글 70자 단위 과금, 단가는 사용량 보고서로 확인). 새 계정은 샌드박스 · 월 한도 USD 1 — 운영 전 해제 요청. (결정 2026-10-20)
-- [x] **휴대폰 인증 규칙 · 비밀번호 초기화 방식** — 6자리 · 5분 · 3회, 같은 번호 하루 10번(env), 확인은 인증 ID + 인증번호. 초기화는 아이디 + 번호 인증 후 영문 + 숫자 10자리 임시 비밀번호 SMS(다음 로그인 때 변경 필요). (결정 2026-10-20)
-- [x] **이미지 저장소 = AWS S3** — 업로드는 presigned URL(클라이언트가 직접 올림). (결정 2026-10-20)
 - [ ] **성인 확인** — 성인 기준(청소년보호법은 만 19세가 되는 해의 1월 1일부터 성인), 일반 가입의 생년월일은 검증되지 않는다(본인인증을 붙일지 · 일반 가입을 막을지). (Phase 6)
 - [ ] **입장 QR 확인 수단** — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 14 · 19)
 - [ ] **취소 규정의 끝** — 시작 이후 · 노쇼 취소를 받을지. (Phase 17)
 - [ ] **영업중지 · 영업시간 변경 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지. (Phase 9 · 11)
 - [ ] **통계 정의** — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 21)
 - [ ] **결제 대기 유지 시간 · 결제 수단** — 추천: 10분, 토스페이먼츠 테스트 키로 개발. (Phase 17)
+- [x] **인증번호 확인 교착 해결 방식** — 확인 명령은 트랜잭션 연결을 잡은 채 시도 횟수 저장용 연결(RequiresNew)을 하나 더 기다려, 동시에 풀만큼 몰리면 멈췄다. 틀린 인증번호(커밋해야 하는 실패)는 예외를 throw 하지 않고 return 한다 — `@Transactional()` 이 커밋해 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 throw 와 같은 failed 결과(400 · `validation_errors`)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개. 그 밖의 실패(SMS 503 등)는 지금처럼 throw → 롤백. 풀 연결 대기 시간은 따로 제한한다. (결정 2026-10-20 · Phase 5 #91)
+- [x] **발송 채널 · 휴대폰 번호** — SMS만(이메일 · 알림톡 · 푸시 없음). 휴대폰 번호는 가입 때 받지 않고, 가입 후 SMS 인증을 마친 번호만 저장한다(SNS · 일반 공통, Phase 4). (결정 2026-10-20)
+- [x] **SMS 발송 업체 = AWS(Amazon SNS)** — 서울 리전. 한국은 AWS 전용 발신번호가 없어 국제 경로로만 나간다(수신 화면 국제발신, 발신번호 지정 불가, 한글 70자 단위 과금, 단가는 사용량 보고서로 확인). 새 계정은 샌드박스 · 월 한도 USD 1 — 운영 전 해제 요청. (결정 2026-10-20)
+- [x] **휴대폰 인증 규칙 · 비밀번호 초기화 방식** — 6자리 · 5분 · 3회, 같은 번호 하루 10번(env), 확인은 인증 ID + 인증번호. 초기화는 아이디 + 번호 인증 후 영문 + 숫자 10자리 임시 비밀번호 SMS(다음 로그인 때 변경 필요). (결정 2026-10-20)
+- [x] **이미지 저장소 = AWS S3** — 업로드는 presigned URL(클라이언트가 직접 올림). (결정 2026-10-20)
 
 ## Notes / Risks
 
+- **운영 전 필수** — Phase 5 #91(인증번호 확인의 DB 연결 풀 교착)을 고치기 전에는 운영에 올리지 않는다. 비로그인 라우트로도 일으킬 수 있다.
 - **마이그레이션 Phase 는 동시에 돌리지 않는다** — `libs/database/src/migrations.ts`(MIGRATIONS) · `entities.ts`(ENTITIES) 를 같이 고친다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 - **배타 제약과 오프라인 검사** — `t_reservation` 의 (room_id, 점유 구간) 배타 제약은 PostgreSQL `btree_gist` 확장이 필요하다. `db:check` 가 쓰는 PGlite 에서 이 확장을 불러올 수 있는지 Phase 16 기획 때 먼저 확인한다.
 - **서비스별 DB 분리 전 단계** — 지금은 공유 DB 다. Open Decisions 의 "계정 생성 위치" · "객실 데이터 읽는 방법" 은 나중 DB 분리 비용을 정한다.
