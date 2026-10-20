@@ -19,7 +19,7 @@ Vitest 4 + `@nestjs/testing` + `supertest`. 설정 [vitest.config.ts](../vitest.
 | 서비스 기능(큐 · 동기) | `apps/<app>/src/<domain>/test/<domain>-<feature>.spec.ts` | `user-sign.spec.ts` · `user-login.spec.ts` |
 | 서비스 repository | 같은 폴더 `<domain>.repository.spec.ts` | `user.repository.spec.ts` |
 | 서비스 crontab | 같은 폴더 `<domain>-<feature>.crontab.spec.ts` | `user-leave-cleanup.crontab.spec.ts` |
-| 게이트웨이 라우트 | `apps/gateway/src/api/v1/<domain>/test/<domain>.controller.spec.ts` · `<domain>.controller.queue.spec.ts` (controller 파일과 짝) | `user.controller.queue.spec.ts` |
+| 게이트웨이 라우트 | `apps/gateway/src/api/v1/<domain>/test/<domain>.controller.spec.ts` · `<domain>.controller.queue.spec.ts` (`controllers/` 의 controller 파일과 짝 — spec 은 도메인 폴더 `test/` 에 둔다) | `user.controller.queue.spec.ts` |
 | 게이트웨이 인프라 · 가드 · 설정 | `apps/gateway/src/{modules/<module>,guards,config}/test/<소스 파일명>.spec.ts` | `command-stream.service.spec.ts` · `guards.spec.ts` · `cors.config.spec.ts` |
 | 라이브러리 | `libs/<lib>/src/test/` 또는 `libs/<lib>/src/<폴더>/test/`, 이름은 소스 파일명 | `libs/messaging/src/test/command.dispatcher.spec.ts` · `libs/common/src/utils/test/retry.spec.ts` |
 
@@ -48,7 +48,7 @@ Vitest 4 + `@nestjs/testing` + `supertest`. 설정 [vitest.config.ts](../vitest.
 
 ## 스타일 ① — 큐 경로 (서비스)
 
-실제 `UserCommandHandler` · `UserService` · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅하고, 게이트웨이가 발행하는 것과 같은 봉투를 디스패처에 넣는다. registry 가 `@OnCommand` 핸들러를 찾도록 **`imports: [DiscoveryModule]` + `module.init()` 이 필수**다.
+실제 `UserQueueController` · `UserService` · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅하고, 게이트웨이가 발행하는 것과 같은 봉투를 디스패처에 넣는다. registry 가 `@OnCommand` 핸들러를 찾도록 **`imports: [DiscoveryModule]` + `module.init()` 이 필수**다.
 
 ```ts
 ({dispatcher, module} = await bootCommandPath(repo, jwt));          // user.test-helper.ts
@@ -106,7 +106,7 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 
 ## mock 규칙
 
-- **mock 경계**: 서비스 spec 은 repository(Symbol 토큰 `USER_REPOSITORY`) · 외부 연동 포트(Symbol 토큰 `SMS_SENDER` · `STORAGE_GATEWAY` — [integration.md](integration.md))와 `JwtService`(class 토큰)를 mock 하고, crypto · jwt util(`bcrypt` · `hash` · `cipher` · `jwt`)은 `vi.mock` 으로 막는다. service · handler · controller · 파이프 · 필터 · 가드는 실제 코드다.
+- **mock 경계**: 서비스 spec 은 repository(Symbol 토큰 `USER_REPOSITORY`) · 외부 연동 포트(Symbol 토큰 `SMS_SENDER` · `STORAGE_GATEWAY` — [integration.md](integration.md))와 `JwtService`(class 토큰)를 mock 하고, crypto · jwt util(`bcrypt` · `hash` · `cipher` · `jwt`)은 `vi.mock` 으로 막는다. service · controller(내부 HTTP · 큐) · 파이프 · 필터 · 가드는 실제 코드다.
 - **ESM 이라 `vi.spyOn(모듈, 'fn')` 은 쓸 수 없다.** 외부 util 은 spec 상단에서 모듈째 mock 한다.
   ```ts
   vi.mock('@app/common/utils/bcrypt.js', () => ({getBcrypt: vi.fn(), matchBcrypt: vi.fn()}));

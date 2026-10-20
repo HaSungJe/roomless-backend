@@ -27,9 +27,9 @@ import {UserPhoneVerificationConfirmDto} from '@app/contracts/user/dto/user-phon
 import {UserPhoneVerificationDto, UserPhoneVerificationResultDto} from '@app/contracts/user/dto/user-phone-verification.dto.js';
 import {UserSignDto, UserSignResultDto} from '@app/contracts/user/dto/user-sign.dto.js';
 import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
-import {PassportActor} from '../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
-import {PassportJwtAuthGuard} from '../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
-import {CommandStreamService} from '../../../modules/transport/command-stream.service.js';
+import {PassportActor} from '../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
+import {PassportJwtAuthGuard} from '../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
+import {CommandStreamService} from '../../../../modules/transport/command-stream.service.js';
 
 /**
  * 회원 공개 API — 큐 경로(RabbitMQ 명령 + 요청 단위 SSE). 게이트웨이 인바운드 어댑터.

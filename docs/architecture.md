@@ -42,12 +42,12 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 ## 전달 경로 — 동기 vs 큐
 
-모든 외부 요청은 예외 없이 게이트웨이를 거친다. 게이트웨이가 라우트마다 경로를 고르고, 경로별로 controller 파일을 나눈다 — 동기 `<domain>.controller.ts`, 큐 `<domain>.controller.queue.ts`.
+모든 외부 요청은 예외 없이 게이트웨이를 거친다. 게이트웨이가 라우트마다 경로를 고르고, 경로별로 controller 파일을 나눈다 — 동기 `controllers/<domain>.controller.ts`, 큐 `controllers/<domain>.controller.queue.ts`(서비스도 같은 이름으로 나눈다).
 
 | 경로 | 언제 | 게이트웨이 | 서비스 | 클라이언트가 받는 것 |
 |---|---|---|---|---|
 | **동기** | 즉시 결과가 필요하고 몰리지 않는 요청(조회 · 로그인 · 토큰 재발급) | `InternalHttpClient.request()` | 내부 controller (`/internal/v1/...`) | 일반 JSON 응답 |
-| **큐** | 상태를 바꾸는 쓰기, 버스트 · 경합 · 후속 알림이 있는 작업(가입 · 탈퇴 · 비밀번호 변경 · 이후 예약 · 사물 제어) | `CommandStreamService.dispatch()` | `@OnCommand` handler | `text/event-stream`: accepted → done \| failed \| pending |
+| **큐** | 상태를 바꾸는 쓰기, 버스트 · 경합 · 후속 알림이 있는 작업(가입 · 탈퇴 · 비밀번호 변경 · 이후 예약 · 사물 제어) | `CommandStreamService.dispatch()` | 큐 컨트롤러 `@OnCommand` | `text/event-stream`: accepted → done \| failed \| pending |
 
 회원 도메인 현황:
 
@@ -65,13 +65,13 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
  인바운드 어댑터                         아웃바운드 포트 → 어댑터
  ┌─────────────────────────┐            ┌────────────────────────────────────────┐
  │ UserController (내부HTTP)│──┐      ┌─▶│ USER_REPOSITORY → UserRepository(TypeORM)│
- │ UserCommandHandler (MQ)  │──┴─▶ UserService                                      │
+ │ UserQueueController (MQ) │──┴─▶ UserService                                      │
  │ crontabs/*.crontab (시간) │───────────▶│ USER_REPOSITORY (service 를 거치지 않음)   │
  └─────────────────────────┘            │ (게이트웨이) COMMAND_PUBLISHER → RabbitMQ │
                                         └────────────────────────────────────────┘
 ```
 
-- **인바운드 어댑터** controller · handler 는 입력을 꺼내 service 로 위임만 한다. 로직 0.
+- **인바운드 어댑터** controller(내부 HTTP · 큐)는 입력을 꺼내 service 로 위임만 한다. 로직 0.
 - **crontab 은 예외** — API 가 아니므로 service 에 public 메서드를 두지 않고 repository 포트를 직접 주입해 배치를 처리한다(대상 조회 · 엔티티 조립 · 건별 update, user-leave-cleanup.crontab.ts:25-62). `@Transactional()` 없이 건별로 처리하고 건별 실패는 건너뛴다. 운영 가드(`NODE_ENV === 'production'`)와 `JobLockService` 는 아래 스케줄러 절.
 - **service** 는 아웃바운드 포트(Symbol 토큰 + `import type` 인터페이스)와 프레임워크 서비스(`JwtService` — user.service.ts:43)를 안다. 전송 계층 객체(Request/Response/AMQP 채널)를 받지 않는다. 그래서 같은 `UserService.leave()` 를 HTTP · RabbitMQ 어느 쪽에서 불러도 된다.
 - **아웃바운드 어댑터**(repository · publisher)만 TypeORM 쿼리 · amqplib 를 쓴다.
@@ -79,7 +79,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 ## 레이어 경계 (adapter → service → repository, 단방향)
 
-- **controller / handler** — 라우팅 · guard · Swagger(공개만) · 위임만.
+- **controller** — 라우팅 · guard · Swagger(공개만) · 위임만.
 - **crontab** — 시간 트리거 · 운영 가드 · `JobLockService` · repository 포트 직접 호출.
 - **service** — 비즈니스 로직 + 트랜잭션 경계(`@Transactional()`). 엔티티를 `new XEntity()` + 할당으로, WHERE 를 `FindOptionsWhere<XEntity>` 로 만들고, 규칙 위반 시 HTTP 예외 throw.
 - **repository** — 유일하게 `txHost.tx`(TypeORM EntityManager)를 쓰는 곳. 모든 IO + DB 오류 변환.
@@ -100,7 +100,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 ```
 apps/gateway/src/
-├── api/v1/user/            # 공개 라우트 — user.controller.ts(동기) · user.controller.queue.ts(큐) · user.module.ts · test/
+├── api/v1/user/            # 공개 라우트 — controllers/(user.controller.ts 동기 · user.controller.queue.ts 큐) · user.module.ts · test/
 ├── guards/
 │   ├── passport.jwt.auth/  # guard · strategy · decorator(@PassportUser · @PassportActor) · module
 │   └── roles/              # roles.guard.ts · roles.decorator.ts(@Roles)
@@ -218,8 +218,8 @@ npm run start:gateway         # :3000
 
 1. **엔티티** — `libs/database/src/entities/<domain>/<feature>.entity.ts` + `ENTITIES` 등록 → `npm run db:generate -- <Name>` → `npm run db:check`([data-layer.md](data-layer.md)).
 2. **규격** — `libs/contracts/src/<domain>/dto/*.dto.ts`(요청 · 응답 DTO), 큐 경로가 있으면 `<domain>.commands.ts`(type · 큐 이름 · 바인딩 키 · 내부 경로).
-3. **서비스** — 담당 앱(없으면 `apps/<x>-service` 를 nest-cli.json 프로젝트로 추가) 안에 `src/<domain>/`: `service` · `repositories/` + `interfaces/` + `<domain>.symbols.ts` · `controller`(내부, 동기 경로) · `handler`(`@OnCommand`, 큐 경로) · `crontabs/` · `test/`.
-4. **게이트웨이** — `apps/gateway/src/api/v1/<domain>/` 에 동기 라우트 `<domain>.controller.ts` · 큐 라우트 `<domain>.controller.queue.ts`(한 파일에 섞지 않는다) + `<domain>.module.ts`(두 controller 등록), Swagger.
+3. **서비스** — 담당 앱(없으면 `apps/<x>-service` 를 nest-cli.json 프로젝트로 추가) 안에 `src/<domain>/`: `service` · `repositories/` + `interfaces/` + `<domain>.symbols.ts` · `controllers/<domain>.controller.ts`(내부, 동기 경로) · `controllers/<domain>.controller.queue.ts`(`@OnCommand`, 큐 경로) · `<domain>.constants.ts` · `crontabs/` · `test/`.
+4. **게이트웨이** — `apps/gateway/src/api/v1/<domain>/controllers/` 에 동기 라우트 `<domain>.controller.ts` · 큐 라우트 `<domain>.controller.queue.ts`(한 파일에 섞지 않는다) + `<domain>.module.ts`(두 controller 등록), Swagger.
 5. 새 서비스 앱이면 —
    - `nest-cli.json` 프로젝트 · `apps/<x>-service/tsconfig.app.json`
    - 루트 모듈 `MessagingModule.forService({queue, binding_keys, broker_user})` + `{provide: APP_GUARD, useClass: InternalAuthGuard}`

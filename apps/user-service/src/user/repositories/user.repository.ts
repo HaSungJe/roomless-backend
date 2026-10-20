@@ -10,6 +10,7 @@ import {UserSettingEntity} from '@app/database/entities/user/user-setting.entity
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginUserRow, UserRepositoryInterface} from '../interfaces/user.repository.interface.js';
+import {PHONE_TAKEN_MESSAGE, USER_NOT_EXIST_MESSAGE} from '../user.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
@@ -89,7 +90,7 @@ export class UserRepository implements UserRepositoryInterface {
             if (isUniqueViolation(error, 'UK_UserSetting_UserId')) {
                 return;
             } else if (isForeignKeyViolation(error, 'FK_UserSetting_User')) {
-                throw new BadRequestException({message: '존재하지 않는 회원입니다.'});
+                throw new BadRequestException({message: USER_NOT_EXIST_MESSAGE});
             } else {
                 throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
             }
@@ -106,7 +107,7 @@ export class UserRepository implements UserRepositoryInterface {
             await this.sessions.insert(entity);
         } catch (error) {
             if (isForeignKeyViolation(error, 'FK_Session_User')) {
-                throw new BadRequestException({message: '존재하지 않는 회원입니다.'});
+                throw new BadRequestException({message: USER_NOT_EXIST_MESSAGE});
             } else {
                 throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
             }
@@ -254,7 +255,7 @@ export class UserRepository implements UserRepositoryInterface {
             await this.users.update(where, entity);
         } catch (error) {
             if (isUniqueViolation(error, 'UK_User_Phone')) {
-                throw new BadRequestException({message: '이미 가입된 번호입니다.'});
+                throw new BadRequestException({message: PHONE_TAKEN_MESSAGE});
             } else {
                 throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
             }
@@ -273,7 +274,7 @@ export class UserRepository implements UserRepositoryInterface {
             if (isForeignKeyViolation(error, 'FK_SmsVerification_SmsPurpose')) {
                 throw new BadRequestException({message: '존재하지 않는 SMS 인증 용도입니다.'});
             } else if (isForeignKeyViolation(error, 'FK_SmsVerification_User')) {
-                throw new BadRequestException({message: '존재하지 않는 회원입니다.'});
+                throw new BadRequestException({message: USER_NOT_EXIST_MESSAGE});
             } else {
                 throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
             }

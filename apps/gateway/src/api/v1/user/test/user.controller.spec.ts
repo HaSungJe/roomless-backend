@@ -5,8 +5,8 @@ import request from 'supertest';
 import {CustomErrorFilter} from '@app/common/exception/custom-error.filter.js';
 import {validationExceptionFactory} from '@app/common/utils/validation.js';
 import {InternalHttpClient} from '../../../../modules/transport/internal-http.client.js';
-import {UserController} from '../user.controller.js';
-import {UserQueueController} from '../user.controller.queue.js';
+import {UserController} from '../controllers/user.controller.js';
+import {UserQueueController} from '../controllers/user.controller.queue.js';
 import {UserModule} from '../user.module.js';
 
 const TOKENS = {access_token: 'a', refresh_token: 'r', access_token_expires_at: '2026-01-01T00:20:00.000Z', refresh_token_expires_at: '2027-01-01T00:00:00.000Z'};

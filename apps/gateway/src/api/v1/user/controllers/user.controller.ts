@@ -16,7 +16,7 @@ import {UserGeneralLoginDto, UserGeneralLoginResultDto} from '@app/contracts/use
 import {UserLoginDto, UserLoginResultDto} from '@app/contracts/user/dto/user-login.dto.js';
 import {UserTokenRefreshDto, UserTokenRefreshResultDto} from '@app/contracts/user/dto/user-token-refresh.dto.js';
 import {USER_INTERNAL_PATH} from '@app/contracts/user/user.commands.js';
-import {InternalHttpClient} from '../../../modules/transport/internal-http.client.js';
+import {InternalHttpClient} from '../../../../modules/transport/internal-http.client.js';
 
 /**
  * 회원 공개 API — 동기 경로(내부 HTTP). 게이트웨이 인바운드 어댑터.

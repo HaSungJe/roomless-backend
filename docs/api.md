@@ -12,9 +12,9 @@ export class UserController { ... }
 
 `@ApiTags('<한글>')` → `@Controller(...)`.
 
-게이트웨이 공개 controller 는 전달 경로별로 2파일이다 — 동기 `<domain>.controller.ts`(`UserController`), 큐 `<domain>.controller.queue.ts`(`UserQueueController`). 둘 다 같은 `@ApiTags` · 경로 접두를 쓰므로 Swagger 에는 한 태그로 묶여 보인다.
+게이트웨이 공개 controller 는 전달 경로별로 2파일이다 — 동기 `controllers/<domain>.controller.ts`(`UserController`), 큐 `controllers/<domain>.controller.queue.ts`(`UserQueueController`). 둘 다 같은 `@ApiTags` · 경로 접두를 쓰므로 Swagger 에는 한 태그로 묶여 보인다.
 
-## 동기 핸들러 (`<domain>.controller.ts`)
+## 동기 핸들러 (`controllers/<domain>.controller.ts`)
 
 ```ts
 @Post('/login')
@@ -35,7 +35,7 @@ async login(@Body() dto: UserLoginDto, @Ip() ip: string): Promise<UserLoginResul
 - 실측 순서(인증 없는 핸들러 3개): **HTTP verb → `@HttpCode(200)` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse` 또는 `@ApiForbiddenResponse` → `@ApiNotFoundResponse` → `@ApiServiceUnavailableResponse` → `@ApiInternalServerErrorResponse`**.
 - 인증 · 권한이 붙는 동기 핸들러는 아직 없다. 붙일 때의 자리(규약): HTTP verb → `@UseGuards` → `@Roles` → `@HttpCode` → `@ApiBearerAuth()` → `@ApiOperation` → … (큐 핸들러와 같이 `@ApiBearerAuth` 는 `@ApiOperation` 앞).
 
-## 큐 핸들러 (`<domain>.controller.queue.ts`, 요청 단위 SSE)
+## 큐 핸들러 (`controllers/<domain>.controller.queue.ts`, 요청 단위 SSE)
 
 ```ts
 @Delete('/leave')
@@ -76,7 +76,7 @@ async leave(@PassportActor() actor: Actor, @Body() dto: UserLeaveDto, @Ip() ip: 
 
 - `@ApiOperation` 은 `summary` 만. 응답 데코레이터는 `{type}` 만(❌ `description` — grep 0건).
 - 실패 응답은 상태와 무관하게 `ApiFailResultDto` 하나.
-- **모든 함수/메서드에 주석 필수** — export 여부와 관계없이 controller · handler · service · repository · util · 파일 전용 헬퍼 · 테스트 도우미까지 JSDoc 또는 한 줄 설명(반환 분기 · 부수효과 명시). 생성자는 `@param` 만.
+- **모든 함수/메서드에 주석 필수** — export 여부와 관계없이 controller · service · repository · util · 파일 전용 헬퍼 · 테스트 도우미까지 JSDoc 또는 한 줄 설명(반환 분기 · 부수효과 명시). 생성자는 `@param` 만.
 - **service 메서드 JSDoc 에는 전송 경로를 적는다** — `(RabbitMQ: user.member.sign)` / `(내부 HTTP: POST /internal/v1/user/login)`.
 - DTO 클래스 · 포트 인터페이스 메서드의 JSDoc 은 현재 섞여 있다(있는 것 · 없는 것). <!-- TODO: 필수로 할지 결정 -->
 - 큐 경로 API 를 추가하면 Swagger 설명(`main.ts` 의 DocumentBuilder description)에 적힌 이벤트 규약을 따른다: accepted → done | failed | pending.

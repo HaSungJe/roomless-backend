@@ -7,7 +7,7 @@ import type {UserSignDto, UserSignResultDto} from '@app/contracts/user/dto/user-
 import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
 import {requireActor} from '@app/messaging/messaging.util.js';
 import {OnCommand} from '@app/messaging/on-command.decorator.js';
-import {UserService} from './user.service.js';
+import {UserService} from '../user.service.js';
 import type {UserFindLoginIdConfirmDto, UserFindLoginIdConfirmResultDto} from '@app/contracts/user/dto/user-find-login-id-confirm.dto.js';
 import type {UserFindLoginIdDto, UserFindLoginIdResultDto} from '@app/contracts/user/dto/user-find-login-id.dto.js';
 import type {UserPasswordResetConfirmDto} from '@app/contracts/user/dto/user-password-reset-confirm.dto.js';
@@ -16,13 +16,14 @@ import type {UserPhoneVerificationConfirmDto} from '@app/contracts/user/dto/user
 import type {UserPhoneVerificationDto, UserPhoneVerificationResultDto} from '@app/contracts/user/dto/user-phone-verification.dto.js';
 
 /**
- * 회원 RabbitMQ 인바운드 어댑터 — 게이트웨이가 발행한 큐 경로 명령을 받는다.
- * controller 와 같은 역할: 봉투에서 입력을 꺼내 service 로 위임만 한다(로직 0).
+ * 회원 큐 경로 컨트롤러(RabbitMQ 인바운드 어댑터) — 게이트웨이가 발행한 큐 경로 명령을 `@OnCommand` 로 받는다.
+ * 내부 HTTP 컨트롤러(user.controller.ts)와 같은 역할: 봉투에서 입력을 꺼내 service 로 위임만 한다(로직 0).
+ * HTTP 컨트롤러가 아니라 provider 다 — 도메인 모듈 providers 에 등록하고, CommandHandlerRegistry 가 부팅 때 `@OnCommand` 메서드를 찾는다.
  * 반환값은 done 결과로, 던진 예외는 `toFailResult()` 를 거쳐 failed 결과로 게이트웨이에 회신된다.
  * 입력 검증은 게이트웨이의 ValidationPipe 에서 끝났으므로 다시 하지 않는다.
  */
 @Injectable()
-export class UserCommandHandler {
+export class UserQueueController {
     /**
      * @param userService 회원 service
      */

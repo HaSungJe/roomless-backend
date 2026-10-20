@@ -27,14 +27,14 @@
 ## 파일 · 클래스 명명
 
 **도메인 레이어 파일** — `<domain>.<role>.ts`:
-- `user.controller.ts`(내부 HTTP) · `user.handler.ts`(RabbitMQ) · `user.service.ts` · `user.module.ts` · `user.symbols.ts` · `user.util.ts`
+- `controllers/user.controller.ts`(내부 HTTP) · `controllers/user.controller.queue.ts`(RabbitMQ) · `user.service.ts` · `user.module.ts` · `user.constants.ts`(도메인 상수 · 공유 메시지) · `user.symbols.ts` · `user.util.ts`
 - repository `repositories/user.repository.ts`, 포트 `interfaces/user.repository.interface.ts`
 - crontab `crontabs/<domain>-<feature>.crontab.ts` (예: `user-leave-cleanup.crontab.ts`, 클래스 `UserLeaveCleanupCrontab`). 잠금 키는 같은 파일에서 상수로 export(`USER_LEAVE_CLEANUP_LOCK = 'user.leave-cleanup'`).
-- 게이트웨이 공개 라우트 `apps/gateway/src/api/v1/<domain>/` — **전달 경로별로 파일을 나눈다(한 파일에 섞지 않는다)**:
-  - 동기(내부 HTTP) `<domain>.controller.ts` · 클래스 `<Domain>Controller` — `InternalHttpClient` 만 주입
-  - 큐(RabbitMQ + 요청 단위 SSE) `<domain>.controller.queue.ts` · 클래스 `<Domain>QueueController` — `CommandStreamService` 만 주입
-  - 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<domain>')`, 도메인 모듈 `controllers: [<Domain>Controller, <Domain>QueueController]`. 테스트도 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts` 로 나눈다.
-  - user-service 는 이미 controller(내부 HTTP) · handler(RabbitMQ) 로 나뉘어 있어 이 규칙의 대상이 아니다.
+- controller 는 게이트웨이 · 서비스 모두 도메인 폴더의 `controllers/` 에 두고, **전달 경로별로 파일을 나눈다(한 파일에 섞지 않는다)**:
+  - 동기(내부 HTTP) `controllers/<domain>.controller.ts` · 클래스 `<Domain>Controller`
+  - 큐(RabbitMQ) `controllers/<domain>.controller.queue.ts` · 클래스 `<Domain>QueueController`
+  - 게이트웨이(`apps/gateway/src/api/v1/<domain>/controllers/`): 동기는 `InternalHttpClient` 만, 큐(요청 단위 SSE)는 `CommandStreamService` 만 주입. 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<domain>')`, 도메인 모듈 `controllers: [<Domain>Controller, <Domain>QueueController]`. 테스트는 도메인 폴더 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts`.
+  - 서비스(`apps/<app>/src/<domain>/controllers/`): 동기는 `@Controller('/internal/v1/<domain>')` → 모듈 `controllers`. 큐는 `@Injectable` + `@OnCommand` provider → 모듈 `providers`(HTTP 컨트롤러가 아니다 — `CommandHandlerRegistry` 가 provider 를 스캔한다).
 
 **인프라 · 라이브러리 파일** — `<kebab-이름>.<role>.ts`: `internal-http.client.ts` · `command-stream.service.ts` · `command.dispatcher.ts` · `command-handler.registry.ts` · `rabbitmq-command.publisher.ts` · `on-command.decorator.ts` · `custom-error.filter.ts` · `internal-auth.guard.ts` · `job-lock/job-lock.service.ts` · `cors.config.ts`. 모듈 전용 util 은 `<module>.util.ts`(transport.util.ts · messaging.util.ts · seeder.util.ts). 전역 util 은 role 접미사 없이 `utils/<이름>.ts`. 이름에 점이 들어간 예외: `passport.jwt.auth.*` · `global.result.dto.ts`.
 
@@ -51,7 +51,7 @@
 **클래스명** — `<Domain><Feature><Role>`:
 - 요청 `UserSignDto` · path param `UserAuthUserParamDto` · 목록 query `XListDto`(PaginationDto 상속 — 미적용 규약)
 - 응답은 항상 `ResultDto`: `UserSignResultDto` (❌ `ResponseDto`)
-- 게이트웨이 controller `UserController`(동기) · `UserQueueController`(큐), 서비스 핸들러 `UserCommandHandler`, crontab `UserLeaveCleanupCrontab`
+- 게이트웨이 controller `UserController`(동기) · `UserQueueController`(큐), 서비스 큐 컨트롤러 `UserQueueController`(내부 HTTP 는 `UserController`), crontab `UserLeaveCleanupCrontab`
 
 **DTO 독립 명명**: 기능당 DTO 1개. 모양이 같아도(토큰 응답 4종 등) 독립 재선언하고 재사용 · alias 하지 않는다.
 
@@ -78,7 +78,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 |---|---|---|
 | 인증 + 입력 | `(@PassportActor() actor: Actor, @Body() dto: XDto, @Ip() ip: string, @Res() res: Response)` | `{type, actor, payload: dto, client_ip: ip}` |
 | 비인증 | `(@Body() dto: XDto, @Ip() ip: string, @Res() res: Response)` | `actor: null` 을 명시 |
-| 입력 없음 | `(@PassportActor() actor: Actor, @Ip() ip: string, @Res() res: Response)` | `payload: {}` — 서비스 핸들러는 `MessageEnvelope<Record<string, never>>` |
+| 입력 없음 | `(@PassportActor() actor: Actor, @Ip() ip: string, @Res() res: Response)` | `payload: {}` — 서비스 큐 컨트롤러는 `MessageEnvelope<Record<string, never>>` |
 
 **게이트웨이 동기 핸들러** — `(@Body() dto, @Ip() ip)` → `internalHttp.request<XResultDto>('user', 'POST', USER_INTERNAL_PATH.X, {body: dto, client_ip: ip})`.
 
@@ -100,7 +100,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 - **입력 DTO(`@Query`/`@Body`/`@Param`)의 모든 필드는 검증 데코레이터를 최소 1개** — 제약이 없어도 `@IsOptional()`. `@ApiProperty` 는 Swagger 메타데이터라 계산에 안 들어가고, 검증 데코레이터가 0개인 필드는 `whitelist: true` 를 켜는 순간 조용히 사라진다(class-validator `ValidationExecutor`). 현재 whitelist 는 꺼져 있지만 선제적으로 붙인다. 응답 `ResultDto` 는 파이프를 타지 않으므로 대상이 아니다(검증 데코레이터 0개, `@ApiProperty({description})` 만).
 - **`@ApiProperty`** — 요청 DTO 는 `{description}`, 선택 필드는 `required: false`, enum 은 `@IsIn` 과 같은 배열을 인라인으로 반복. 응답 DTO 의 nullable 필드는 `{nullable: true, type: String}`.
 - **ValidationPipe 설정은 바꾸지 않는다** — 각 앱 main.ts 의 `{transform: true, forbidNonWhitelisted: true, exceptionFactory: validationExceptionFactory}` 그대로. `whitelist` 는 켜지 않는다(선언 안 된 필드는 걸러지지 않는다).
-- **검증 위치**: 공개 입력은 게이트웨이 ValidationPipe 에서. 큐 경로 서비스 핸들러는 재검증하지 않는다. 내부 HTTP 는 서비스 전역 파이프가 같은 DTO 로 한 번 더 검증한다(방어).
+- **검증 위치**: 공개 입력은 게이트웨이 ValidationPipe 에서. 서비스 큐 컨트롤러는 재검증하지 않는다. 내부 HTTP 는 서비스 전역 파이프가 같은 DTO 로 한 번 더 검증한다(방어).
 - 근거: [user-sign.dto.ts](../libs/contracts/src/user/dto/user-sign.dto.ts), [user-login.dto.ts](../libs/contracts/src/user/dto/user-login.dto.ts).
 
 ## Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다 (미적용 규약)
@@ -155,12 +155,12 @@ return this.storeService.list(user_id, dto);
 
 - 인프라 · 공통 실패 메시지는 export 되는 `UPPER_SNAKE_MESSAGE` 상수다 — `AUTH_INVALID_MESSAGE` · `FORBIDDEN_MESSAGE` · `INTERNAL_ONLY_MESSAGE` · `ACTOR_REQUIRED_MESSAGE` · `SERVICE_UNAVAILABLE_MESSAGE` · `COMMAND_PENDING_MESSAGE` · `BROKER_UNAVAILABLE_MESSAGE` · `UNHANDLED_FAIL_MESSAGE` · `PAYLOAD_TOO_LARGE_MESSAGE` · `VALIDATION_FALLBACK_MESSAGE`.
 - repository 의 통일 500 문구는 파일 상수 `SERVER_ERROR_MESSAGE`(user.repository.ts:14).
-- service 의 비즈니스 메시지는 인라인 한국어 리터럴, 여러 번 쓰면 파일 상수(`UNDERAGE_MESSAGE`).
+- 비즈니스 메시지는 한 곳에서만 쓰면 throw 옆 인라인 한국어 리터럴. 반복되거나 여러 파일(service · repository)이 쓰면 도메인 `<domain>.constants.ts` 의 export `*_MESSAGE`(user.constants.ts — `UNDERAGE_MESSAGE` · `PHONE_TAKEN_MESSAGE` 등). 도메인 값 상수(`SMS_PURPOSE` · 한도 · `ACCOUNT_RECOVERY_STATES`)도 같은 파일이다.
 
 ## 로깅
 
 - 인프라 클래스만 `private readonly logger = new Logger(X.name)` 로 남긴다(command.dispatcher.ts · rabbitmq-*.ts · seeder.service.ts). 실행 스크립트는 `new Logger('Migration')`.
-- 도메인 계층(service · repository · crontab · controller · handler)은 로그를 남기지 않는다. `console.*` 0건.
+- 도메인 계층(service · repository · crontab · controller)은 로그를 남기지 않는다. `console.*` 0건.
 
 ## 기본 데이터(시드)
 
@@ -178,8 +178,8 @@ return this.storeService.list(user_id, dto);
 | `index.ts` barrel, 다른 앱 코드 import | 직접 경로, libs 로 이동 |
 | service 의 DataSource · `txHost` · `Repository<T>` 직접 사용 | repository 포트 |
 | service private 헬퍼 | util |
-| controller · handler 의 로직 · throw | service 위임 |
-| 한 게이트웨이 controller 에 동기 · 큐 라우트 혼합 | `<domain>.controller.ts` · `<domain>.controller.queue.ts` |
+| controller 의 로직 · throw | service 위임 |
+| 한 controller 파일에 동기 · 큐 혼합, `controllers/` 밖의 controller, `<domain>.handler.ts` | `controllers/<domain>.controller.ts` · `controllers/<domain>.controller.queue.ts` |
 | 내부 HTTP 경로 문자열 직접 사용 | `<domain>.commands.ts` 의 경로 상수 |
 | Swagger 응답 데코레이터의 `description` | `type` 만 |
 | 타임스탬프 직접 할당, `@CreateDateColumn`/`@UpdateDateColumn` | `@BeforeInsert`/`@BeforeUpdate` 훅 |

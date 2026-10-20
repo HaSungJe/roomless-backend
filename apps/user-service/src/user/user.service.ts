@@ -29,6 +29,25 @@ import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {SMS_SENDER} from '@app/integration/integration.symbols.js';
 import type {SmsSenderInterface} from '@app/integration/interfaces/integration.interface.js';
 import type {UserRepositoryInterface} from './interfaces/user.repository.interface.js';
+import {
+    ACCOUNT_NOT_FOUND_MESSAGE,
+    ACCOUNT_RECOVERY_STATES,
+    BLOCKED_ACCOUNT_MESSAGE,
+    INVALID_LOGIN_MESSAGE,
+    INVALID_TOKEN_MESSAGE,
+    NO_MATCHING_USER_MESSAGE,
+    PHONE_ALREADY_VERIFIED_MESSAGE,
+    PHONE_TAKEN_MESSAGE,
+    SMS_ATTEMPTS_EXCEEDED_MESSAGE,
+    SMS_CODE_MISMATCH_MESSAGE,
+    SMS_DAILY_LIMIT_MESSAGE,
+    SMS_MAX_ATTEMPTS,
+    SMS_PURPOSE,
+    SMS_STATE_MESSAGE,
+    SMS_VERIFICATION_NOT_FOUND_MESSAGE,
+    UNDERAGE_MESSAGE,
+    USER_NOT_FOUND_MESSAGE,
+} from './user.constants.js';
 import {USER_REPOSITORY} from './user.symbols.js';
 import {
     buildSmsVerification,
@@ -41,39 +60,10 @@ import {
     isAdult,
     issueAccessAndRefresh,
     kstDayStart,
-    SMS_MAX_ATTEMPTS,
-    SMS_PURPOSE,
     smsVerificationText,
     temporaryPasswordText,
     toUserAuthUserResult,
 } from './user.util.js';
-
-/** 만 18세 이하 가입 제한 메시지 */
-const UNDERAGE_MESSAGE = '입력하신 정보로는 서비스 이용이 제한됩니다. 생년월일을 다시 확인해 주세요.';
-
-/** 다른 계정이 이미 인증한 번호 (번호 1개 = 계정 1개) */
-const PHONE_TAKEN_MESSAGE = '이미 가입된 번호입니다.';
-
-/** 같은 번호 하루 발송 한도 초과 */
-const SMS_DAILY_LIMIT_MESSAGE = '오늘은 이 번호로 인증번호를 더 보낼 수 없습니다. 내일 다시 시도해주세요.';
-
-/** 확인할 인증 기록이 없을 때 — 인증 ID 가 틀렸거나 다른 회원 · 용도의 기록 */
-const SMS_VERIFICATION_NOT_FOUND_MESSAGE = '인증 정보를 찾을 수 없습니다. 인증번호를 다시 요청해주세요.';
-
-/** 인증 기록 상태별 거부 메시지 (checkSmsVerification) */
-const SMS_STATE_MESSAGE: Record<'USED' | 'EXPIRED', string> = {USED: '이미 사용한 인증번호입니다. 인증번호를 다시 요청해주세요.', EXPIRED: '인증번호가 만료되었습니다. 인증번호를 다시 요청해주세요.'};
-
-/** 확인 시도 한도 초과 */
-const SMS_ATTEMPTS_EXCEEDED_MESSAGE = '인증번호 입력 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.';
-
-/** 인증번호 불일치 */
-const SMS_CODE_MISMATCH_MESSAGE = '인증번호가 일치하지 않습니다.';
-
-/** 아이디 · 비밀번호 찾기에서 일치하는 회원이 없을 때 */
-const ACCOUNT_NOT_FOUND_MESSAGE = '일치하는 회원 정보가 없습니다.';
-
-/** 아이디 찾기 · 비밀번호 초기화 대상 상태 (탈퇴 완료 제외) */
-const ACCOUNT_RECOVERY_STATES = ['ACTIVE', 'BLOCK', 'LEAVE_WAIT'];
 
 /**
  * 회원 비즈니스 로직 (헥사고날의 안쪽).
@@ -263,12 +253,12 @@ export class UserService {
         // 1. 회원 조회 (ACTIVE / BLOCK 만)
         const user = await this.userRepository.findUser({sns_id: dto.sns_id, sns_user_id: dto.sns_user_id, state_id: In(['ACTIVE', 'BLOCK'])});
         if (!user) {
-            throw new NotFoundException({message: '잘못된 로그인 정보입니다.'});
+            throw new NotFoundException({message: INVALID_LOGIN_MESSAGE});
         }
 
         // 2. BLOCK 차단
         if (user.state_id === 'BLOCK') {
-            throw new HttpException({message: '이용이 제한된 계정입니다.', block_comment: user.block_comment}, HttpStatus.FORBIDDEN);
+            throw new HttpException({message: BLOCKED_ACCOUNT_MESSAGE, block_comment: user.block_comment}, HttpStatus.FORBIDDEN);
         }
 
         // 3. device 정보 입력 시 t_user 동기화 — 미입력이면 기존값 보존(null 초기화 ❌)
@@ -326,18 +316,18 @@ export class UserService {
         // 1. 회원 조회 (ACTIVE / BLOCK 만)
         const user = await this.userRepository.findUser({login_id: dto.login_id, state_id: In(['ACTIVE', 'BLOCK'])});
         if (!user) {
-            throw new NotFoundException({message: '잘못된 로그인 정보입니다.'});
+            throw new NotFoundException({message: INVALID_LOGIN_MESSAGE});
         }
 
         // 2. 비밀번호 검증 — 실패 시 미존재와 동일 404
         const matched = await matchBcrypt(dto.login_pw, user.login_pw);
         if (!matched) {
-            throw new NotFoundException({message: '잘못된 로그인 정보입니다.'});
+            throw new NotFoundException({message: INVALID_LOGIN_MESSAGE});
         }
 
         // 3. BLOCK 차단 (비밀번호 검증 후)
         if (user.state_id === 'BLOCK') {
-            throw new HttpException({message: '이용이 제한된 계정입니다.', block_comment: user.block_comment}, HttpStatus.FORBIDDEN);
+            throw new HttpException({message: BLOCKED_ACCOUNT_MESSAGE, block_comment: user.block_comment}, HttpStatus.FORBIDDEN);
         }
 
         // 4. device 정보 입력 시 t_user 동기화
@@ -400,29 +390,29 @@ export class UserService {
         try {
             payload = this.jwtService.verify(dto.refresh_token);
         } catch {
-            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+            throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
         if (payload.type !== 'refresh') {
-            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+            throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 
         // 2. DB 조회 (refresh_hash) + DB expires_at 만료 확인 (chain 재사용 차단)
         const refresh_hash = sha256Hex(dto.refresh_token);
         const oldRefresh = await this.userRepository.findSessionRefresh({refresh_hash});
         if (!oldRefresh) {
-            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+            throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
         if (oldRefresh.expires_at.getTime() < Date.now()) {
-            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+            throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 
         // 3. 세션 ip 체크 — 로그인 시점 저장 ip 와 불일치 시 거부(만료 단축 없음)
         const session = await this.userRepository.findSession({session_id: payload.session_id});
         if (!session) {
-            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+            throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
         if (session.ip && ip && session.ip !== ip) {
-            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+            throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 
         // 4. 회원 state 재검증 — 안전망: expires_at 단축
@@ -431,7 +421,7 @@ export class UserService {
             const expireEntity = new SessionRefreshEntity();
             expireEntity.expires_at = dayjs().add(1, 'minute').toDate();
             await this.userRepository.updateSessionRefresh({refresh_hash}, expireEntity);
-            throw new UnauthorizedException({message: '유효하지 않은 토큰입니다.'});
+            throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 
         // 5. old refresh 단축 (1분 후 만료)
@@ -470,7 +460,7 @@ export class UserService {
     async leave(user_id: string, dto: UserLeaveDto): Promise<void> {
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
-            throw new NotFoundException({message: '일치하는 회원이 없습니다.'});
+            throw new NotFoundException({message: NO_MATCHING_USER_MESSAGE});
         }
         if (user.state_id !== 'ACTIVE' && user.state_id !== 'BLOCK') {
             throw new BadRequestException({message: '탈퇴를 신청할 수 없는 상태입니다.'});
@@ -494,7 +484,7 @@ export class UserService {
     async cancelLeave(user_id: string): Promise<void> {
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
-            throw new NotFoundException({message: '일치하는 회원이 없습니다.'});
+            throw new NotFoundException({message: NO_MATCHING_USER_MESSAGE});
         }
         if (user.state_id !== 'LEAVE_WAIT') {
             throw new BadRequestException({message: '탈퇴 철회를 할 수 없는 상태입니다.'});
@@ -519,7 +509,7 @@ export class UserService {
         // 1. 대상 조회
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
-            throw new NotFoundException({message: '회원 정보를 찾을 수 없습니다.'});
+            throw new NotFoundException({message: USER_NOT_FOUND_MESSAGE});
         }
 
         // 2. 현재 비밀번호 검증
@@ -570,10 +560,10 @@ export class UserService {
         // 1. 회원 — 이미 인증했으면 다시 할 수 없다
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
-            throw new NotFoundException({message: '회원 정보를 찾을 수 없습니다.'});
+            throw new NotFoundException({message: USER_NOT_FOUND_MESSAGE});
         }
         if (user.phone_verified_at) {
-            throw new BadRequestException({message: '이미 휴대폰 인증을 마쳤습니다.'});
+            throw new BadRequestException({message: PHONE_ALREADY_VERIFIED_MESSAGE});
         }
 
         // 2. 번호 1개 = 계정 1개 — 다른 계정이 인증한 번호는 거부
@@ -609,10 +599,10 @@ export class UserService {
         // 1. 회원 — 이미 인증했으면 다시 할 수 없다
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
-            throw new NotFoundException({message: '회원 정보를 찾을 수 없습니다.'});
+            throw new NotFoundException({message: USER_NOT_FOUND_MESSAGE});
         }
         if (user.phone_verified_at) {
-            throw new BadRequestException({message: '이미 휴대폰 인증을 마쳤습니다.'});
+            throw new BadRequestException({message: PHONE_ALREADY_VERIFIED_MESSAGE});
         }
 
         // 2. 인증 기록 — 본인 · 휴대폰 인증 용도만. 사용함 · 만료

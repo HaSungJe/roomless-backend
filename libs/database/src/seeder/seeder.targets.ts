@@ -44,7 +44,7 @@ export const SNS_SEED_DATA: SnsEntity[] = [
     {sns_id: 'NAVER', sns_name: '네이버'},
 ];
 
-/** SMS 인증 용도(t_sms_purpose) 기본 데이터 — user.util.ts 의 SMS_PURPOSE 와 같다 */
+/** SMS 인증 용도(t_sms_purpose) 기본 데이터 — user.constants.ts 의 SMS_PURPOSE 와 같다 */
 export const SMS_PURPOSE_SEED_DATA: SmsPurposeEntity[] = [
     {sms_purpose_id: 'PHONE_VERIFY', sms_purpose_name: '휴대폰 인증'},
     {sms_purpose_id: 'FIND_LOGIN_ID', sms_purpose_name: '아이디 찾기'},

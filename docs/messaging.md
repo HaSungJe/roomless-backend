@@ -11,7 +11,7 @@ Client          Gateway                       RabbitMQ                      user
   │               │ request_id 발급, 스트림 등록    │                              │
   │               │── publish(confirm) ─────────▶│ roomless.cmd                 │
   │               │   rk=user.member.sign        │  └▶ q.user.cmd (quorum) ────▶│ CommandDispatcher
-  │◀─ 200 event-stream                           │                              │  → @OnCommand handler
+  │◀─ 200 event-stream                           │                              │  → @OnCommand (큐 컨트롤러)
   │◀─ event: accepted {request_id}               │                              │  → UserService
   │               │                              │◀── publish ──────────────────│ result.<gw>.user.member.sign.done
   │               │◀── q.gw.result.<gw> ─────────│ roomless.event               │ ack
@@ -116,8 +116,8 @@ AMQP 속성에도 `messageId` · `correlationId`(=request_id) · `replyTo` · `t
 ## 명령 추가 절차
 
 1. `libs/contracts/src/<domain>/<domain>.commands.ts` — `<DOMAIN>_COMMAND.<X>: '<server>.<resource>.<action>'` (+ 새 서비스면 큐 이름 · 바인딩 키).
-2. 서비스 `<domain>.handler.ts` — `@OnCommand(<DOMAIN>_COMMAND.X)` 메서드에서 service 로 위임만. 로그인 필요 명령은 `requireActor(command).user_id`, IP 는 `command.meta.client_ip ?? ''`.
-3. 게이트웨이 `<domain>.controller.queue.ts` — `@Res() res` + `await this.commandStream.dispatch(res, {type, actor, payload: dto, client_ip: ip})`(비인증은 `actor: null`, 입력 없는 명령은 `payload: {}`), Swagger `@ApiProduces('text/event-stream')`.
+2. 서비스 `controllers/<domain>.controller.queue.ts` — `@OnCommand(<DOMAIN>_COMMAND.X)` 메서드에서 service 로 위임만. 로그인 필요 명령은 `requireActor(command).user_id`, IP 는 `command.meta.client_ip ?? ''`.
+3. 게이트웨이 `controllers/<domain>.controller.queue.ts` — `@Res() res` + `await this.commandStream.dispatch(res, {type, actor, payload: dto, client_ip: ip})`(비인증은 `actor: null`, 입력 없는 명령은 `payload: {}`), Swagger `@ApiProduces('text/event-stream')`.
 4. 테스트 — 서비스: `runCommand()` 로 done/failed · ack/requeue/dead, 게이트웨이: FakeBroker 로 이벤트 순서([testing.md](testing.md)).
 
 ## 운영 메모

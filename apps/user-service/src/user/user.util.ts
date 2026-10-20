@@ -7,21 +7,7 @@ import {extractJwtExpiresAt} from '@app/common/utils/jwt.js';
 import {UserAuthUserResultDto} from '@app/contracts/user/dto/user-auth-user.dto.js';
 import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import type {LoginUserRow} from './interfaces/user.repository.interface.js';
-
-/** SMS 인증 용도 — t_sms_purpose PK (seeder.targets.ts 의 SMS_PURPOSE_SEED_DATA 와 같다) */
-export const SMS_PURPOSE = {PHONE_VERIFY: 'PHONE_VERIFY', FIND_LOGIN_ID: 'FIND_LOGIN_ID', PASSWORD_RESET: 'PASSWORD_RESET'} as const;
-
-/** 인증번호 유효 시간(분) */
-export const SMS_CODE_TTL_MINUTES = 5;
-
-/** 인증번호 1건당 확인 시도 한도 */
-export const SMS_MAX_ATTEMPTS = 3;
-
-/** 같은 번호 하루 발송 한도 기본값 — env SMS_VERIFICATION_DAILY_LIMIT 가 없거나 잘못됐을 때 */
-export const DEFAULT_SMS_DAILY_LIMIT = 10;
-
-/** 임시 비밀번호 길이 */
-export const TEMPORARY_PASSWORD_LENGTH = 10;
+import {DEFAULT_SMS_DAILY_LIMIT, SMS_CODE_TTL_MINUTES, TEMPORARY_PASSWORD_LENGTH} from './user.constants.js';
 
 /** 한국 표준시 오프셋(ms) — 서머타임 없음 */
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;

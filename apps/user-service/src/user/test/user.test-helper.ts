@@ -14,8 +14,8 @@ import {CommandDispatcher, DispatchDecision} from '@app/messaging/command.dispat
 import {SMS_SENDER} from '@app/integration/integration.symbols.js';
 import {buildCommandEnvelope, encodeEnvelope} from '@app/messaging/messaging.util.js';
 import type {UserRepositoryInterface} from '../interfaces/user.repository.interface.js';
-import {UserController} from '../user.controller.js';
-import {UserCommandHandler} from '../user.handler.js';
+import {UserController} from '../controllers/user.controller.js';
+import {UserQueueController} from '../controllers/user.controller.queue.js';
 import {UserService} from '../user.service.js';
 import {USER_REPOSITORY} from '../user.symbols.js';
 
@@ -84,7 +84,7 @@ export function createJwtServiceMock(accessToken: string, refreshToken: string):
 }
 
 /**
- * 큐 경로 부팅 — 실제 UserCommandHandler · UserService · CommandHandlerRegistry · CommandDispatcher 에 repository · JwtService · SMS 포트만 mock.
+ * 큐 경로 부팅 — 실제 UserQueueController · UserService · CommandHandlerRegistry · CommandDispatcher 에 repository · JwtService · SMS 포트만 mock.
  *
  * @param repo repository mock
  * @param jwt JwtService mock
@@ -96,7 +96,7 @@ export async function bootCommandPath(repo: UserRepositoryMock, jwt: JwtServiceM
         imports: [DiscoveryModule],
         providers: [
             UserService,
-            UserCommandHandler,
+            UserQueueController,
             CommandHandlerRegistry,
             CommandDispatcher,
             {provide: USER_REPOSITORY, useValue: repo},

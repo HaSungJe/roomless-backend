@@ -7,7 +7,7 @@ import {COMMAND_PUBLISHER, GATEWAY_INSTANCE_ID, RESULT_SUBSCRIBER} from '@app/me
 import {PassportJwtAuthGuard} from '../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
 import {CommandStreamService} from '../../../../modules/transport/command-stream.service.js';
 import {FakeBroker, parseSse, replyDone, replyFailed} from '../../../../modules/transport/test/fake-broker.js';
-import {UserQueueController} from '../user.controller.queue.js';
+import {UserQueueController} from '../controllers/user.controller.queue.js';
 
 const LOGIN_USER = {
     user_id: 'u'.repeat(32),
@@ -148,8 +148,8 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
     });
 
     describe('SMS 인증 · 아이디 찾기 · 비밀번호 초기화', () => {
-        const SEND_RESULT = {sms_verification_id: 'v'.repeat(32), expires_at: '2026-01-01T00:05:00.000Z'};
-        const CONFIRM = {sms_verification_id: 'v'.repeat(32), code: '123456'};
+        const SEND_RESULT = {sms_verification_id: 'a'.repeat(32), expires_at: '2026-01-01T00:05:00.000Z'};
+        const CONFIRM = {sms_verification_id: 'a'.repeat(32), code: '123456'};
 
         it.each([
             ['/api/v1/user/phone-verification', {phone: '01012345678'}, 'user.member.phone-verification', SEND_RESULT],

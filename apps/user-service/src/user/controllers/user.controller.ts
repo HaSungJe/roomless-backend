@@ -4,7 +4,7 @@ import {UserAuthUserParamDto, UserAuthUserResultDto} from '@app/contracts/user/d
 import {UserGeneralLoginDto, UserGeneralLoginResultDto} from '@app/contracts/user/dto/user-general-login.dto.js';
 import {UserLoginDto, UserLoginResultDto} from '@app/contracts/user/dto/user-login.dto.js';
 import {UserTokenRefreshDto, UserTokenRefreshResultDto} from '@app/contracts/user/dto/user-token-refresh.dto.js';
-import {UserService} from './user.service.js';
+import {UserService} from '../user.service.js';
 
 /**
  * 회원 내부 HTTP 인바운드 어댑터 — 게이트웨이의 동기 경로만 받는다(외부 비공개, Swagger 없음).
