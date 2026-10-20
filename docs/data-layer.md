@@ -152,10 +152,11 @@ export class UserRepository implements UserRepositoryInterface {
 
 ## Pagination / 목록 조회 (미적용 규약)
 
-> 현재 목록 API · `PaginationDto` · `Pagination` · `@Query()` 모두 0건. 첫 목록 API 에서 공통 `PaginationDto` · `Pagination` util 을 `libs/common` 에 만들고 이 형태를 따른다. Query DTO 생성자 규칙은 [conventions.md](conventions.md).
+> 현재 목록 API · `@Query()` 0건. 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts`)은 있다 — 첫 목록 API 에서 이 형태를 따른다. Query DTO 생성자 규칙은 [conventions.md](conventions.md).
 
 - 응답 `{list, pagination}`.
 - 순서 **count → `Pagination` → 목록** — `Pagination` 이 `total_count` 로 `limit`/`offset` 을 산출한다. repository 는 `countX(where)` 와 `findXList(where, limit, offset)` 두 메서드로 둔다(`findAndCount` ❌).
+- 쓰는 모양: `const pagination = new Pagination({...dto, total_count});` → `findXList(where, pagination.limit, pagination.offset)` → `{list, pagination: pagination.getPagination()}`.
 - Query DTO 는 `extends PaginationDto`(기본값은 부모 생성자).
 - 검색 WHERE 는 도메인 util 이 `FindOptionsWhere<X>` 로 조립(통합검색은 배열 = OR), repository 는 실행만. `Like()` · 관계 필드 where 를 쓰면 Data-Access Smoke 대상이다.
 - 기본 필터 `is_delete = 0`, 정렬 `create_at DESC`.

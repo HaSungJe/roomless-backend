@@ -13,6 +13,7 @@ roomless-backend — 무인 객실 대여 서비스 백엔드. 규칙은 지금 
 - **스키마 반영을 구현 차단 조건으로 걸지 않는다** — 기획의 사전 조건(Prerequisites)에 "DB 스키마 반영" 을 build 를 막는 항목으로 두지 않는다. build · 테스트는 DB 없이 통과하므로 막을 이유가 없다.
 - 예외 — Claude 가 Bash 로 직접 실행해 검증한다: `npm test` · `npm run typecheck` · `npm run build` · `npm run lint` · `npm run db:check` · `npm run db:generate`.
 - **`.back/` 은 NestJS 11 + TypeORM 0.3 시절 코드 보관소** — 참고만 한다. 수정 · import 금지(tsconfig · Vitest 에서 제외돼 있다). git 에서도 제외(`.gitignore` 의 `.back`)된 로컬 전용 폴더라 다른 PC 에는 없다 — 원본은 커밋 e108425 까지의 기록에 남아 있다.
+- **README.md 는 변경마다 같이 갱신한다** — 코드 · 설정 · 구조 · 명령 · 실행 방법 · 외부 연동이 바뀌는 작업은 README.md 도 같은 변경에서 고친다(같은 커밋). 기획 문서(plan 파일 목록 · report)에도 README.md 를 적는다.
 
 ## 커밋 메시지
 
@@ -43,13 +44,14 @@ libs/
 ├── common/       # 실패 응답 DTO · toFailResult · 예외 필터 · ValidationPipe 팩토리 · 순수 util · 내부 요청 가드
 ├── contracts/    # 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type · 큐 · 바인딩 · 내부 HTTP 경로 상수, 메시지 봉투, Actor, 내부 헤더, SSE 이벤트
 ├── database/     # entities/<domain>/ · entities.ts · migrations/ · migrations.ts · DatabaseModule · JobLockService · typeorm-error · seeder
+├── integration/  # 외부 연동 포트 — SMS 발송(SMS_SENDER · Amazon SNS) · 파일 저장(STORAGE_GATEWAY · S3) · SmsModule · StorageModule(전역)
 └── messaging/    # RabbitMQ 연결 · 발행 · 소비 · @OnCommand · CommandDispatcher
 scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker-network.mjs · check-broker-acl.mjs
 ```
 
 - **모노레포 ≠ 모놀리스**: 앱마다 `nest build <app>` 으로 따로 빌드 · 배포 · 확장한다. 공유 코드는 libs 한 곳에서 import. 앱끼리는 서로 import 하지 않는다.
 - **두 전달 경로**: 즉시 끝나는 요청(조회 · 로그인 · 토큰 재발급 · 게이트웨이 인증 조회)은 게이트웨이 → 서비스 **내부 HTTP**(동기), 상태를 바꾸는 쓰기는 **RabbitMQ 명령 → 결과 이벤트 → 요청 단위 SSE**. 어느 라우트가 어느 경로인지는 게이트웨이 controller 파일로 정한다.
-- **헥사고날 경계(포트·어댑터)**: 인바운드 어댑터 controller · `@OnCommand` handler 는 service 로 위임만 하고, service 는 아웃바운드 포트(repository 인터페이스 Symbol 토큰)와 프레임워크 서비스(`JwtService`)만 안다. 같은 service 를 HTTP 와 RabbitMQ 양쪽에서 부른다. **crontab 은 예외** — API 가 아니므로 service 를 거치지 않고 repository 포트를 직접 쓴다. 폴더 배치(api · guards · modules · config)는 헥사고날과 무관한 정리 기준이다. 순수 도메인 객체 분리(클린 아키텍처)는 하지 않는다.
+- **헥사고날 경계(포트·어댑터)**: 인바운드 어댑터 controller · `@OnCommand` handler 는 service 로 위임만 하고, service 는 아웃바운드 포트(repository · 외부 연동 인터페이스 Symbol 토큰)와 프레임워크 서비스(`JwtService`)만 안다. 같은 service 를 HTTP 와 RabbitMQ 양쪽에서 부른다. **crontab 은 예외** — API 가 아니므로 service 를 거치지 않고 repository 포트를 직접 쓴다. 폴더 배치(api · guards · modules · config)는 헥사고날과 무관한 정리 기준이다. 순수 도메인 객체 분리(클린 아키텍처)는 하지 않는다.
 - 레이어: **controller/handler → service → repository**, **crontab → repository**, 단방향. repository 만 TypeORM(`txHost.tx`)을 쓴다.
 - **엔티티는 `libs/database/src/entities/<domain>/`** — 공유 DB 단계라 여러 앱이 같은 엔티티를 쓰므로 앱이 아니라 공용 라이브러리 안의 소유 도메인 폴더에 둔다.
 - **도메인 간 데이터 접근**: 다른 도메인 테이블이 필요하면 소유 도메인의 repository 가 그 엔티티를 직접 다룬다(service→service ❌). 메서드명은 소유 도메인 어휘(예: `t_user` 를 다뤄도 store 에서는 `insertStaff`).
@@ -59,7 +61,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 ## Conventions
 
 - **ESM**: 상대 · alias import 는 **`.js` 확장자 필수**(`./user.service.js`, `@app/common/utils/jwt.js`). 패키지 import 는 확장자 없음 — 단, exports 맵 없는 패키지 하위 경로를 깊게 가져오면 `.js`(`dayjs/plugin/customParseFormat.js`). Node 내장은 `node:` 접두. 타입만 쓰는 import 는 `import type`. CJS 패키지는 default import(`import bcrypt from 'bcrypt'`). `__dirname`/`require` ❌.
-- **Import alias**: 앱 간 공유는 `@app/<lib>/<경로>.js`(`@app/common` · `@app/contracts` · `@app/database` · `@app/messaging`). 앱 · 도메인 내부는 상대경로. 라이브러리 안은 현재 혼재(`libs/common` 만 자기 alias) — 그 라이브러리의 기존 방식을 따른다. barrel(`index.ts`) 없음.
+- **Import alias**: 앱 간 공유는 `@app/<lib>/<경로>.js`(`@app/common` · `@app/contracts` · `@app/database` · `@app/integration` · `@app/messaging`). 앱 · 도메인 내부는 상대경로. 라이브러리 안은 현재 혼재(`libs/common` 만 자기 alias) — 그 라이브러리의 기존 방식을 따른다. barrel(`index.ts`) 없음.
 - **게이트웨이 폴더**: 공개 라우트 `src/api/v1/<domain>/`, 가드 `src/guards/<guard>/`, 인프라 `src/modules/<module>/`, 부트스트랩 설정 함수 `src/config/`.
 - **게이트웨이 공개 controller 는 전달 경로별 2파일**: 동기(내부 HTTP) 라우트는 `<domain>.controller.ts` 의 `<Domain>Controller`(`InternalHttpClient` 만 주입), 큐(RabbitMQ + 요청 단위 SSE) 라우트는 `<domain>.controller.queue.ts` 의 `<Domain>QueueController`(`CommandStreamService` 만 주입). **한 파일에 두 경로를 섞지 않는다.** 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<domain>')` 를 쓰고, 도메인 모듈 `controllers` 에 `[동기, 큐]` 순으로 등록한다. 테스트도 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts` 로 나누고, 다른 경로의 라우트가 404 인지 단언한다. (user-service 는 이미 controller(내부 HTTP) · handler(RabbitMQ) 로 나뉘어 대상이 아니다)
 - **파일명**: 도메인 레이어 `<domain>.<role>.ts`(`user.controller.ts`, `user.handler.ts`, `user.symbols.ts`), 인프라 · 라이브러리 `<kebab-이름>.<role>.ts`(`internal-http.client.ts`, `command.dispatcher.ts`), 전역 util `utils/<이름>.ts`, DTO kebab `<domain>-<feature>.dto.ts`, 엔티티 kebab `<feature>.entity.ts`, crontab `<domain>-<feature>.crontab.ts`. 클래스 `<Domain><Feature><Role>`(서비스 핸들러 `<Domain>CommandHandler`) — 응답은 항상 `ResultDto`(❌ `ResponseDto`).
@@ -84,7 +86,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 ## 공통 로직 분리
 
-- **순수 함수(stateless) → util**: 전역 `libs/common/src/utils/*.ts`(`bcrypt` · `hash` · `cipher` · `jwt` · `validation` · `fail-result` · `retry`), 도메인 전용 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. `@Injectable` 없이 named `function` export. 파일 전용 헬퍼(export 안 함)는 인프라 · util 파일에만.
+- **순수 함수(stateless) → util**: 전역 `libs/common/src/utils/*.ts`(`bcrypt` · `hash` · `cipher` · `jwt` · `validation` · `fail-result` · `retry` · `pagination`), 도메인 전용 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. `@Injectable` 없이 named `function` export — `pagination.ts` 의 `Pagination` 만 계산 결과를 들고 다니는 값 객체라 class 다. 파일 전용 헬퍼(export 안 함)는 인프라 · util 파일에만.
 - **DI/lifecycle/외부연동 → `@Module`/`@Injectable`**: 여러 앱이 쓰는 인프라는 `libs/`, 앱 전용은 그 앱 안(`src/modules/`).
 - **로깅**: 인프라 클래스만 `private readonly logger = new Logger(X.name)`. 도메인 계층(service · repository · crontab · controller · handler)은 로그를 남기지 않는다. `console.*` 금지.
 
@@ -96,7 +98,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - **입력 DTO 의 모든 필드에 검증 데코레이터 최소 1개**(없으면 `@IsOptional()`) — whitelist 를 켜면 무장식 필드가 조용히 사라진다. 응답 ResultDto 는 대상 아님.
 - **검증 위치**: 공개 입력은 게이트웨이의 ValidationPipe 에서 1회. 큐 경로 서비스 핸들러는 다시 검증하지 않는다(내부 HTTP 컨트롤러는 같은 DTO 로 한 번 더 검증 — 방어).
 - 전역 ValidationPipe 는 `transform: true` + `forbidNonWhitelisted: true` + `exceptionFactory: validationExceptionFactory`(main.ts · spec 공용) — **설정을 바꾸지 않는다**. `whitelist` 는 켜지 않는다 — 그래서 선언 안 된 필드는 걸러지지 않는다.
-- **`@Query()` DTO (미적용 규약 — 첫 목록 API 에서 적용)**: 생성자를 세트로 갖고, 컨트롤러가 `const dto = new 클래스명(query);` 로 지역변수를 만들어 넘긴다(호출부 `new` 인라인 ❌ · 필드 하나씩 대입 ❌ · 앞선 인자가 있으면 dto 는 마지막). **생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — 파이프가 `new targetType()` 을 인자 없이 호출해 필수면 매 요청 500, 컴파일에서 안 잡힌다. 페이지 기본값은 `PaginationDto` 생성자(하위 util 의 NaN 폴백에 맡기지 않는다), 기능별 Query DTO 는 `super(data)` 후 자기 필드만(부모 필드 재선언 ❌). 쿼리 값은 문자열이다. `@Body()`/`@Param()` 은 해당 없음. 전체 조항 → [docs/conventions.md](docs/conventions.md).
+- **`@Query()` DTO (미적용 규약 — 첫 목록 API 에서 적용)**: 생성자를 세트로 갖고, 컨트롤러가 `const dto = new 클래스명(query);` 로 지역변수를 만들어 넘긴다(호출부 `new` 인라인 ❌ · 필드 하나씩 대입 ❌ · 앞선 인자가 있으면 dto 는 마지막). **생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — 파이프가 `new targetType()` 을 인자 없이 호출해 필수면 매 요청 500, 컴파일에서 안 잡힌다. 페이지 기본값은 `PaginationDto` 생성자(`libs/common/src/dto/pagination.dto.ts` 의 `PAGINATION_DEFAULTS` — 하위 util 의 NaN 폴백에 맡기지 않는다), 기능별 Query DTO 는 `super(data)` 후 자기 필드만(부모 필드 재선언 ❌). 쿼리 값은 문자열이다. `@Body()`/`@Param()` 은 해당 없음. 전체 조항 → [docs/conventions.md](docs/conventions.md).
 
 → 상세: [docs/conventions.md](docs/conventions.md)
 
@@ -127,7 +129,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - **엔티티** `libs/database/src/entities/<domain>/<feature>.entity.ts`, `ENTITIES`(entities.ts)에 등록: 테이블 **`t_<feature snake>`**(`t_user_setting`), `@Entity({name, comment})`, 제약 PascalCase(`primaryKeyConstraintName: 'PK_<Model>'` · `@Unique('UK_<Model>_<Cols>')` · `@JoinColumn({foreignKeyConstraintName: 'FK_<Model>_<Target>'})` · `@Index('IDX_…')`), 컬럼 이름 명시(`@Column({name})`), **모든 컬럼 `comment`**(→ DB COMMENT), 타임스탬프 `@BeforeInsert`/`@BeforeUpdate` 훅 `insertTimestamp()`/`updateTimestamp()`(❌ `@CreateDateColumn`), 시각 `timestamptz`(기존 예외 `leave_reserved_at` 문자열), 플래그 `smallint`. FK 는 문자열 속성 + `@ManyToOne(() => X, {nullable, onUpdate: 'CASCADE', onDelete: nullable ? 'RESTRICT' : 'CASCADE'})` + `@JoinColumn`(관계 속성을 엔티티 타입으로 두지 않는다 — ESM 순환 import 회피, 역방향 관계 없음). 룩업 엔티티는 구조 컬럼만.
 - **repository**: `TransactionHost<TransactionalAdapterTypeOrm>` 주입, `this.txHost.tx.getRepository(XEntity)` 를 private getter 로 감싸 접근. 조회 `findOne`/`find` + `loadRelationIds: true`, 쓰기 `insert(entity)` · `update(where, entity)`(엔티티 인스턴스라야 훅이 돈다). where 타입 `FindOptionsWhere<XEntity>`(❌ `Partial`). 조인 · raw select 는 QueryBuilder 빌더 메서드(public, 포트 인터페이스 밖)로 분리하고 Data-Access Smoke spec 으로 SQL 고정.
 - **마이그레이션**: 스키마는 마이그레이션으로만 바꾼다(`synchronize` 항상 off, 목록 테이블 `t_migration`). 엔티티 수정 → `npm run db:generate -- <Name>`(DB 없이 PGlite 로 계산해 `libs/database/src/migrations/<ts>-<Name>.ts` 생성 + `MIGRATIONS` 등록, COMMENT 변경 포함) → `npm run db:check` 로 일치 확인 → 적용은 사용자(`db:migrate` 또는 Docker migrate 컨테이너).
-- **Pagination (미적용 규약)**: 응답 `{list, pagination}`, 순서 **count → `Pagination` → 목록**, repository 는 개수 · 목록 두 메서드(`findAndCount` ❌). Query DTO 는 `extends PaginationDto`. 공통 `PaginationDto` · `Pagination` 은 첫 목록 API 에서 `libs/common` 에 만든다.
+- **Pagination (미적용 규약 — 자산은 있음, 사용처 0)**: 응답 `{list, pagination}`, 순서 **count → `Pagination` → 목록**, repository 는 개수 · 목록 두 메서드(`findAndCount` ❌). Query DTO 는 `extends PaginationDto`. 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts` — `limit` · `offset` · `getPagination()`)을 쓴다: `new Pagination({...dto, total_count})`.
 
 → 상세: [docs/data-layer.md](docs/data-layer.md)
 
@@ -156,8 +158,15 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 ## Key Patterns
 
-- **Repository DI**: Symbol 토큰(`<domain>.symbols.ts`) + 모듈 `{provide: TOKEN, useClass: XRepository}` + service `@Inject(TOKEN) … : XRepositoryInterface`(인터페이스는 `import type`). 메시징 포트(`COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`)도 같은 패턴.
-- **전역 모듈**: `TransportModule`(게이트웨이) · `DatabaseModule` · `MessagingModule` 은 전역이라 도메인 모듈은 import 없이 주입받는다.
+- **Repository DI**: Symbol 토큰(`<domain>.symbols.ts`) + 모듈 `{provide: TOKEN, useClass: XRepository}` + service `@Inject(TOKEN) … : XRepositoryInterface`(인터페이스는 `import type`). 메시징 포트(`COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) · 외부 연동 포트(`SMS_SENDER` · `STORAGE_GATEWAY`)도 같은 패턴.
+- **전역 모듈**: `TransportModule`(게이트웨이) · `DatabaseModule` · `MessagingModule` · `SmsModule` · `StorageModule` 은 전역이라 도메인 모듈은 import 없이 주입받는다.
+- **외부 연동 (미적용 규약 — 첫 사용처 Phase 5)**:
+  - **mock · 가짜 어댑터를 두지 않는다.** 실제 서비스 어댑터 + 세팅 가이드(`docs/guides/`)로 만들고, 세팅 전에는 `.env` 값이 비어 요청만 실패한다(부팅은 된다).
+  - 발송은 SMS 하나다 — `SMS_SENDER.send({to, text})`(Amazon SNS). 이메일 · 알림톡 · 푸시는 쓰지 않는다.
+  - 사진은 `STORAGE_GATEWAY`(S3)의 presigned URL 로 올린다. 파일 본문은 게이트웨이 · 브로커를 거치지 않는다.
+  - 포트를 쓰는 앱 루트 모듈이 `SmsModule` · `StorageModule` 중 필요한 것을 import 한다.
+  - 외부 실패는 어댑터가 503(`SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE`)으로 던지고, service 는 잡지 않는다. 재시도되면 다시 나가므로 발송은 명령의 마지막 단계에 둔다.
+  - → 상세: [docs/integration.md](docs/integration.md) · AWS 세팅: [docs/guides/aws-setup.md](docs/guides/aws-setup.md)
 - **Transaction**: service 쓰기 메서드에 `@Transactional()`, repository 는 `txHost.tx`. DB 를 쓰는 앱 루트 모듈은 `DatabaseModule`(TypeOrmModule + ClsModule `TransactionalAdapterTypeOrm` + `JobLockService`)을 import 한다.
 - **기본 데이터 시드**: `libs/database/src/seeder/seeder.targets.ts` 의 `<X>_SEED_DATA` + `SEED_TARGETS` 를 DB 소유 서비스(user-service)의 `SeederService` 가 부팅 시 PK 기준 멱등 입력. 시드 행은 객체 리터럴 허용(유일 예외). DTO 허용값(`@IsIn`)은 모두 시드에 있어야 한다.
 - **Docker 실행 — 묶음 4개를 따로**: `compose.postgres.yml` · `compose.rabbitmq.yml`(+rabbitmq-init 브로커 계정 · 권한) · `compose.user-service.yml`(migrate 1회 → user-service × `USER_SERVICE_REPLICAS` → user-service-lb) · `compose.gateway.yml`(gateway × `GATEWAY_REPLICAS` → gateway-lb, 호스트 `GATEWAY_PORT`). 각자 띄우고 내리며(`npm run docker:<묶음>`, 전체는 `docker:up`), 묶음끼리는 `npm run docker:network` 가 만든 공용 external 네트워크(`roomless-edge` · `roomless-service`(internal) · `roomless-broker` · `roomless-data`)에서 서비스 이름으로 만난다. gateway · user-service 는 **로드밸런싱 전제** — 앞단 nginx(1.28, upstream `resolve` 로 `--scale` 을 재시작 없이 따라감), 큐 명령은 경쟁 소비, 결과는 `reply_to` 인스턴스로(sticky session 불필요), crontab 은 JobLockService. 그래서 앱 코드는 인스턴스 로컬 상태(메모리 캐시 · 세션 등)에 기대지 않는다.
@@ -167,8 +176,8 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 - **Vitest 4** + `@nestjs/testing` + `supertest`. `globals: true` — spec 은 describe · it · expect · vi 를 import 하지 않는다. 위치는 **대상 코드 옆 `test/` 폴더**(`apps/<app>/src/<domain>/test/<domain>-<feature>.spec.ts`, 게이트웨이 `api/v1/<domain>/test/` · `guards/test/` · `config/test/` · `modules/<m>/test/`, 라이브러리 `libs/<lib>/src/**/test/`). 실행 `npm test`, 단일 `npm test -- <파일 경로 일부>`.
 - 전역 setup([vitest.setup.ts](vitest.setup.ts)): `@Transactional()` pass-through mock + Nest 로거 끔. spec 마다 반복하지 않는다.
-- **큐 경로**: 실제 handler · service · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅(`DiscoveryModule` + `module.init()` 필수)하고 **repository(Symbol 토큰) · `JwtService` 만 mock** 주입, 봉투를 `dispatcher.dispatch()` 에 넣어 판정(ack/requeue/dead)과 done/failed 결과를 단언.
-- **동기 경로**: 실제 controller + service + ValidationPipe + 필터 + 전역 InternalAuthGuard 부팅, repository · JwtService 만 mock.
+- **큐 경로**: 실제 handler · service · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅(`DiscoveryModule` + `module.init()` 필수)하고 **repository · 외부 연동 포트(Symbol 토큰) · `JwtService` 만 mock** 주입, 봉투를 `dispatcher.dispatch()` 에 넣어 판정(ack/requeue/dead)과 done/failed 결과를 단언.
+- **동기 경로**: 실제 controller + service + ValidationPipe + 필터 + 전역 InternalAuthGuard 부팅, repository · 외부 연동 포트 · JwtService 만 mock.
 - **게이트웨이**: controller 2파일과 짝인 spec 2개 — 동기는 InternalHttpClient mock, 큐는 가짜 브로커(FakeBroker)로 SSE 이벤트 순서를 실제 HTTP 로 단언. 다른 경로 라우트 404 단언.
 - 외부 util 은 `vi.mock('<alias 경로>.js', ...)` + `vi.mocked(fn).mockReturnValue`(ESM 이라 `spyOn(모듈)` 불가), 외부 패키지는 `vi.hoisted` + `vi.mock`. 시간은 날짜만 필요하면 `vi.useFakeTimers({toFake: ['Date']})`, 타이머 의존 로직은 전체 `vi.useFakeTimers()`.
 - 강도: 상태코드만 검사 금지 — mock 호출 횟수 · 인자(쓰기는 엔티티 컬럼 값, `toBeInstanceOf(XEntity)`) · 실패 후 `.not.toHaveBeenCalled()` 까지. 메시지는 한국어 리터럴. `[SUCCESS]`/`[FAIL:*]`/`[SKIP]`/`[SECURITY]` 등 분류 태그를 describe 또는 it 제목에. **실 DB · 브로커 · 외부 IO 금지.**
@@ -194,5 +203,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - [ ] Swagger: 공개 핸들러 필수, 큐 핸들러는 `@ApiProduces('text/event-stream')`, 응답 데코레이터는 `type` 만
 - [ ] 메시징: 명령 type 은 contracts, 서비스 handler 는 `@OnCommand` + 위임만, 로그인 필요 명령은 `requireActor()`
 - [ ] 여러 인스턴스 전제: crontab 은 운영 가드 + `JobLockService.runExclusive`, 인스턴스 메모리에 상태를 두지 않는다
+- [ ] 외부 연동: mock · 가짜 어댑터 없음(실제 어댑터 + `docs/guides/` 가이드), 발송은 `SMS_SENDER` 하나(이메일 · 알림톡 · 푸시 ❌), 파일은 `STORAGE_GATEWAY` presigned URL(파일 본문을 게이트웨이 · 브로커로 보내지 않음), 발송은 명령의 마지막 단계
+- [ ] README.md: 코드 · 설정 · 구조 · 명령 · 실행 방법이 바뀌었으면 같은 변경에서 갱신
 - [ ] 응답 필드 생략 금지 — 없으면 `null`
 - [ ] 테스트: repository · JwtService mock, 호출 횟수 · 인자 · 미호출 단언, 한국어 리터럴, 매핑 민감 쿼리는 Smoke, `npm test` + `npm run typecheck` 통과

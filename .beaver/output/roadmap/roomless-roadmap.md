@@ -1,4 +1,4 @@
-# Roadmap — roomless (무인 객실 대여 플랫폼 — 입점 업체가 객실을 운영하고 이용자가 지도에서 찾아 예약 · QR 입장 · 이용)
+# Roadmap — roomless (무인 객실 대여 플랫폼 — 입점 업체가 객실을 운영하고 이용자가 지도에서 찾아 예약 · QR 입장 · 이용)in-progress |in-progress |in-progress |in-progress |
 
 ## Direction
 
@@ -9,7 +9,7 @@
 ```mermaid
 flowchart LR
   P1["Phase 1 · MSA 기반 (9)"]:::done --> P2["Phase 2 · 회원 기반 (7)"]:::done
-  P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::todo
+  P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::inprog
   P2 --> P4["Phase 4 · 회원 스키마 확장 (3)"]:::todo
   P1 --> P6["Phase 6 · admin-service 기반 (4)"]:::todo
   P1 --> P7["Phase 7 · store 스키마 (5)"]:::todo
@@ -50,7 +50,7 @@ flowchart LR
 
 - Phase 1 — MSA 기반 · 유닛 9개 · 의존: — · 푼다: Phase 2, 3, 6, 7, 21 · 파일 집합: apps/, libs/, compose.*.yml, docker/, scripts/ · done
 - Phase 2 — 회원 기반 · 유닛 7개 · 의존: Phase 1 · 푼다: Phase 4 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1/user, apps/gateway/src/guards · done
-- Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 5, 8, 10 · 파일 집합: libs/common · todo
+- Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 5, 8, 10 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · in-progress
 - Phase 4 — 회원 스키마 확장 · 유닛 3개 · 의존: Phase 2 · 푼다: Phase 5, 8 · 파일 집합: libs/database/src/entities/user, libs/database/src/seeder, libs/database/src/migrations · todo
 - Phase 5 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
 - Phase 6 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 8 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · todo
@@ -72,14 +72,13 @@ flowchart LR
 
 동시 가능: Phase 3·Phase 4·Phase 6 (지금 바로) / Phase 12·Phase 13 / Phase 14·Phase 15 / Phase 17·Phase 18 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 7 · 11 · 13 · 15 · 21).
 
-지금: 진행 중 없음 · Next up: Phase 3
+지금: Phase 3 진행 중 · Next up: Phase 3
 
 ## 지금 할 일
 
-공통 인프라 포트(이메일 · 알림 · 이미지 저장 · 페이지네이션)부터 — 뒤의 Phase 대부분이 기다린다
-- 정하기 — 이메일 발송 수단, 알림 채널(문자 · 알림톡 · 푸시), 이미지 저장소 (아래 Open Decisions)
-  1차는 셋 다 mock 어댑터로 시작해도 된다
-- 시작 — `/beaver:direct 공통 인프라 포트` (Phase 4 · 6 과 동시에 돌려도 된다)
+공통 인프라 포트(SMS 발송 · 파일 저장 · 페이지네이션) 기획 중 — 뒤의 Phase 대부분이 기다린다
+- 발송은 SMS 하나(AWS SNS), 사진은 AWS S3 — mock 없이 실제 연동 코드. AWS 세팅은 나중에 `docs/guides/aws-setup.md` 대로 하고 `.env` 만 채운다
+- build 완료 — report(`.beaver/output/report/common/common-infra-ports-report.md`)를 보고 `/beaver:ship` (Phase 4 · 6 과 동시에 돌려도 된다)
 - 만족하면 "ok" → 커밋 · 푸시하고 Phase 4 · 6 으로
 
 ## Scope & Actors
@@ -87,9 +86,9 @@ flowchart LR
 | 행위자 (`t_auth`) | 페이지 | 하는 일 |
 |---|---|---|
 | 총관리자 `SUPER_ADMIN` / `ADMIN` | 관리자 | 입점 신청 승인 · 반려, 업체 등록 · 상태 관리(영업중지 등), 업체 총관리자 계정 생성, 이용자 관리, 업체 관리자 관리, 전체 통계 |
-| 업체 총관리자 `HEAD_MANAGER` | 관리자 | 업체 관리자 권한 전부 + 업체 관리자 계정 등록 · 수정 · 삭제, 이메일로 아이디 찾기 · 비밀번호 초기화 |
+| 업체 총관리자 `HEAD_MANAGER` | 관리자 | 업체 관리자 권한 전부 + 업체 관리자 계정 등록 · 수정 · 삭제, SMS로 아이디 찾기 · 비밀번호 초기화 |
 | 업체 관리자 `MANAGER` | 관리자 | 자기 업체 1곳 — 업체 소개 · 영업시간 · 브레이크타임 · 정비시간, 층별 호실 · 객실 그룹 · 상품 · 기간 가격 · 사물, 호실 상태 전이, 예약 현황 · 예약 취소 · 호실 이동, 자기 업체 통계 |
-| 이용자 `USER` | 이용자 | 성인만 가입(SNS · 일반), 지도 검색, 호실 · 시간대 선택 예약 · 결제 · 취소, QR 입장, 사물 제어, 연장, 입점 신청 |
+| 이용자 `USER` | 이용자 | 성인만 가입(SNS · 일반) 후 휴대폰 SMS 인증, SMS로 비밀번호 초기화, 지도 검색, 호실 · 시간대 선택 예약 · 결제 · 취소, QR 입장, 사물 제어, 연장, 입점 신청 |
 | 시스템 | — | crontab(탈퇴 자동처리 · 입장 QR 발송 · 이용 종료 자동 완료), 브로커 명령 처리 |
 
 업체 총관리자와 업체 관리자는 객실 관리 권한이 같다. 다른 점은 업체 관리자 계정을 관리할 수 있는지 하나다.
@@ -98,8 +97,8 @@ flowchart LR
 
 ## Non-Goals / External Boundaries
 
-- **하드웨어 설치 · 배선** — 도어락 · QR 리더 · 전등 · 에어컨 설치는 업체 몫. 우리는 `DeviceGateway` 포트로 명령만 보낸다(이번 범위는 mock).
-- **실제 외부 연동** — 이메일 · 푸시 · 문자 · 이미지 저장 · 결제는 포트 + mock 이 이 트랙의 범위다. 실제 서비스(AWS SES · S3 · 알림톡 · 토스) 연동은 채널이 정해진 뒤.
+- **하드웨어 설치 · 배선** — 도어락 · QR 리더 · 전등 · 에어컨 설치는 업체 몫. 우리는 `DeviceGateway` 포트로 명령만 보낸다(기기 · 연동 방식은 Phase 13 기획 때 정한다 — mock 으로 자리만 채우지 않는다).
+- **AWS 리소스 세팅** — IAM · S3 버킷 · SMS 샌드박스 해제 · 지출 한도는 사용자가 `docs/guides/aws-setup.md` 대로 한다. 코드는 처음부터 실제 연동이다(mock 없음). 이메일 · 알림톡 · 푸시는 쓰지 않는다.
 - **프론트엔드** — 관리자 페이지 · 이용자 페이지(Next.js)는 별도 레포.
 - **후순위(별도 기획)** — Phases & Units 끝의 "후순위" 표.
 
@@ -140,53 +139,55 @@ flowchart LR
 | #13 | PATCH | `/api/v1/user/password` | 비밀번호 변경 (SSE) |
 | #14 | POST | `/api/v1/user/login` · `/general-login` · `/token-refresh` | 로그인 · 재발급 |
 
-### Phase 3 — 공통 인프라 포트 (외부 발송 · 저장 포트 + 페이지네이션) · depends: Phase 1
+### Phase 3 — 공통 인프라 포트 (AWS SMS · S3 연동 + 페이지네이션) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 17 | `MailSender` 포트 + mock | 업체 총관리자 계정 안내 · 아이디 찾기 · 비밀번호 초기화 메일 | 발송 수단(Open Decisions) | — | todo |
-| 18 | `NotificationGateway` 포트 + mock | 업체 측 예약 변경 푸시 · 입장 QR 링크 발송 | 채널(Open Decisions) | — | todo |
-| 19 | `StorageGateway` 포트 + mock | 업체 · 객실 그룹 사진 저장 | 저장소(Open Decisions) | — | todo |
-| 20 | 공통 Pagination | `PaginationDto`(생성자 기본값) · `Pagination` util — 첫 목록 API 전에 | — | — | todo |
+| 17 | `SmsSender` 포트 + Amazon SNS 어댑터 | 모든 발송을 SMS로 — 휴대폰 인증 · 아이디 찾기 · 비밀번호 초기화 · 업체 계정 안내 · 예약 변경 안내 · 입장 QR 링크 | — | 18 | in-progress |
+| 18 | `libs/integration` 토대 | 외부 연동 공용 라이브러리 — `@app/integration` alias · 전역 `SmsModule` · `StorageModule` · AWS SDK 의존성 · `.env` AWS 키 · AWS 세팅 가이드 · 규약 문서 | — | — | in-progress |
+| 19 | `StorageGateway` 포트 + S3 어댑터 | 업체 · 객실 그룹 사진 — presigned URL 로 클라이언트가 S3 에 직접 올린다 | — | 18 | in-progress |
+| 20 | 공통 Pagination | `PaginationDto`(생성자 기본값) · `Pagination` util — 첫 목록 API 전에 | — | — | in-progress |
 
 **Expected interfaces** (이름 수준):
 
 | Unit | 형태 | 이름 | Purpose |
 |------|------|------|---------|
-| #17 | 포트 | `MailSender.send(...)` | 메일 1통 발송 |
-| #18 | 포트 | `NotificationGateway.push(...)` · `sendMessage(...)` | 푸시 · 휴대폰 메시지 |
-| #19 | 포트 | `StorageGateway.put(...)` · `url(...)` | 이미지 저장 · 공개 주소 |
+| #17 | 포트 | `SmsSender.send({to, text})` | SMS 1통 (한국행은 국제 경로, 한글 70자 단위 과금) |
+| #18 | 모듈 | `SmsModule` · `StorageModule` | 포트별 전역 모듈 (AWS 어댑터) |
+| #19 | 포트 | `StorageGateway.createUploadUrl(...)` · `exists(...)` · `getPublicUrl(...)` · `remove(...)` | 업로드 주소 · 업로드 확인 · 공개 주소 · 삭제 |
 | #20 | DTO · util | `PaginationDto` · `Pagination` | 목록 공통 |
 
-### Phase 4 — 회원 스키마 확장 (이메일 · 초기화 · 첫 총관리자) · depends: Phase 2
+build 완료 (2026-10-20) — report: `.beaver/output/report/common/common-infra-ports-report.md`. done 표시는 ship 때.
+
+### Phase 4 — 회원 스키마 확장 (휴대폰 인증 · 인증번호 · 첫 총관리자) · depends: Phase 2
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 21 | `t_user.email` | 업체 총관리자 필수 | 다른 역할도 받을지 | — | todo |
-| 22 | 비밀번호 초기화 저장 | 재설정 링크 방식이면 1회용 토큰 테이블 | 초기화 방식(Open Decisions) | 21 | todo |
+| 21 | `t_user` 휴대폰 인증 상태 | 인증을 마친 회원만 이용 — SNS 회원 포함 | 기존 회원 처리 | — | todo |
+| 22 | 인증번호 저장 | 휴대폰 인증 · 아이디 찾기 · 비밀번호 초기화가 같이 쓰는 인증번호(용도로 구분) | 휴대폰 인증 규칙(Open Decisions) | — | todo |
 | 23 | 첫 총관리자 시드 | `admin` / `1234`, 시드 시점에 bcrypt + pepper 해시 | 첫 로그인 비밀번호 변경 강제 | — | todo |
 
 **Expected data contract**:
 
 | Unit | Table | Content |
 |------|-------|---------|
-| #21 | `t_user` | `email` 컬럼 |
-| #22 | `t_user_password_reset`(가칭) | 토큰 해시 · 만료 시각 |
+| #21 | `t_user` | `phone_verified_at`(가칭) 컬럼 |
+| #22 | `t_phone_verification`(가칭) | 번호 · 용도 · 인증번호 해시 · 만료 시각 · 시도 횟수 · 확인 시각 |
 | #23 | seeder | 총관리자 1행 |
 
-### Phase 5 — 계정·인증 (페이지별 로그인 · 연령 제한 · 이메일 찾기) · depends: Phase 3, Phase 4
+### Phase 5 — 계정·인증 (페이지별 로그인 · 가입 규칙 · 휴대폰 인증 · SMS 찾기) · depends: Phase 3, Phase 4
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 24 | 관리자 · 이용자 페이지 로그인 분리 | 관리자 페이지는 관리자 역할만, 이용자 페이지는 `USER` 만 | 라우트 분리 방식(Open Decisions) | 23 | todo |
-| 25 | 가입 연령 제한 | 미성년자 가입 거부 | 성인 기준 · 일반 가입 검증(Open Decisions) | — | todo |
-| 26 | 업체 총관리자 아이디 찾기 | 이메일로 아이디 안내 | — | 17, 21 | todo |
-| 27 | 업체 총관리자 비밀번호 찾기 | 이메일로 초기화, 기존 비밀번호는 알려주지 않음 | — | 17, 22 | todo |
+| 25 | 가입 규칙 | 미성년자 가입 거부, 일반 가입은 휴대폰 번호 필수(SNS 가입은 선택) | 성인 기준 · 일반 가입 검증(Open Decisions) | — | todo |
+| 26 | 휴대폰 SMS 인증 | 가입 후 인증번호 발송 · 확인 — 인증 전 회원(SNS 포함)은 이용 제한 | 휴대폰 인증 규칙(Open Decisions) | 17, 21, 22 | todo |
+| 27 | 아이디 찾기 · 비밀번호 초기화 | 업체 총관리자 아이디 찾기, 업체 총관리자 · 일반회원 비밀번호 초기화를 SMS로 — 기존 비밀번호는 알려주지 않는다 | 초기화 방식(Open Decisions) | 17, 22 | todo |
 
 **Expected APIs** (가칭):
 
 | Unit | Method | Path | Purpose |
 |------|--------|------|---------|
 | #24 | POST | `/api/v1/admin/auth/login` | 관리자 페이지 로그인 |
-| #26 | POST | `/api/v1/admin/auth/find-login-id` | 아이디 찾기 |
-| #27 | POST | `/api/v1/admin/auth/password-reset` · `/password-reset/confirm` | 초기화 요청 · 확정 |
+| #26 | POST | `/api/v1/user/phone-verification` · `/phone-verification/confirm` | 인증번호 발송 · 확인 |
+| #27 | POST | `/api/v1/admin/auth/find-login-id` · `/password-reset` · `/password-reset/confirm` (이용자 페이지도 초기화 2개) | 아이디 찾기 · 초기화 요청 · 확정 |
 
 ### Phase 6 — admin-service 기반 (새 서비스 앱 토대) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -201,7 +202,7 @@ flowchart LR
 ### Phase 7 — store 스키마 (업체 새 모델) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 32 | `t_store_application` | 입점 신청 — 신청자 · 업체 정보 · 업체 총관리자 이메일 · 상태 · 반려 사유 | 신청 상태 표현(룩업 · 문자열) | — | todo |
+| 32 | `t_store_application` | 입점 신청 — 신청자 · 업체 정보 · 업체 총관리자 휴대폰 번호 · 상태 · 반려 사유 | 신청 상태 표현(룩업 · 문자열) | — | todo |
 | 33 | `t_store_state` 룩업 + 시드 | 활성 · 영업중지 · 탈퇴 | — | — | todo |
 | 34 | `t_store` 재설계 | 상태 · 위경도 · 정비시간 · 소개 · 편의시설 · 연락처 | 편의시설 저장 형태 | 33 | todo |
 | 35 | `t_store_image` | 업체 사진(정렬 순서) | — | 34 | todo |
@@ -214,7 +215,7 @@ flowchart LR
 |---|------|------|--------------|---------|--------|
 | 37 | 입점 신청 · 내 신청 상태 | 이용자 페이지 하단, 로그인 필요 | — | 32 | todo |
 | 38 | 입점 신청 목록 · 상세 | 총관리자 | — | 32 | todo |
-| 39 | 입점 승인 · 반려 | 승인 = 업체 등록 + 업체 총관리자 계정 생성 + 안내 메일, 반려 = 사유 (큐) | 업체 계정 생성 위치(Open Decisions) | 17, 21, 37 | todo |
+| 39 | 입점 승인 · 반려 | 승인 = 업체 등록 + 업체 총관리자 계정 생성 + 안내 SMS, 반려 = 사유 (큐) | 업체 계정 생성 위치(Open Decisions) | 17, 37 | todo |
 | 40 | 업체 목록 · 상세 · 수정 · 삭제 | 총관리자 — 새로 만든다 | 삭제 방식(soft delete) | 34 | todo |
 | 41 | 업체 상태 변경 | 활성 · 영업중지 | 영업중지 시 미래 예약 처리(Open Decisions) | 33 | todo |
 
@@ -272,7 +273,7 @@ flowchart LR
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 58 | `t_device_type` · `t_device` · `t_device_command` | 전등 · 에어컨 · 도어락, 명령 이력 | — | 50 | todo |
-| 59 | `DeviceGateway` 포트 + mock | 기기 명령 · 상태 회신 | 입장 QR 확인 수단(Open Decisions) | 58 | todo |
+| 59 | `DeviceGateway` 포트 + 실제 기기 연동 | 기기 명령 · 상태 회신 | 기기 · 연동 방식, 입장 QR 확인 수단(Open Decisions) | 58 | todo |
 
 **Expected data contract**: `t_device_type` · `t_device` · `t_device_command`, 포트 `DeviceGateway`.
 
@@ -291,7 +292,7 @@ flowchart LR
 | 63 | `t_reservation_state` 룩업 + 시드 | 결제 대기 · 결제 완료 · 체크인 · 완료 · 취소 | — | — | todo |
 | 64 | `t_reservation` | 호실 · 상품 · 적용 가격 · `start_at` · `end_at` · `blocked_until` · 연장 앞 예약, 점유 구간 배타 제약(활성 상태만) | `btree_gist` 확장 · `db:check`(PGlite) 지원 | 50, 51, 63 | todo |
 | 65 | `t_payment` | PG 식별자 · 수단 · 금액 · 상태 · 환불 금액 | — | 64 | todo |
-| 66 | `PaymentGateway` 포트 + mock | 결제 · 환불 | — | 65 | todo |
+| 66 | `PaymentGateway` 포트 + 토스페이먼츠 어댑터 | 결제 · 환불 — 개발은 토스 테스트 키로 | — | 65 | todo |
 
 **Expected data contract**: `t_reservation_state` · `t_reservation` · `t_payment`, 포트 `PaymentGateway`.
 
@@ -304,7 +305,7 @@ flowchart LR
 | 70 | 예약 취소 | 시작 1시간 전까지 100%, 이후 50% (큐) | 시작 이후 · 노쇼 취소 | 69 | todo |
 | 71 | 내 예약 목록 · 상세 | 동기 | — | 69 | todo |
 | 72 | 업체 예약 현황 | 호실별 시간표 | — | 69 | todo |
-| 73 | 업체 측 예약 취소 · 호실 이동 | 100% 환불 · 이용자 푸시 필수 (큐) | 호실 이동 범위(같은 그룹만) | 18, 69 | todo |
+| 73 | 업체 측 예약 취소 · 호실 이동 | 100% 환불 · 이용자 SMS 필수 (큐) | 호실 이동 범위(같은 그룹만) | 17, 69 | todo |
 
 **Expected APIs** (가칭):
 
@@ -330,7 +331,7 @@ flowchart LR
 ### Phase 18 — 이용 (입장 QR · 체크인 · 연장 · 퇴실) · depends: Phase 14, Phase 16
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 78 | 입장 QR 링크 발송 crontab | 이용 시작 5분 전 휴대폰으로 (1분 주기 · `JobLockService`) | 발송 채널 · 휴대폰 번호 | 18, 69 | todo |
+| 78 | 입장 QR 링크 발송 crontab | 이용 시작 5분 전 SMS로 (1분 주기 · `JobLockService`) | — | 17, 69 | todo |
 | 79 | 체크인 = 첫 입장 | QR 확인 후 도어락 개방, 예약 체크인 · 호실 이용중 | 입장 QR 확인 수단 | 59, 78 | todo |
 | 80 | 이용 중 사물 제어 | 내 예약 구간 안에서만 | — | 61, 79 | todo |
 | 81 | 연장 | 같은 호실에서 같은 그룹 상품 단위로 이어서 예약(대실 → 대실), 정비시간은 마지막 연장 뒤로, 추가 결제 | — | 69 | todo |
@@ -364,8 +365,7 @@ flowchart LR
 ### 후순위 (별도 기획 — 이 트랙 밖)
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| — | notify-service | `roomless.event` 도메인 이벤트 구독, 실제 푸시 · 휴대폰 메시지 · 이메일 발송(그 전까지는 Phase 3 포트의 mock) | 채널 | Phase 3 | 후순위 |
-| — | 토스 테스트결제 실연동 | `PaymentGateway` 어댑터 추가 | — | Phase 15 | 후순위 |
+| — | notify-service | `roomless.event` 도메인 이벤트를 구독해 SMS 발송을 서비스에서 떼어낸다(그 전까지는 각 서비스가 `SmsSender` 포트를 직접 쓴다) | — | Phase 3 | 후순위 |
 | — | 업체 정산 | 수수료 · 정산 주기 · 지급 내역 | — | Phase 16 | 후순위 |
 | — | 리뷰 · 평점 | 이용 완료 후 | — | Phase 18 | 후순위 |
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 10 | 후순위 |
@@ -384,17 +384,18 @@ flowchart LR
 - **관리자 API 권한** — `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles(...)` 를 한 세트로 — 첫 관리자 API 에서 처음 적용한다
 - **매니저 소속** — 매니저 1명 = 업체 1곳(`t_user.store_id`). 업체 관리자 API 인가는 "요청 대상이 내 `store_id` 와 일치하는가"
 - **업체 공개** — 등록되고 활성화된 업체만 이용자에게 보인다. 영업중지 · 탈퇴 업체는 표시하지 않는다
-- **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 직접 변경. 업체 총관리자는 이메일 필수, 아이디 · 비밀번호 찾기는 이메일, 비밀번호는 초기화 방식
+- **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 직접 변경. 업체 총관리자는 휴대폰 번호 필수, 아이디 · 비밀번호 찾기는 SMS, 비밀번호는 초기화 방식(일반회원 초기화도 SMS)
 - **연령 제한** — 성인만 가입한다(SNS 로그인의 생년월일로 판정)
+- **휴대폰 인증** — 일반 가입은 휴대폰 번호 필수, SNS 가입은 선택. 모든 회원(SNS 포함)은 가입 후 SMS 인증을 마쳐야 서비스를 이용할 수 있다
 - **객실 모델** — 객실 그룹 단위로 상품(이름 · 이용시간 · 가격)을 정하고 그룹 안 호실은 같은 상품을 쓴다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 업체가 그룹 상품마다 기간 가격(성수기 등)을 따로 정한다
 - **이용 단위 · 사전 예약** — 항상 시간 기반(숙박도 긴 상품). 6개월 앞 예약까지 받는다
 - **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 점유 구간 겹침 없음 + 영업시간 내 · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 스탠바이도). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
 - **호실 선택** — 이용자가 호실을 직접 고른다
 - **취소 · 환불** — 업체 취소 100%, 이용자는 시작 1시간 전까지 100%, 그 이후 50%
-- **체크인 · 연장** — 시작 5분 전 휴대폰으로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 같은 상품 단위로 이어서 예약
-- **업체 측 예약 변경** — 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 푸시
+- **체크인 · 연장** — 시작 5분 전 SMS로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 같은 상품 단위로 이어서 예약
+- **업체 측 예약 변경** — 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 SMS
 - **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
-- **외부 연동** — 이메일 · 알림 · 이미지 · 결제 · 기기는 포트 + mock 부터
+- **발송 채널 · 외부 연동** — 발송은 SMS(AWS SNS) 하나 — 이메일 · 알림톡 · 푸시는 쓰지 않는다. 외부 연동은 mock 없이 실제 서비스에 붙이고 세팅 가이드(`docs/guides/`)를 남긴다 — SMS · 이미지 = AWS(Phase 3), 결제 = 토스(테스트 키), 기기 = Phase 13 에서 정한다
 - **목록 · 시드 · 규약** — 모든 목록 API 는 `PaginationDto`(Phase 3 이후). 룩업 기본 데이터는 seeder.targets.ts 한 곳. 규약은 [AGENTS.md](../../../AGENTS.md) 전면 준수
 - **영업시간 단위** — 요일 반복만(특정 날짜 임시휴무 · 특별영업은 후순위)
 
@@ -404,15 +405,16 @@ flowchart LR
 - [ ] **예약 · 조회가 객실 데이터를 읽는 방법** — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 16 · 17)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 21)
 - [ ] **관리자 / 이용자 API 라우트 분리** — 추천: 관리자 페이지 `/api/v1/admin/<domain>`, 이용자 페이지 `/api/v1/<domain>`. (Phase 5 이후 전부)
-- [ ] **알림 채널 · 휴대폰 번호** — 업체 측 변경 푸시 · 입장 QR 링크를 문자 · 알림톡 · 푸시 중 무엇으로. 휴대폰 번호는 SNS 동의 항목 또는 가입 때. (Phase 3 · 16 · 18)
-- [ ] **이메일 발송 수단 · 비밀번호 초기화 방식** — 추천: AWS SES, 1회용 재설정 링크(만료 시간). (Phase 3 · 4 · 5)
-- [ ] **이미지 저장소** — 추천: AWS S3. (Phase 3 · 10 · 12)
+- [x] **발송 채널 · 휴대폰 번호** — SMS만(이메일 · 알림톡 · 푸시 없음). 일반 가입은 휴대폰 번호 필수, SNS 가입은 선택이지만 가입 후 SMS 인증을 해야 이용할 수 있다. (결정 2026-10-20)
+- [x] **SMS 발송 업체 = AWS(Amazon SNS)** — 서울 리전. 한국은 AWS 전용 발신번호가 없어 국제 경로로만 나간다(수신 화면 국제발신, 발신번호 지정 불가, 한글 70자 단위 과금, 단가는 사용량 보고서로 확인). 새 계정은 샌드박스 · 월 한도 USD 1 — 운영 전 해제 요청. (결정 2026-10-20)
+- [ ] **휴대폰 인증 규칙 · 비밀번호 초기화 방식** — 인증번호 자릿수 · 유효시간 · 재발송 · 시도 제한, 인증 전 회원이 할 수 있는 것. 초기화는 인증번호 확인 후 새 비밀번호 / 임시 비밀번호 SMS 중. (Phase 4 · 5)
+- [x] **이미지 저장소 = AWS S3** — 업로드는 presigned URL(클라이언트가 직접 올림). (결정 2026-10-20)
 - [ ] **성인 확인** — 성인 기준(청소년보호법은 만 19세가 되는 해의 1월 1일부터 성인), 일반 가입의 생년월일은 검증되지 않는다(본인인증을 붙일지 · 일반 가입을 막을지). (Phase 5)
 - [ ] **입장 QR 확인 수단** — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 13 · 18)
 - [ ] **취소 규정의 끝** — 시작 이후 · 노쇼 취소를 받을지. (Phase 16)
 - [ ] **영업중지 · 영업시간 변경 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지. (Phase 8 · 10)
 - [ ] **통계 정의** — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 20)
-- [ ] **결제 대기 유지 시간 · 결제 수단** — 추천: 10분, 1차 mock. (Phase 16)
+- [ ] **결제 대기 유지 시간 · 결제 수단** — 추천: 10분, 토스페이먼츠 테스트 키로 개발. (Phase 16)
 
 ## Notes / Risks
 

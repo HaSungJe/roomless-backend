@@ -31,6 +31,9 @@
       "@app/database/*": [
         "./libs/database/src/*"
       ],
+      "@app/integration/*": [
+        "./libs/integration/src/*"
+      ],
       "@app/messaging/*": [
         "./libs/messaging/src/*"
       ]

@@ -52,13 +52,15 @@ services:
             # 인스턴스마다 달라야 한다 — 비워 두면 컨테이너 호스트명으로 정한다(.env 에 값이 있어도 덮는다)
             GATEWAY_INSTANCE_ID: ''
             TZ: Asia/Seoul
-            # ── 쓰지 않는 비밀값은 전달하지 않는다 (게이트웨이는 DB · 비밀번호 해시 · 토큰 암호화를 하지 않는다) ──
+            # ── 쓰지 않는 비밀값은 전달하지 않는다 (게이트웨이는 DB · 비밀번호 해시 · 토큰 암호화 · AWS 를 쓰지 않는다) ──
             RABBITMQ_USER_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
             DATABASE_URL: ''
             POSTGRES_PASSWORD: ''
             BCRYPT_CODE: ''
             TOKEN_CIPHER_KEY: ''
+            AWS_ACCESS_KEY_ID: ''
+            AWS_SECRET_ACCESS_KEY: ''
         deploy:
             replicas: ${GATEWAY_REPLICAS:-2}
         expose:

@@ -99,12 +99,13 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 | `CommandDispatcher` | `new CommandHandlerRegistry({} as DiscoveryService, ...)` → `registry.add(...)` → `new CommandDispatcher(registry)` |
 | `CommandHandlerRegistry` | spec 안 `@OnCommand` 샘플 핸들러 + `DiscoveryModule` + `module.init()`. 중복 등록이면 `init()` reject |
 | RabbitMQ 어댑터 | `vi.mock('amqplib', ...)` + 가짜 channel · model · message, 연결 · 디스패처 mock 을 생성자에 주입 |
+| AWS 어댑터 | `vi.hoisted` + `vi.mock('@aws-sdk/client-sns' · '@aws-sdk/client-s3' · '@aws-sdk/s3-request-presigner')` — 가짜 Client(`send`) · Command(`input` 보관). 보낸 명령의 input · 오류 → 503 · 404 → false 를 단언. env 는 저장 · 복원 |
 | `CustomErrorFilter` · `InternalAuthGuard` | 필터는 spec 안 프로브 DTO · controller 로 부팅, 가드는 `new` + 헤더만 가진 컨텍스트 |
 | 순수 util | 직접 호출(fail-result · validation · retry · messaging.util · typeorm-error). bcrypt util 은 mock 없이 실제로 해시한다(낮은 라운드) |
 
 ## mock 규칙
 
-- **mock 경계**: 서비스 spec 은 repository(Symbol 토큰 `USER_REPOSITORY`)와 `JwtService`(class 토큰)를 mock 하고, crypto · jwt util(`bcrypt` · `hash` · `cipher` · `jwt`)은 `vi.mock` 으로 막는다. service · handler · controller · 파이프 · 필터 · 가드는 실제 코드다.
+- **mock 경계**: 서비스 spec 은 repository(Symbol 토큰 `USER_REPOSITORY`) · 외부 연동 포트(Symbol 토큰 `SMS_SENDER` · `STORAGE_GATEWAY` — [integration.md](integration.md))와 `JwtService`(class 토큰)를 mock 하고, crypto · jwt util(`bcrypt` · `hash` · `cipher` · `jwt`)은 `vi.mock` 으로 막는다. service · handler · controller · 파이프 · 필터 · 가드는 실제 코드다.
 - **ESM 이라 `vi.spyOn(모듈, 'fn')` 은 쓸 수 없다.** 외부 util 은 spec 상단에서 모듈째 mock 한다.
   ```ts
   vi.mock('@app/common/utils/bcrypt.js', () => ({getBcrypt: vi.fn(), matchBcrypt: vi.fn()}));
@@ -151,6 +152,7 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 | `[RACE]` · `[TIMEOUT]` · `[DISCONNECT]` · `[SHUTDOWN]` | 경쟁 · 시간 초과 · 연결 끊김 · 종료 |
 | `[COMPAT]` | 기존 데이터와의 호환 |
 | `[SMOKE:data-access]` | 아래 Data-Access Smoke |
+| `[CASES:<unit>]` | 계산형 유닛의 입력→출력 표 — 기획(plan)에서 합의한 케이스만 (`pagination.spec.ts` · `integration.util.spec.ts`) |
 
 ## Data-Access Smoke (DB 연결 없는 SQL 빌드)
 
