@@ -1,6 +1,7 @@
 import type {FindOptionsWhere} from 'typeorm';
 import type {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
 import type {SessionEntity} from '@app/database/entities/user/session.entity.js';
+import type {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import type {UserSettingEntity} from '@app/database/entities/user/user-setting.entity.js';
 import type {UserEntity} from '@app/database/entities/user/user.entity.js';
 
@@ -15,7 +16,9 @@ export interface LoginUserRow {
     auth_id: string;
     store_id: string | null;
     state_id: string;
-    is_login_able: number;
+    /** 휴대폰 SMS 인증일 (미인증 null) */
+    phone_verified_at: Date | null;
+    is_login_allowed: number;
 }
 
 /**
@@ -35,4 +38,14 @@ export interface UserRepositoryInterface {
     findSessionRefresh(where: FindOptionsWhere<SessionRefreshEntity>): Promise<SessionRefreshEntity | null>;
     updateSessionRefresh(where: FindOptionsWhere<SessionRefreshEntity>, entity: SessionRefreshEntity): Promise<void>;
     updateUser(where: FindOptionsWhere<UserEntity>, entity: UserEntity): Promise<void>;
+    /** SMS 인증 발송 기록 등록 */
+    insertSmsVerification(entity: SmsVerificationEntity): Promise<void>;
+    /** SMS 인증 기록 개수 — 같은 번호 하루 발송 수 */
+    countSmsVerifications(where: FindOptionsWhere<SmsVerificationEntity>): Promise<number>;
+    /** SMS 인증 기록 단건 — 인증 ID + 용도(+ 회원)로 찾는다 */
+    findSmsVerification(where: FindOptionsWhere<SmsVerificationEntity>): Promise<SmsVerificationEntity | null>;
+    /** 확인 시도 1회 소비 — 독립 트랜잭션, 한도에 닿았으면 false */
+    consumeSmsVerificationAttempt(sms_verification_id: string, max_attempts: number): Promise<boolean>;
+    /** SMS 인증 기록 수정 (verified_at) */
+    updateSmsVerification(where: FindOptionsWhere<SmsVerificationEntity>, entity: SmsVerificationEntity): Promise<void>;
 }

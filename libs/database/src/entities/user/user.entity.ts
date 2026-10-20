@@ -13,6 +13,7 @@ import {StateEntity} from './state.entity.js';
 @Unique('UK_User_LoginId', ['login_id'])
 @Unique('UK_User_UserSearchCode', ['user_search_code'])
 @Unique('UK_User_SnsSnsUserId', ['sns_id', 'sns_user_id'])
+@Unique('UK_User_Phone', ['phone'])
 export class UserEntity {
     @PrimaryColumn({name: 'user_id', length: 32, comment: '사용자 ID', primaryKeyConstraintName: 'PK_User'})
     user_id: string;
@@ -54,8 +55,11 @@ export class UserEntity {
     @Column({name: 'birth', length: 30, nullable: false, comment: '생년월일'})
     birth: string;
 
-    @Column({name: 'phone', type: 'varchar', length: 30, nullable: true, comment: '전화번호'})
+    @Column({name: 'phone', type: 'varchar', length: 30, nullable: true, comment: '휴대폰 번호(숫자만, SMS 인증을 마친 번호 — 번호 1개 = 계정 1개, 미인증 NULL)'})
     phone: string | null;
+
+    @Column({name: 'phone_verified_at', type: 'timestamptz', nullable: true, comment: '휴대폰 SMS 인증일(미인증 NULL)'})
+    phone_verified_at: Date | null;
 
     @Column({name: 'nickname', length: 50, nullable: false, comment: '닉네임'})
     nickname: string;
@@ -78,17 +82,17 @@ export class UserEntity {
     @Column({name: 'leave_reserved_at', type: 'varchar', length: 40, nullable: true, comment: '탈퇴 예약시각(dayjs YYYY-MM-DD HH:mm:ss 문자열)'})
     leave_reserved_at: string | null;
 
-    @Column({name: 'leave_prev_state_id', type: 'varchar', length: 20, nullable: true, comment: '탈퇴 직전 상태(철회 복원용 스냅샷, FK 아님)'})
-    leave_prev_state_id: string | null;
+    @Column({name: 'leave_previous_state_id', type: 'varchar', length: 20, nullable: true, comment: '탈퇴 직전 상태(철회 복원용 스냅샷, FK 아님)'})
+    leave_previous_state_id: string | null;
 
     @Column({name: 'leave_backup', type: 'text', nullable: true, comment: '삭제 완료 시 이전 정보 백업(JSON)'})
     leave_backup: string | null;
 
-    @Column({name: 'create_at', type: 'timestamptz', nullable: false, comment: '등록일'})
-    create_at: Date;
+    @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
+    created_at: Date;
 
-    @Column({name: 'update_at', type: 'timestamptz', nullable: false, comment: '수정일'})
-    update_at: Date;
+    @Column({name: 'updated_at', type: 'timestamptz', nullable: false, comment: '수정일'})
+    updated_at: Date;
 
     /**
      * insert 직전 등록일 · 수정일을 채운다.
@@ -96,8 +100,8 @@ export class UserEntity {
     @BeforeInsert()
     insertTimestamp(): void {
         const now = new Date();
-        this.create_at = now;
-        this.update_at = now;
+        this.created_at = now;
+        this.updated_at = now;
     }
 
     /**
@@ -105,6 +109,6 @@ export class UserEntity {
      */
     @BeforeUpdate()
     updateTimestamp(): void {
-        this.update_at = new Date();
+        this.updated_at = new Date();
     }
 }

@@ -2,8 +2,8 @@ import {ApiProperty} from '@nestjs/swagger';
 import {IsIn, IsNotEmpty, MaxLength, ValidateIf} from 'class-validator';
 
 export class UserLoginDto {
-    @ApiProperty({description: 'SNS 유형', enum: ['GOOGLE', 'FACEBOOK', 'APPLE', 'KAKAO', 'LINE']})
-    @IsIn(['GOOGLE', 'FACEBOOK', 'APPLE', 'KAKAO', 'LINE'], {message: '유효하지 않은 SNS 유형입니다.'})
+    @ApiProperty({description: 'SNS 유형', enum: ['NAVER', 'KAKAO']})
+    @IsIn(['NAVER', 'KAKAO'], {message: '유효하지 않은 SNS 유형입니다.'})
     @IsNotEmpty({message: 'SNS 유형을 입력해주세요.'})
     sns_id: string;
 
@@ -39,4 +39,7 @@ export class UserLoginResultDto {
 
     @ApiProperty({description: 'Refresh Token 만료일시 (ISO 8601)'})
     refresh_token_expires_at: string;
+
+    @ApiProperty({description: '휴대폰 SMS 인증 여부(0: 미인증, 1: 인증) — 0 이면 휴대폰 인증 화면으로'})
+    is_phone_verified: number;
 }

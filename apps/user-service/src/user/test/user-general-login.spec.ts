@@ -44,7 +44,7 @@ describe('POST /internal/v1/user/general-login — 일반 로그인 (동기 경�
     });
 
     describe('[SUCCESS]', () => {
-        it('비밀번호가 맞으면 토큰 4종 + 비밀번호 변경 필요 여부 반환', async () => {
+        it('비밀번호가 맞으면 토큰 4종 + 비밀번호 변경 필요 여부 + 휴대폰 인증 여부 반환', async () => {
             repo.findUser.mockResolvedValueOnce(USER);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(BODY);
@@ -56,6 +56,7 @@ describe('POST /internal/v1/user/general-login — 일반 로그인 (동기 경�
                 access_token_expires_at: MOCK_ACCESS_EXPIRES_AT.toISOString(),
                 refresh_token_expires_at: MOCK_REFRESH_EXPIRES_AT.toISOString(),
                 is_password_change_required: 1,
+                is_phone_verified: 0,
             });
             expect(repo.findUser).toHaveBeenCalledWith({login_id: 'roomless_01', state_id: In(['ACTIVE', 'BLOCK'])});
             expect(matchBcrypt).toHaveBeenCalledWith('abcd1234!', '$2b$12$stored');

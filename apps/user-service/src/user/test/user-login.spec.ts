@@ -41,7 +41,7 @@ describe('POST /internal/v1/user/login — SNS 로그인 (동기 경로)', () =>
     });
 
     describe('[SUCCESS]', () => {
-        it('ACTIVE 회원이면 세션 · refresh 를 만들고 토큰 4종 반환, 클라이언트 IP 는 게이트웨이 헤더 값', async () => {
+        it('ACTIVE 회원이면 세션 · refresh 를 만들고 토큰 4종 + 휴대폰 인증 여부(미인증 0) 반환, 클라이언트 IP 는 게이트웨이 헤더 값', async () => {
             repo.findUser.mockResolvedValueOnce(ACTIVE_USER);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders('9.9.9.9')).send({sns_id: 'KAKAO', sns_user_id: 'kakao_1'});
@@ -52,6 +52,7 @@ describe('POST /internal/v1/user/login — SNS 로그인 (동기 경로)', () =>
                 refresh_token: MOCK_REFRESH_TOKEN,
                 access_token_expires_at: MOCK_ACCESS_EXPIRES_AT.toISOString(),
                 refresh_token_expires_at: MOCK_REFRESH_EXPIRES_AT.toISOString(),
+                is_phone_verified: 0,
             });
             expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'kakao_1', state_id: In(['ACTIVE', 'BLOCK'])});
             expect(repo.updateUser).not.toHaveBeenCalled();
@@ -61,15 +62,24 @@ describe('POST /internal/v1/user/login — SNS 로그인 (동기 경로)', () =>
                 ip: '9.9.9.9',
                 device_os: null,
                 device_token: null,
-                is_delete: 0,
+                is_deleted: 0,
             });
             expect(repo.insertSessionRefresh).toHaveBeenCalledWith({
                 session_id: repo.insertSession.mock.calls[0][0].session_id,
                 refresh_hash: 'c'.repeat(64),
                 refresh_encrypted: 'iv:tag:ct',
-                before_refresh_hash: null,
-                end_at: MOCK_REFRESH_EXPIRES_AT,
+                previous_refresh_hash: null,
+                expires_at: MOCK_REFRESH_EXPIRES_AT,
             });
+        });
+
+        it('휴대폰 SMS 인증을 마친 회원이면 is_phone_verified 1', async () => {
+            repo.findUser.mockResolvedValueOnce({...ACTIVE_USER, phone_verified_at: new Date(2025, 11, 1)});
+
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({sns_id: 'NAVER', sns_user_id: 'naver_1'});
+
+            expect(res.status).toBe(200);
+            expect(res.body.is_phone_verified).toBe(1);
         });
 
         it('device_os · device_token 둘 다 오면 회원의 마지막 로그인 기기를 갱신한다', async () => {
@@ -96,11 +106,12 @@ describe('POST /internal/v1/user/login — SNS 로그인 (동기 경로)', () =>
             expect(repo.findUser).not.toHaveBeenCalled();
         });
 
-        it('허용되지 않은 SNS 유형은 400', async () => {
-            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({sns_id: 'TWITTER', sns_user_id: 'x'});
+        it.each([['TWITTER'], ['GOOGLE']])('네이버 · 카카오가 아닌 SNS 유형(%s)은 400, 조회 없음', async (sns_id) => {
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({sns_id, sns_user_id: 'x'});
 
             expect(res.status).toBe(400);
             expect(res.body.message).toBe('유효하지 않은 SNS 유형입니다.');
+            expect(repo.findUser).not.toHaveBeenCalled();
         });
     });
 

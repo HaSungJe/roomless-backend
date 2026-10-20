@@ -41,8 +41,9 @@ Vitest 4 + `@nestjs/testing` + `supertest`. 설정 [vitest.config.ts](../vitest.
 |---|---|
 | `createUserRepositoryMock()` | `{[K in keyof UserRepositoryInterface]: Mock}` — **인터페이스 전 메서드를 강제**한다. repository 메서드를 추가하면 여기에도 추가해야 typecheck 를 통과한다 |
 | `createJwtServiceMock(access, refresh)` | `sign` 이 `payload.type` 으로 토큰을 고른다 |
-| `bootCommandPath(repo, jwt)` · `runCommand(dispatcher, {...})` | 스타일 ① |
-| `bootHttpPath(repo, jwt)` · `internalHeaders(ip)` | 스타일 ② |
+| `createSmsSenderMock()` | `{send: vi.fn().mockResolvedValue(undefined)}` — `bootCommandPath` · `bootHttpPath` 의 세 번째 인자 기본값. 발송 인자 · 순서(`invocationCallOrder`) · 실패 후 미호출을 단언 |
+| `bootCommandPath(repo, jwt, sms?)` · `runCommand(dispatcher, {...})` | 스타일 ① |
+| `bootHttpPath(repo, jwt, sms?)` · `internalHeaders(ip)` | 스타일 ② |
 | `FIXED_TIME` · `TEST_REPLY_TO` · `TEST_INTERNAL_TOKEN` · `ID_PATTERN` | 고정 시각(`new Date(2026, 0, 1)`) · reply_to(`gw-test`) · 내부 토큰 · 생성 ID 형식 |
 
 ## 스타일 ① — 큐 경로 (서비스)

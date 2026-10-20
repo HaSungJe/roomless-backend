@@ -13,7 +13,7 @@ export class UserAuthUserParamDto {
 
 /**
  * 로그인 회원 정보 — 게이트웨이가 `request.user` 로 쓰고, RolesGuard 가 auth_id 를 본다.
- * 로그인 불가 상태(is_login_able = 0)거나 회원 설정이 없으면 user-service 가 404 를 돌려준다.
+ * 로그인 불가 상태(is_login_allowed = 0)거나 회원 설정이 없으면 user-service 가 404 를 돌려준다.
  */
 export class UserAuthUserResultDto {
     @ApiProperty({description: '회원 ID'})
@@ -44,5 +44,8 @@ export class UserAuthUserResultDto {
     state_id: string;
 
     @ApiProperty({description: '로그인 가능 여부(0: 불가, 1: 가능)'})
-    is_login_able: number;
+    is_login_allowed: number;
+
+    @ApiProperty({description: '휴대폰 SMS 인증 여부(0: 미인증, 1: 인증)'})
+    is_phone_verified: number;
 }

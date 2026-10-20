@@ -11,6 +11,6 @@ export class StateEntity {
     @Column({name: 'state_name', length: 50, nullable: false, comment: '상태명'})
     state_name: string;
 
-    @Column({name: 'is_login_able', type: 'smallint', nullable: false, default: 1, comment: '로그인 가능여부(0: 불가, 1: 가능)'})
-    is_login_able: number;
+    @Column({name: 'is_login_allowed', type: 'smallint', nullable: false, default: 1, comment: '로그인 가능여부(0: 불가, 1: 가능)'})
+    is_login_allowed: number;
 }

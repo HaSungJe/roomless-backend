@@ -1,9 +1,10 @@
 import {BadRequestException, Injectable, InternalServerErrorException} from '@nestjs/common';
-import {TransactionHost} from '@nestjs-cls/transactional';
+import {Propagation, Transactional, TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import type {FindOptionsWhere, Repository, SelectQueryBuilder} from 'typeorm';
+import type {FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
 import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
 import {SessionEntity} from '@app/database/entities/user/session.entity.js';
+import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import {StateEntity} from '@app/database/entities/user/state.entity.js';
 import {UserSettingEntity} from '@app/database/entities/user/user-setting.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
@@ -42,6 +43,11 @@ export class UserRepository implements UserRepositoryInterface {
     /** t_session_refresh repository (현재 트랜잭션 기준) */
     private get sessionRefreshes(): Repository<SessionRefreshEntity> {
         return this.txHost.tx.getRepository(SessionRefreshEntity);
+    }
+
+    /** t_sms_verification repository (현재 트랜잭션 기준) */
+    private get smsVerifications(): Repository<SmsVerificationEntity> {
+        return this.txHost.tx.getRepository(SmsVerificationEntity);
     }
 
     /**
@@ -155,7 +161,7 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * 로그인 회원 조회 — 로그인 가능 상태(is_login_able = 1)이고 회원 설정이 있는 회원만.
+     * 로그인 회원 조회 — 로그인 가능 상태(is_login_allowed = 1)이고 회원 설정이 있는 회원만.
      *
      * @param user_id 회원 ID
      * @returns 로그인 회원 또는 null
@@ -186,11 +192,12 @@ export class UserRepository implements UserRepositoryInterface {
             .addSelect('u.auth_id', 'auth_id')
             .addSelect('u.store_id', 'store_id')
             .addSelect('u.state_id', 'state_id')
-            .addSelect('s.is_login_able', 'is_login_able')
+            .addSelect('u.phone_verified_at', 'phone_verified_at')
+            .addSelect('s.is_login_allowed', 'is_login_allowed')
             .innerJoin(StateEntity, 's', 's.state_id = u.state_id')
             .innerJoin(UserSettingEntity, 'us', 'us.user_id = u.user_id')
             .where('u.user_id = :user_id', {user_id})
-            .andWhere('s.is_login_able = 1');
+            .andWhere('s.is_login_allowed = 1');
     }
 
     /**
@@ -222,7 +229,7 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * Refresh 세션 수정 (end_at 단축 등)
+     * Refresh 세션 수정 (expires_at 단축 등)
      *
      * @param where 수정 조건
      * @param entity new SessionRefreshEntity() + 할당
@@ -236,7 +243,8 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * 회원 정보 수정 — new UserEntity() + 할당으로 호출(@BeforeUpdate update_at 트리거)
+     * 회원 정보 수정 — new UserEntity() + 할당으로 호출(@BeforeUpdate updated_at 트리거).
+     * 휴대폰 번호를 저장할 때 다른 계정이 먼저 인증했으면(UK_User_Phone) 400.
      *
      * @param where 수정 조건
      * @param entity 바꿀 필드만 할당한 엔티티 (undefined 필드는 건드리지 않고, null 은 NULL 로 비운다)
@@ -244,6 +252,105 @@ export class UserRepository implements UserRepositoryInterface {
     async updateUser(where: FindOptionsWhere<UserEntity>, entity: UserEntity): Promise<void> {
         try {
             await this.users.update(where, entity);
+        } catch (error) {
+            if (isUniqueViolation(error, 'UK_User_Phone')) {
+                throw new BadRequestException({message: '이미 가입된 번호입니다.'});
+            } else {
+                throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+            }
+        }
+    }
+
+    /**
+     * SMS 인증 발송 기록 등록 — FK 위반을 제약명별 400 으로 바꾼다.
+     *
+     * @param entity new SmsVerificationEntity() + 할당
+     */
+    async insertSmsVerification(entity: SmsVerificationEntity): Promise<void> {
+        try {
+            await this.smsVerifications.insert(entity);
+        } catch (error) {
+            if (isForeignKeyViolation(error, 'FK_SmsVerification_SmsPurpose')) {
+                throw new BadRequestException({message: '존재하지 않는 SMS 인증 용도입니다.'});
+            } else if (isForeignKeyViolation(error, 'FK_SmsVerification_User')) {
+                throw new BadRequestException({message: '존재하지 않는 회원입니다.'});
+            } else {
+                throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+            }
+        }
+    }
+
+    /**
+     * SMS 인증 기록 개수
+     *
+     * @param where 조회 조건
+     * @returns 개수
+     */
+    async countSmsVerifications(where: FindOptionsWhere<SmsVerificationEntity>): Promise<number> {
+        try {
+            return await this.smsVerifications.count({where});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * SMS 인증 기록 단건 — 확인은 발송 결과로 내려준 인증 ID 로 한다.
+     *
+     * @param where 조회 조건 (인증 ID + 용도, 휴대폰 인증이면 회원까지)
+     * @returns 인증 기록 또는 null
+     */
+    async findSmsVerification(where: FindOptionsWhere<SmsVerificationEntity>): Promise<SmsVerificationEntity | null> {
+        try {
+            return await this.smsVerifications.findOne({where, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 확인 시도 1회 소비 — attempt_count < max 인 행만 원자적으로 +1 한다.
+     * 독립 트랜잭션(RequiresNew)이라, 바깥 확인이 실패해 롤백돼도 소비한 횟수는 남는다(이 repository 의 유일한 예외).
+     *
+     * @param sms_verification_id 인증 기록 ID
+     * @param max_attempts 시도 한도
+     * @returns 소비했으면 true, 이미 한도에 닿았으면 false
+     */
+    @Transactional(Propagation.RequiresNew)
+    async consumeSmsVerificationAttempt(sms_verification_id: string, max_attempts: number): Promise<boolean> {
+        try {
+            const result = await this.buildConsumeSmsVerificationAttemptQuery(sms_verification_id, max_attempts).execute();
+            return result.affected === 1;
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 확인 시도 소비 쿼리 — 매핑 민감(QueryBuilder 갱신 · 식 할당)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param sms_verification_id 인증 기록 ID
+     * @param max_attempts 시도 한도
+     * @returns 쿼리 빌더
+     */
+    buildConsumeSmsVerificationAttemptQuery(sms_verification_id: string, max_attempts: number): UpdateQueryBuilder<SmsVerificationEntity> {
+        return this.smsVerifications
+            .createQueryBuilder()
+            .update(SmsVerificationEntity)
+            .set({attempt_count: () => 'attempt_count + 1', updated_at: () => 'CURRENT_TIMESTAMP'})
+            .where('sms_verification_id = :sms_verification_id', {sms_verification_id})
+            .andWhere('attempt_count < :max_attempts', {max_attempts});
+    }
+
+    /**
+     * SMS 인증 기록 수정 (verified_at)
+     *
+     * @param where 수정 조건
+     * @param entity new SmsVerificationEntity() + 할당
+     */
+    async updateSmsVerification(where: FindOptionsWhere<SmsVerificationEntity>, entity: SmsVerificationEntity): Promise<void> {
+        try {
+            await this.smsVerifications.update(where, entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }

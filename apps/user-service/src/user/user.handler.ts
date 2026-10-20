@@ -8,6 +8,12 @@ import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
 import {requireActor} from '@app/messaging/messaging.util.js';
 import {OnCommand} from '@app/messaging/on-command.decorator.js';
 import {UserService} from './user.service.js';
+import type {UserFindLoginIdConfirmDto, UserFindLoginIdConfirmResultDto} from '@app/contracts/user/dto/user-find-login-id-confirm.dto.js';
+import type {UserFindLoginIdDto, UserFindLoginIdResultDto} from '@app/contracts/user/dto/user-find-login-id.dto.js';
+import type {UserPasswordResetConfirmDto} from '@app/contracts/user/dto/user-password-reset-confirm.dto.js';
+import type {UserPasswordResetDto, UserPasswordResetResultDto} from '@app/contracts/user/dto/user-password-reset.dto.js';
+import type {UserPhoneVerificationConfirmDto} from '@app/contracts/user/dto/user-phone-verification-confirm.dto.js';
+import type {UserPhoneVerificationDto, UserPhoneVerificationResultDto} from '@app/contracts/user/dto/user-phone-verification.dto.js';
 
 /**
  * 회원 RabbitMQ 인바운드 어댑터 — 게이트웨이가 발행한 큐 경로 명령을 받는다.
@@ -60,5 +66,69 @@ export class UserCommandHandler {
     @OnCommand(USER_COMMAND.PASSWORD)
     async changePassword(command: MessageEnvelope<UserPasswordDto>): Promise<void> {
         return this.userService.changePassword(requireActor(command).user_id, command.payload);
+    }
+
+    /**
+     * 휴대폰 인증번호 발송 — 로그인 회원
+     *
+     * @param command 명령 봉투 (actor 필수)
+     * @returns 인증 ID · 만료 시각
+     */
+    @OnCommand(USER_COMMAND.PHONE_VERIFICATION)
+    async sendPhoneVerification(command: MessageEnvelope<UserPhoneVerificationDto>): Promise<UserPhoneVerificationResultDto> {
+        return this.userService.sendPhoneVerification(requireActor(command).user_id, command.payload, command.meta.client_ip ?? '');
+    }
+
+    /**
+     * 휴대폰 인증번호 확인 — 로그인 회원
+     *
+     * @param command 명령 봉투 (actor 필수)
+     */
+    @OnCommand(USER_COMMAND.PHONE_VERIFICATION_CONFIRM)
+    async confirmPhoneVerification(command: MessageEnvelope<UserPhoneVerificationConfirmDto>): Promise<void> {
+        return this.userService.confirmPhoneVerification(requireActor(command).user_id, command.payload);
+    }
+
+    /**
+     * 아이디 찾기 — 인증번호 발송 (비로그인)
+     *
+     * @param command 명령 봉투
+     * @returns 인증 ID · 만료 시각
+     */
+    @OnCommand(USER_COMMAND.FIND_LOGIN_ID)
+    async sendFindLoginId(command: MessageEnvelope<UserFindLoginIdDto>): Promise<UserFindLoginIdResultDto> {
+        return this.userService.sendFindLoginId(command.payload, command.meta.client_ip ?? '');
+    }
+
+    /**
+     * 아이디 찾기 — 인증번호 확인 (비로그인)
+     *
+     * @param command 명령 봉투
+     * @returns 아이디 또는 가입한 SNS
+     */
+    @OnCommand(USER_COMMAND.FIND_LOGIN_ID_CONFIRM)
+    async confirmFindLoginId(command: MessageEnvelope<UserFindLoginIdConfirmDto>): Promise<UserFindLoginIdConfirmResultDto> {
+        return this.userService.confirmFindLoginId(command.payload);
+    }
+
+    /**
+     * 비밀번호 초기화 — 인증번호 발송 (비로그인)
+     *
+     * @param command 명령 봉투
+     * @returns 인증 ID · 만료 시각
+     */
+    @OnCommand(USER_COMMAND.PASSWORD_RESET)
+    async sendPasswordReset(command: MessageEnvelope<UserPasswordResetDto>): Promise<UserPasswordResetResultDto> {
+        return this.userService.sendPasswordReset(command.payload, command.meta.client_ip ?? '');
+    }
+
+    /**
+     * 비밀번호 초기화 — 인증번호 확인 → 임시 비밀번호 SMS (비로그인)
+     *
+     * @param command 명령 봉투
+     */
+    @OnCommand(USER_COMMAND.PASSWORD_RESET_CONFIRM)
+    async confirmPasswordReset(command: MessageEnvelope<UserPasswordResetConfirmDto>): Promise<void> {
+        return this.userService.confirmPasswordReset(command.payload);
     }
 }

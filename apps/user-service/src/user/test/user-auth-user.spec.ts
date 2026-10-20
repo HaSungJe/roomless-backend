@@ -13,7 +13,8 @@ const ROW = {
     auth_id: 'MANAGER',
     store_id: 's'.repeat(32),
     state_id: 'ACTIVE',
-    is_login_able: 1,
+    phone_verified_at: null,
+    is_login_allowed: 1,
 };
 
 describe('GET /internal/v1/user/auth-user/:user_id — 로그인 회원 조회 (게이트웨이 JWT 전략용)', () => {
@@ -46,9 +47,19 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 회원 조회 (
             auth_id: 'MANAGER',
             store_id: 's'.repeat(32),
             state_id: 'ACTIVE',
-            is_login_able: 1,
+            is_login_allowed: 1,
+            is_phone_verified: 0,
         });
         expect(repo.findLoginUser).toHaveBeenCalledWith(USER_ID);
+    });
+
+    it('[SUCCESS] 휴대폰 SMS 인증을 마친 회원이면 is_phone_verified 1', async () => {
+        repo.findLoginUser.mockResolvedValueOnce({...ROW, phone_verified_at: new Date(2025, 11, 1)});
+
+        const res = await request(app.getHttpServer()).get(`/internal/v1/user/auth-user/${USER_ID}`).set(internalHeaders());
+
+        expect(res.status).toBe(200);
+        expect(res.body.is_phone_verified).toBe(1);
     });
 
     it('[FAIL:service] 로그인 불가 · 미존재면 404', async () => {

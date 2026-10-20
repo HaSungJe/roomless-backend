@@ -46,19 +46,19 @@ export class UserSettingEntity {
     @Column({name: 'bio', type: 'text', nullable: true, comment: '자기소개'})
     bio: string | null;
 
-    @Column({name: 'create_at', type: 'timestamptz', nullable: false, comment: '등록일'})
-    create_at: Date;
+    @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
+    created_at: Date;
 
-    @Column({name: 'update_at', type: 'timestamptz', nullable: false, comment: '수정일'})
-    update_at: Date;
+    @Column({name: 'updated_at', type: 'timestamptz', nullable: false, comment: '수정일'})
+    updated_at: Date;
 
     /** insert 직전 등록일 · 수정일을 채운다. */
     @BeforeInsert()
-    insertTimestamp(): void { const now = new Date(); this.create_at = now; this.update_at = now; }
+    insertTimestamp(): void { const now = new Date(); this.created_at = now; this.updated_at = now; }
 
     /** update 직전 수정일을 갱신한다. */
     @BeforeUpdate()
-    updateTimestamp(): void { this.update_at = new Date(); }
+    updateTimestamp(): void { this.updated_at = new Date(); }
 }
 ```
 
@@ -136,9 +136,19 @@ export class UserRepository implements UserRepositoryInterface {
 - **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery`)하고 Data-Access Smoke spec 으로 SQL 을 고정한다([testing.md](testing.md)).
 - 메서드명은 소유 도메인 어휘.
 
+### 컬럼 이름 규칙
+
+- 시각은 `<과거분사>_at` 이다 — `created_at` · `updated_at` · `verified_at` · `phone_verified_at` · `leave_reserved_at`. 만료는 `expires_at` 이다.
+- 여부 플래그는 `is_<형용사 · 과거분사>` 이다 — `is_deleted` · `is_login_allowed` · `is_password_change_required`.
+- 직전 값을 가리키는 컬럼은 `previous_<이름>` 이다 — `previous_refresh_hash` · `leave_previous_state_id`.
+- PK 는 `<t_ 를 뗀 테이블 이름>_id`, FK 는 가리키는 PK 와 같은 이름이다 — `api_log_id` · `user_id` · `sms_purpose_id`.
+- **이름을 바꿀 때는 마이그레이션을 손으로 쓴다.** `db:generate` 는 이름 변경을 DROP + ADD 로 계산해 데이터가 사라진다. `ALTER TABLE ... RENAME COLUMN` · `ALTER INDEX ... RENAME` · `ALTER SEQUENCE ... RENAME` 만 쓰고(데이터 · 제약 · 주석 유지), `RenameColumns` 처럼 먼저 등록한 뒤 남은 차이만 생성한다(`1792477492198-RenameColumns.ts`).
+- 단일 컬럼 `@Unique` 는 생성기가 `UQ_<해시>` 제약명을 만들 수 있다. `db:check` 는 이 이름 차이를 잡지 못하므로, 생성된 마이그레이션의 제약명을 `UK_<Model>_<Cols>` 로 맞춘다(repository 의 `isUniqueViolation(error, 'UK_…')` 분기가 제약명에 기댄다).
+
 ## 트랜잭션
 
 - service 의 쓰기가 있는 메서드에 `@Transactional()`(`@nestjs-cls/transactional`) — 세션을 insert 하는 로그인 · 토큰 재발급도 포함(8개), 읽기만 하는 `getLoginUser` 는 없음. 그 안에서 호출된 repository 의 `txHost.tx` 가 같은 트랜잭션을 쓴다.
+- 예외 — 실패해도 남겨야 하는 쓰기는 repository 메서드에 `@Transactional(Propagation.RequiresNew)`(독립 커밋). 현재 `consumeSmsVerificationAttempt` 1개다. SMS 인증 시도 횟수는 확인이 실패해 바깥 트랜잭션이 롤백돼도 남아야 한다.
 - crontab 은 트랜잭션 없이 건별로 처리한다(한 건 실패가 나머지를 막지 않도록).
 - DB 를 쓰는 앱 루트 모듈은 `DatabaseModule` 을 import 한다 — `TypeOrmModule.forRootAsync(buildDataSourceOptions)` + `ClsModule.forRoot({plugins: [new ClsPluginTransactional({adapter: new TransactionalAdapterTypeOrm({dataSourceToken: getDataSourceToken()})})]})`.
 - 큐 경로에서 5xx 로 재시도해도 롤백 덕분에 안전하다.
@@ -159,4 +169,4 @@ export class UserRepository implements UserRepositoryInterface {
 - 쓰는 모양: `const pagination = new Pagination({...dto, total_count});` → `findXList(where, pagination.limit, pagination.offset)` → `{list, pagination: pagination.getPagination()}`.
 - Query DTO 는 `extends PaginationDto`(기본값은 부모 생성자).
 - 검색 WHERE 는 도메인 util 이 `FindOptionsWhere<X>` 로 조립(통합검색은 배열 = OR), repository 는 실행만. `Like()` · 관계 필드 where 를 쓰면 Data-Access Smoke 대상이다.
-- 기본 필터 `is_delete = 0`, 정렬 `create_at DESC`.
+- 기본 필터 `is_deleted = 0`, 정렬 `created_at DESC`.

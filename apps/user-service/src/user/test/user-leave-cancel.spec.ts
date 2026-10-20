@@ -25,13 +25,13 @@ describe('user.member.leave-cancel — 회원 탈퇴 철회 (큐 경로)', () =>
             ['BLOCK', 'BLOCK'],
             [null, 'ACTIVE'],
         ])('직전 상태 %s → %s 로 복원하고 예약 · 스냅샷 · 사유를 비운다', async (prev, restored) => {
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, state_id: 'LEAVE_WAIT', leave_prev_state_id: prev});
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, state_id: 'LEAVE_WAIT', leave_previous_state_id: prev});
 
             const {decision, result} = await runCommand(dispatcher, {type: USER_COMMAND.LEAVE_CANCEL, payload: {}, actor: ACTOR});
 
             expect(decision.result?.type).toBe('user.member.leave-cancel.done');
             expect(result).toEqual({result: null, error: null});
-            expect(repo.updateUser).toHaveBeenCalledWith({user_id: ACTOR.user_id}, {state_id: restored, leave_reserved_at: null, leave_prev_state_id: null, leave_comment: null});
+            expect(repo.updateUser).toHaveBeenCalledWith({user_id: ACTOR.user_id}, {state_id: restored, leave_reserved_at: null, leave_previous_state_id: null, leave_comment: null});
         });
     });
 
@@ -46,7 +46,7 @@ describe('user.member.leave-cancel — 회원 탈퇴 철회 (큐 경로)', () =>
         });
 
         it('LEAVE_WAIT 가 아니면 failed 400', async () => {
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, state_id: 'ACTIVE', leave_prev_state_id: null});
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, state_id: 'ACTIVE', leave_previous_state_id: null});
 
             const {result} = await runCommand(dispatcher, {type: USER_COMMAND.LEAVE_CANCEL, payload: {}, actor: ACTOR});
 

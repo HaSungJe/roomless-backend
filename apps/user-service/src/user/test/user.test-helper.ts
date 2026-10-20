@@ -11,6 +11,7 @@ import {INTERNAL_HEADER} from '@app/contracts/actor.js';
 import type {MessageEnvelope, ResultPayload} from '@app/contracts/message-envelope.js';
 import {CommandHandlerRegistry} from '@app/messaging/command-handler.registry.js';
 import {CommandDispatcher, DispatchDecision} from '@app/messaging/command.dispatcher.js';
+import {SMS_SENDER} from '@app/integration/integration.symbols.js';
 import {buildCommandEnvelope, encodeEnvelope} from '@app/messaging/messaging.util.js';
 import type {UserRepositoryInterface} from '../interfaces/user.repository.interface.js';
 import {UserController} from '../user.controller.js';
@@ -33,6 +34,9 @@ export type UserRepositoryMock = {[K in keyof UserRepositoryInterface]: Mock};
 /** JwtService mock */
 export type JwtServiceMock = {sign: Mock; verify: Mock};
 
+/** SMS 포트 mock */
+export type SmsSenderMock = {send: Mock};
+
 /**
  * 회원 repository mock 을 만든다.
  *
@@ -51,7 +55,21 @@ export function createUserRepositoryMock(): UserRepositoryMock {
         findSessionRefresh: vi.fn(),
         updateSessionRefresh: vi.fn(),
         updateUser: vi.fn(),
+        insertSmsVerification: vi.fn(),
+        countSmsVerifications: vi.fn(),
+        findSmsVerification: vi.fn(),
+        consumeSmsVerificationAttempt: vi.fn(),
+        updateSmsVerification: vi.fn(),
     };
+}
+
+/**
+ * SMS 포트 mock — 기본은 발송 성공.
+ *
+ * @returns mock
+ */
+export function createSmsSenderMock(): SmsSenderMock {
+    return {send: vi.fn().mockResolvedValue(undefined)};
 }
 
 /**
@@ -66,33 +84,49 @@ export function createJwtServiceMock(accessToken: string, refreshToken: string):
 }
 
 /**
- * 큐 경로 부팅 — 실제 UserCommandHandler · UserService · CommandHandlerRegistry · CommandDispatcher 에 repository · JwtService 만 mock.
+ * 큐 경로 부팅 — 실제 UserCommandHandler · UserService · CommandHandlerRegistry · CommandDispatcher 에 repository · JwtService · SMS 포트만 mock.
  *
  * @param repo repository mock
  * @param jwt JwtService mock
+ * @param sms SMS 포트 mock (기본: 발송 성공)
  * @returns 디스패처와 테스트 모듈
  */
-export async function bootCommandPath(repo: UserRepositoryMock, jwt: JwtServiceMock): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
+export async function bootCommandPath(repo: UserRepositoryMock, jwt: JwtServiceMock, sms: SmsSenderMock = createSmsSenderMock()): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
     const module = await Test.createTestingModule({
         imports: [DiscoveryModule],
-        providers: [UserService, UserCommandHandler, CommandHandlerRegistry, CommandDispatcher, {provide: USER_REPOSITORY, useValue: repo}, {provide: JwtService, useValue: jwt}],
+        providers: [
+            UserService,
+            UserCommandHandler,
+            CommandHandlerRegistry,
+            CommandDispatcher,
+            {provide: USER_REPOSITORY, useValue: repo},
+            {provide: JwtService, useValue: jwt},
+            {provide: SMS_SENDER, useValue: sms},
+        ],
     }).compile();
     await module.init();
     return {dispatcher: module.get(CommandDispatcher), module};
 }
 
 /**
- * 동기 경로 부팅 — 실제 내부 UserController · UserService · ValidationPipe · 필터 · 전역 InternalAuthGuard(APP_GUARD, user-service.module 과 같다) 에 repository · JwtService 만 mock.
+ * 동기 경로 부팅 — 실제 내부 UserController · UserService · ValidationPipe · 필터 · 전역 InternalAuthGuard(APP_GUARD, user-service.module 과 같다) 에 repository · JwtService · SMS 포트만 mock.
  *
  * @param repo repository mock
  * @param jwt JwtService mock
+ * @param sms SMS 포트 mock (기본: 발송 성공)
  * @returns Nest 앱
  */
-export async function bootHttpPath(repo: UserRepositoryMock, jwt: JwtServiceMock): Promise<INestApplication> {
+export async function bootHttpPath(repo: UserRepositoryMock, jwt: JwtServiceMock, sms: SmsSenderMock = createSmsSenderMock()): Promise<INestApplication> {
     process.env.INTERNAL_API_TOKEN = TEST_INTERNAL_TOKEN;
     const module = await Test.createTestingModule({
         controllers: [UserController],
-        providers: [UserService, {provide: USER_REPOSITORY, useValue: repo}, {provide: JwtService, useValue: jwt}, {provide: APP_GUARD, useClass: InternalAuthGuard}],
+        providers: [
+            UserService,
+            {provide: USER_REPOSITORY, useValue: repo},
+            {provide: JwtService, useValue: jwt},
+            {provide: SMS_SENDER, useValue: sms},
+            {provide: APP_GUARD, useClass: InternalAuthGuard},
+        ],
     }).compile();
     const app = module.createNestApplication();
     app.useGlobalFilters(new CustomErrorFilter());

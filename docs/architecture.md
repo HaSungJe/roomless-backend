@@ -38,7 +38,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | `libs/messaging` | `RabbitMqConnection` · 명령 발행 · 결과 구독 · 명령 소비 · `@OnCommand` · `CommandDispatcher` · `MessagingModule.forGateway()/forService()`(둘 다 전역) | 게이트웨이 · 서비스 |
 
 - import 는 `@app/<lib>/<경로>.js` (barrel 없음). 앱 · 도메인 내부는 상대경로. 라이브러리 안의 import 방식은 [conventions.md](conventions.md).
-- 라이브러리 의존 방향: `messaging` → `contracts` · `common`, `common` → `contracts`, `contracts` 는 외부 패키지만, `database` · `integration` 은 다른 lib 를 쓰지 않는다. 앱끼리는 서로 import 하지 않고(0건), 게이트웨이는 `@app/database` 를 쓰지 않는다.
+- 라이브러리 의존 방향: `messaging` → `contracts` · `common`, `common` → `contracts`, `contracts` 는 외부 패키지만, `database` → `common`(시더의 bcrypt — 첫 총관리자 비밀번호 해시), `integration` 은 다른 lib 를 쓰지 않는다. 앱끼리는 서로 import 하지 않고(0건), 게이트웨이는 `@app/database` 를 쓰지 않는다.
 
 ## 전달 경로 — 동기 vs 큐
 

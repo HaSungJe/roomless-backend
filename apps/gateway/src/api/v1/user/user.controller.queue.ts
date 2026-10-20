@@ -10,14 +10,21 @@ import {
     ApiProduces,
     ApiServiceUnavailableResponse,
     ApiTags,
+    ApiTooManyRequestsResponse,
     ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type {Response} from 'express';
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
+import {UserFindLoginIdConfirmDto, UserFindLoginIdConfirmResultDto} from '@app/contracts/user/dto/user-find-login-id-confirm.dto.js';
+import {UserFindLoginIdDto, UserFindLoginIdResultDto} from '@app/contracts/user/dto/user-find-login-id.dto.js';
 import {UserGeneralSignDto, UserGeneralSignResultDto} from '@app/contracts/user/dto/user-general-sign.dto.js';
 import {UserLeaveDto} from '@app/contracts/user/dto/user-leave.dto.js';
+import {UserPasswordResetConfirmDto} from '@app/contracts/user/dto/user-password-reset-confirm.dto.js';
+import {UserPasswordResetDto, UserPasswordResetResultDto} from '@app/contracts/user/dto/user-password-reset.dto.js';
 import {UserPasswordDto} from '@app/contracts/user/dto/user-password.dto.js';
+import {UserPhoneVerificationConfirmDto} from '@app/contracts/user/dto/user-phone-verification-confirm.dto.js';
+import {UserPhoneVerificationDto, UserPhoneVerificationResultDto} from '@app/contracts/user/dto/user-phone-verification.dto.js';
 import {UserSignDto, UserSignResultDto} from '@app/contracts/user/dto/user-sign.dto.js';
 import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
 import {PassportActor} from '../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
@@ -120,5 +127,108 @@ export class UserQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async changePassword(@PassportActor() actor: Actor, @Body() dto: UserPasswordDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: USER_COMMAND.PASSWORD, actor, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 휴대폰 인증번호 발송 — 가입 후 본인 휴대폰 인증. done 의 data 는 인증 ID · 만료 시각.
+     */
+    @Post('/phone-verification')
+    @UseGuards(PassportJwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '휴대폰 인증번호 발송'})
+    @ApiBody({type: UserPhoneVerificationDto})
+    @ApiProduces('text/event-stream')
+    @ApiOkResponse({type: UserPhoneVerificationResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiTooManyRequestsResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async sendPhoneVerification(@PassportActor() actor: Actor, @Body() dto: UserPhoneVerificationDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: USER_COMMAND.PHONE_VERIFICATION, actor, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 휴대폰 인증번호 확인 — 확인되면 그 번호를 회원정보에 저장. done 의 data 는 null.
+     */
+    @Post('/phone-verification/confirm')
+    @UseGuards(PassportJwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '휴대폰 인증번호 확인'})
+    @ApiBody({type: UserPhoneVerificationConfirmDto})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async confirmPhoneVerification(@PassportActor() actor: Actor, @Body() dto: UserPhoneVerificationConfirmDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: USER_COMMAND.PHONE_VERIFICATION_CONFIRM, actor, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 아이디 찾기 — 인증번호 발송. done 의 data 는 인증 ID · 만료 시각.
+     */
+    @Post('/find-login-id')
+    @ApiOperation({summary: '아이디 찾기 — 인증번호 발송'})
+    @ApiBody({type: UserFindLoginIdDto})
+    @ApiProduces('text/event-stream')
+    @ApiOkResponse({type: UserFindLoginIdResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiTooManyRequestsResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async sendFindLoginId(@Body() dto: UserFindLoginIdDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: USER_COMMAND.FIND_LOGIN_ID, actor: null, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 아이디 찾기 — 인증번호 확인. done 의 data 는 아이디(일반) 또는 가입한 SNS · 가입일시.
+     */
+    @Post('/find-login-id/confirm')
+    @ApiOperation({summary: '아이디 찾기 — 인증번호 확인'})
+    @ApiBody({type: UserFindLoginIdConfirmDto})
+    @ApiProduces('text/event-stream')
+    @ApiOkResponse({type: UserFindLoginIdConfirmResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async confirmFindLoginId(@Body() dto: UserFindLoginIdConfirmDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: USER_COMMAND.FIND_LOGIN_ID_CONFIRM, actor: null, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 비밀번호 초기화 — 인증번호 발송(아이디 + 휴대폰 번호). done 의 data 는 인증 ID · 만료 시각.
+     */
+    @Post('/password-reset')
+    @ApiOperation({summary: '비밀번호 초기화 — 인증번호 발송'})
+    @ApiBody({type: UserPasswordResetDto})
+    @ApiProduces('text/event-stream')
+    @ApiOkResponse({type: UserPasswordResetResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiTooManyRequestsResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async sendPasswordReset(@Body() dto: UserPasswordResetDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: USER_COMMAND.PASSWORD_RESET, actor: null, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 비밀번호 초기화 — 인증번호 확인 → 임시 비밀번호를 SMS 로 보낸다. done 의 data 는 null.
+     */
+    @Post('/password-reset/confirm')
+    @ApiOperation({summary: '비밀번호 초기화 — 인증번호 확인'})
+    @ApiBody({type: UserPasswordResetConfirmDto})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async confirmPasswordReset(@Body() dto: UserPasswordResetConfirmDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: USER_COMMAND.PASSWORD_RESET_CONFIRM, actor: null, payload: dto, client_ip: ip});
     }
 }

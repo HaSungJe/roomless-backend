@@ -1,9 +1,47 @@
+import {randomInt} from 'node:crypto';
 import type {JwtService} from '@nestjs/jwt';
 import dayjs from 'dayjs';
 import {v4} from 'uuid';
+import {sha256Hex} from '@app/common/utils/hash.js';
 import {extractJwtExpiresAt} from '@app/common/utils/jwt.js';
 import {UserAuthUserResultDto} from '@app/contracts/user/dto/user-auth-user.dto.js';
+import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import type {LoginUserRow} from './interfaces/user.repository.interface.js';
+
+/** SMS 인증 용도 — t_sms_purpose PK (seeder.targets.ts 의 SMS_PURPOSE_SEED_DATA 와 같다) */
+export const SMS_PURPOSE = {PHONE_VERIFY: 'PHONE_VERIFY', FIND_LOGIN_ID: 'FIND_LOGIN_ID', PASSWORD_RESET: 'PASSWORD_RESET'} as const;
+
+/** 인증번호 유효 시간(분) */
+export const SMS_CODE_TTL_MINUTES = 5;
+
+/** 인증번호 1건당 확인 시도 한도 */
+export const SMS_MAX_ATTEMPTS = 3;
+
+/** 같은 번호 하루 발송 한도 기본값 — env SMS_VERIFICATION_DAILY_LIMIT 가 없거나 잘못됐을 때 */
+export const DEFAULT_SMS_DAILY_LIMIT = 10;
+
+/** 임시 비밀번호 길이 */
+export const TEMPORARY_PASSWORD_LENGTH = 10;
+
+/** 한국 표준시 오프셋(ms) — 서머타임 없음 */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+/** 임시 비밀번호에 쓰는 문자 — 영문 대소문자 + 숫자 */
+const TEMPORARY_PASSWORD_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+/** SMS 인증 기록 상태 — 사용 가능 · 이미 사용 · 만료 */
+export type SmsVerificationState = 'USABLE' | 'USED' | 'EXPIRED';
+
+/** buildSmsVerification 입력 */
+export interface SmsVerificationInput {
+    sms_purpose_id: string;
+    user_id: string;
+    phone: string;
+    /** 인증번호 원문 — 해시로만 저장한다 */
+    code: string;
+    ip: string;
+    now: Date;
+}
 
 /** access / refresh 토큰 한 쌍과 만료 시각 */
 export interface AccessRefreshSet {
@@ -72,6 +110,109 @@ export function toUserAuthUserResult(row: LoginUserRow): UserAuthUserResultDto {
     result.auth_id = row.auth_id;
     result.store_id = row.store_id;
     result.state_id = row.state_id;
-    result.is_login_able = row.is_login_able;
+    result.is_login_allowed = row.is_login_allowed;
+    result.is_phone_verified = row.phone_verified_at ? 1 : 0;
     return result;
+}
+
+/**
+ * 숫자 6자리 인증번호 (암호학적 난수, 앞자리 0 유지).
+ *
+ * @returns 000000 ~ 999999
+ */
+export function generateVerificationCode(): string {
+    return String(randomInt(0, 1_000_000)).padStart(6, '0');
+}
+
+/**
+ * 영문 + 숫자 10자리 임시 비밀번호 — 영문 · 숫자가 각각 1자 이상이라 비밀번호 변경 규칙(영문 + 숫자 필수)을 통과한다.
+ *
+ * @returns 임시 비밀번호
+ */
+export function generateTemporaryPassword(): string {
+    for (;;) {
+        const password = Array.from({length: TEMPORARY_PASSWORD_LENGTH}, () => TEMPORARY_PASSWORD_CHARS[randomInt(TEMPORARY_PASSWORD_CHARS.length)]).join('');
+        if (/[A-Za-z]/.test(password) && /\d/.test(password)) {
+            return password;
+        }
+    }
+}
+
+/**
+ * 그 시각이 속한 한국 날짜의 0시(KST) — 같은 번호 하루 발송 수를 세는 시작점.
+ *
+ * @param now 기준 시각
+ * @returns 한국 날짜 0시의 Date
+ */
+export function kstDayStart(now: Date): Date {
+    const kst = new Date(now.getTime() + KST_OFFSET_MS);
+    kst.setUTCHours(0, 0, 0, 0);
+    return new Date(kst.getTime() - KST_OFFSET_MS);
+}
+
+/**
+ * 같은 번호 하루 발송 한도 — env SMS_VERIFICATION_DAILY_LIMIT. 없거나 숫자가 아니거나 0 이하면 기본 10.
+ *
+ * @returns 한도
+ */
+export function getSmsDailyLimit(): number {
+    const parsed = parseInt(process.env.SMS_VERIFICATION_DAILY_LIMIT ?? '', 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SMS_DAILY_LIMIT;
+}
+
+/**
+ * SMS 인증 기록 상태 — 이미 인증했으면 USED, 만료 시각이 지났으면(같으면 포함) EXPIRED.
+ *
+ * @param verification 인증 기록
+ * @param now 기준 시각
+ * @returns 상태
+ */
+export function checkSmsVerification(verification: SmsVerificationEntity, now: Date): SmsVerificationState {
+    if (verification.verified_at) {
+        return 'USED';
+    }
+    if (verification.expires_at.getTime() <= now.getTime()) {
+        return 'EXPIRED';
+    }
+    return 'USABLE';
+}
+
+/**
+ * SMS 인증 발송 기록 — 인증번호는 SHA-256 해시로만, 만료는 발송 + 5분.
+ *
+ * @param input 용도 · 회원 · 번호 · 인증번호 · IP · 기준 시각
+ * @returns 저장할 엔티티
+ */
+export function buildSmsVerification(input: SmsVerificationInput): SmsVerificationEntity {
+    const entity = new SmsVerificationEntity();
+    entity.sms_verification_id = generateId();
+    entity.sms_purpose_id = input.sms_purpose_id;
+    entity.user_id = input.user_id;
+    entity.phone = input.phone;
+    entity.code_hash = sha256Hex(input.code);
+    entity.attempt_count = 0;
+    entity.expires_at = new Date(input.now.getTime() + SMS_CODE_TTL_MINUTES * 60 * 1000);
+    entity.verified_at = null;
+    entity.ip = input.ip || null;
+    return entity;
+}
+
+/**
+ * 인증번호 SMS 본문 — 한글 70자 안(1건 과금).
+ *
+ * @param code 인증번호
+ * @returns 본문
+ */
+export function smsVerificationText(code: string): string {
+    return `[roomless] 인증번호 [${code}] — ${SMS_CODE_TTL_MINUTES}분 안에 입력해주세요.`;
+}
+
+/**
+ * 임시 비밀번호 SMS 본문 — 한글 70자 안(1건 과금).
+ *
+ * @param password 임시 비밀번호
+ * @returns 본문
+ */
+export function temporaryPasswordText(password: string): string {
+    return `[roomless] 임시 비밀번호 ${password} — 로그인 후 비밀번호를 바꿔주세요.`;
 }

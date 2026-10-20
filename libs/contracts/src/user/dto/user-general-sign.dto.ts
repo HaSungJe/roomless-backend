@@ -51,4 +51,7 @@ export class UserGeneralSignResultDto {
 
     @ApiProperty({description: 'Refresh Token 만료일시 (ISO 8601)'})
     refresh_token_expires_at: string;
+
+    @ApiProperty({description: '휴대폰 SMS 인증 여부(0: 미인증, 1: 인증) — 0 이면 휴대폰 인증 화면으로'})
+    is_phone_verified: number;
 }

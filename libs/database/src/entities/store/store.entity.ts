@@ -27,17 +27,17 @@ export class StoreEntity {
     @Column({name: 'address_detail', type: 'varchar', length: 255, nullable: true, comment: '상세주소'})
     address_detail: string | null;
 
-    @Column({name: 'is_delete', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제)'})
-    is_delete: number;
+    @Column({name: 'is_deleted', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제)'})
+    is_deleted: number;
 
     @Column({name: 'delete_backup', type: 'text', nullable: true, comment: '삭제 시 이전 정보 백업(JSON)'})
     delete_backup: string | null;
 
-    @Column({name: 'create_at', type: 'timestamptz', nullable: false, comment: '등록일'})
-    create_at: Date;
+    @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
+    created_at: Date;
 
-    @Column({name: 'update_at', type: 'timestamptz', nullable: false, comment: '수정일'})
-    update_at: Date;
+    @Column({name: 'updated_at', type: 'timestamptz', nullable: false, comment: '수정일'})
+    updated_at: Date;
 
     /**
      * insert 직전 등록일 · 수정일을 채운다.
@@ -45,8 +45,8 @@ export class StoreEntity {
     @BeforeInsert()
     insertTimestamp(): void {
         const now = new Date();
-        this.create_at = now;
-        this.update_at = now;
+        this.created_at = now;
+        this.updated_at = now;
     }
 
     /**
@@ -54,6 +54,6 @@ export class StoreEntity {
      */
     @BeforeUpdate()
     updateTimestamp(): void {
-        this.update_at = new Date();
+        this.updated_at = new Date();
     }
 }

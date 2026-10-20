@@ -5,6 +5,7 @@ import {DataSource, QueryFailedError} from 'typeorm';
 import {ENTITIES} from '@app/database/entities.js';
 import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
 import {SessionEntity} from '@app/database/entities/user/session.entity.js';
+import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import {UserSettingEntity} from '@app/database/entities/user/user-setting.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {UserRepository} from '../repositories/user.repository.js';
@@ -26,12 +27,19 @@ function constraintError(code: '23505' | '23503', constraint: string): QueryFail
  * @returns 저장소와 엔티티별 가짜 repository
  */
 function makeRepository() {
-    const fake = () => ({insert: vi.fn(), findOne: vi.fn(), find: vi.fn(), update: vi.fn()});
+    /** 갱신 QueryBuilder 체인 — 빌더 메서드는 자기 자신, execute 만 결과 */
+    const chain = {update: vi.fn(), set: vi.fn(), where: vi.fn(), andWhere: vi.fn(), execute: vi.fn()};
+    chain.update.mockReturnValue(chain);
+    chain.set.mockReturnValue(chain);
+    chain.where.mockReturnValue(chain);
+    chain.andWhere.mockReturnValue(chain);
+    const fake = () => ({insert: vi.fn(), findOne: vi.fn(), find: vi.fn(), update: vi.fn(), count: vi.fn(), createQueryBuilder: vi.fn(() => chain)});
     const repos = new Map<unknown, ReturnType<typeof fake>>([
         [UserEntity, fake()],
         [UserSettingEntity, fake()],
         [SessionEntity, fake()],
         [SessionRefreshEntity, fake()],
+        [SmsVerificationEntity, fake()],
     ]);
     const txHost = {tx: {getRepository: (entity: unknown) => repos.get(entity)}} as unknown as TransactionHost<TransactionalAdapterTypeOrm>;
     return {
@@ -40,6 +48,8 @@ function makeRepository() {
         setting: repos.get(UserSettingEntity)!,
         session: repos.get(SessionEntity)!,
         refresh: repos.get(SessionRefreshEntity)!,
+        sms: repos.get(SmsVerificationEntity)!,
+        chain,
     };
 }
 
@@ -126,7 +136,70 @@ describe('UserRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         });
     });
 
+    describe('insertSmsVerification', () => {
+        it.each([
+            ['FK_SmsVerification_SmsPurpose', '존재하지 않는 SMS 인증 용도입니다.'],
+            ['FK_SmsVerification_User', '존재하지 않는 회원입니다.'],
+        ] as const)('23503 %s → 400 "%s"', async (constraint, message) => {
+            const {repository, sms} = makeRepository();
+            sms.insert.mockRejectedValueOnce(constraintError('23503', constraint));
+
+            const error = await repository.insertSmsVerification(new SmsVerificationEntity()).catch((e: unknown) => e);
+
+            expect(error).toBeInstanceOf(BadRequestException);
+            expect((error as BadRequestException).getResponse()).toEqual({message});
+        });
+
+        it('그 밖의 오류는 통일 500', async () => {
+            const {repository, sms} = makeRepository();
+            sms.insert.mockRejectedValueOnce(new Error('db'));
+
+            await expect(repository.insertSmsVerification(new SmsVerificationEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+        });
+    });
+
+    describe('updateUser — 휴대폰 번호 경쟁', () => {
+        it('23505 UK_User_Phone → 400 "이미 가입된 번호입니다."', async () => {
+            const {repository, user} = makeRepository();
+            user.update.mockRejectedValueOnce(constraintError('23505', 'UK_User_Phone'));
+
+            const error = await repository.updateUser({user_id: 'x'}, Object.assign(new UserEntity(), {phone: '01012345678'})).catch((e: unknown) => e);
+
+            expect(error).toBeInstanceOf(BadRequestException);
+            expect((error as BadRequestException).getResponse()).toEqual({message: '이미 가입된 번호입니다.'});
+        });
+    });
+
+    describe('consumeSmsVerificationAttempt', () => {
+        it.each([
+            [1, true],
+            [0, false],
+        ])('갱신 행 %i → %s (한도에 닿았으면 false)', async (affected, expected) => {
+            const {repository, chain} = makeRepository();
+            chain.execute.mockResolvedValueOnce({affected});
+
+            await expect(repository.consumeSmsVerificationAttempt('v1', 3)).resolves.toBe(expected);
+            expect(chain.where).toHaveBeenCalledWith('sms_verification_id = :sms_verification_id', {sms_verification_id: 'v1'});
+            expect(chain.andWhere).toHaveBeenCalledWith('attempt_count < :max_attempts', {max_attempts: 3});
+        });
+
+        it('실패는 통일 500', async () => {
+            const {repository, chain} = makeRepository();
+            chain.execute.mockRejectedValueOnce(new Error('db'));
+
+            await expect(repository.consumeSmsVerificationAttempt('v1', 3)).rejects.toBeInstanceOf(InternalServerErrorException);
+        });
+    });
+
     describe('조회 · 수정', () => {
+        it('findSmsVerification 은 인증 ID 조건 그대로 loadRelationIds 로 조회한다', async () => {
+            const {repository, sms} = makeRepository();
+
+            await repository.findSmsVerification({sms_verification_id: 'v1', sms_purpose_id: 'PHONE_VERIFY'});
+
+            expect(sms.findOne).toHaveBeenCalledWith({where: {sms_verification_id: 'v1', sms_purpose_id: 'PHONE_VERIFY'}, loadRelationIds: true});
+        });
+
         it('findUser · findUsers 는 loadRelationIds 로 FK ID 를 채운다', async () => {
             const {repository, user} = makeRepository();
 
@@ -153,6 +226,9 @@ describe('UserRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
             ['findSessionRefresh', 'refresh', 'findOne'],
             ['updateSessionRefresh', 'refresh', 'update'],
             ['updateUser', 'user', 'update'],
+            ['countSmsVerifications', 'sms', 'count'],
+            ['findSmsVerification', 'sms', 'findOne'],
+            ['updateSmsVerification', 'sms', 'update'],
         ] as const)('%s 실패는 통일 500', async (method, repo, fn) => {
             const fakes = makeRepository();
             fakes[repo][fn].mockRejectedValueOnce(new Error('db'));
@@ -162,14 +238,14 @@ describe('UserRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     });
 });
 
-describe('[SMOKE:data-access] findLoginUser 쿼리 — DB 연결 없이 SQL 빌드', () => {
+describe('[SMOKE:data-access] findLoginUser · consumeSmsVerificationAttempt 쿼리 — DB 연결 없이 SQL 빌드', () => {
     let dataSource: DataSource;
     let repository: UserRepository;
 
-    beforeAll(() => {
+    beforeAll(async () => {
         // 접속하지 않는다 — 엔티티 메타데이터만 만들어 QueryBuilder 가 SQL 을 조립하게 한다
         dataSource = new DataSource({type: 'postgres', database: 'smoke', entities: ENTITIES});
-        (dataSource as unknown as {buildMetadatas: () => void}).buildMetadatas();
+        await (dataSource as unknown as {buildMetadatas: () => Promise<void>}).buildMetadatas();
         repository = new UserRepository({tx: dataSource.manager} as unknown as TransactionHost<TransactionalAdapterTypeOrm>);
     });
 
@@ -179,9 +255,9 @@ describe('[SMOKE:data-access] findLoginUser 쿼리 — DB 연결 없이 SQL 빌�
         expect(parameters).toEqual(['u1']);
         expect(sql.replace(/\s+/g, ' ')).toBe(
             'SELECT "u"."user_id" AS "user_id", "u"."login_id" AS "login_id", "u"."name" AS "name", "u"."gender" AS "gender", "u"."birth" AS "birth", "u"."nickname" AS "nickname", ' +
-                '"u"."auth_id" AS "auth_id", "u"."store_id" AS "store_id", "u"."state_id" AS "state_id", "s"."is_login_able" AS "is_login_able" ' +
+                '"u"."auth_id" AS "auth_id", "u"."store_id" AS "store_id", "u"."state_id" AS "state_id", "u"."phone_verified_at" AS "phone_verified_at", "s"."is_login_allowed" AS "is_login_allowed" ' +
                 'FROM "t_user" "u" INNER JOIN "t_state" "s" ON "s"."state_id" = "u"."state_id" INNER JOIN "t_user_setting" "us" ON "us"."user_id" = "u"."user_id" ' +
-                'WHERE "u"."user_id" = $1 AND "s"."is_login_able" = 1',
+                'WHERE "u"."user_id" = $1 AND "s"."is_login_allowed" = 1',
         );
     });
 
@@ -189,6 +265,13 @@ describe('[SMOKE:data-access] findLoginUser 쿼리 — DB 연결 없이 SQL 빌�
         const [sql] = repository.buildLoginUserQuery('u1').getQueryAndParameters();
         const aliases = [...sql.matchAll(/ AS "([a-z_]+)"/g)].map((m) => m[1]);
 
-        expect(aliases).toEqual(['user_id', 'login_id', 'name', 'gender', 'birth', 'nickname', 'auth_id', 'store_id', 'state_id', 'is_login_able']);
+        expect(aliases).toEqual(['user_id', 'login_id', 'name', 'gender', 'birth', 'nickname', 'auth_id', 'store_id', 'state_id', 'phone_verified_at', 'is_login_allowed']);
+    });
+
+    it('SMS 인증 시도 소비 — 한도 미만인 행만 원자적으로 +1, 수정일 갱신', () => {
+        const [sql, parameters] = repository.buildConsumeSmsVerificationAttemptQuery('v1', 3).getQueryAndParameters();
+
+        expect(parameters).toEqual(['v1', 3]);
+        expect(sql).toBe('UPDATE "t_sms_verification" SET "attempt_count" = "attempt_count" + 1, "updated_at" = CURRENT_TIMESTAMP WHERE "sms_verification_id" = $1 AND "attempt_count" < $2');
     });
 });

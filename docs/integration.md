@@ -1,6 +1,6 @@
 # 외부 연동 (`libs/integration`)
 
-> 첫 사용처는 Phase 5(휴대폰 인증 · 비밀번호 초기화)다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md).
+> 첫 사용처는 user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 비밀번호 초기화다(`SmsModule`). AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md).
 
 ## 원칙
 

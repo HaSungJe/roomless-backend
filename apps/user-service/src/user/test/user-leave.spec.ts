@@ -36,7 +36,7 @@ describe('user.member.leave — 회원 탈퇴 신청 (큐 경로)', () => {
             expect(repo.updateUser).toHaveBeenCalledTimes(1);
             expect(repo.updateUser).toHaveBeenCalledWith(
                 {user_id: ACTOR.user_id},
-                {state_id: 'LEAVE_WAIT', leave_prev_state_id: state_id, leave_comment: '이용 빈도 낮음', leave_reserved_at: '2026-01-15 00:00:00'},
+                {state_id: 'LEAVE_WAIT', leave_previous_state_id: state_id, leave_comment: '이용 빈도 낮음', leave_reserved_at: '2026-01-15 00:00:00'},
             );
         });
 

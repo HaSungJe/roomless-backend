@@ -60,6 +60,7 @@ describe('user.member.general-sign — 일반 회원가입 (큐 경로)', () => 
                 refresh_token: MOCK_REFRESH_TOKEN,
                 access_token_expires_at: MOCK_ACCESS_EXPIRES_AT.toISOString(),
                 refresh_token_expires_at: MOCK_REFRESH_EXPIRES_AT.toISOString(),
+                is_phone_verified: 0,
             });
             expect(getBcrypt).toHaveBeenCalledWith('abcd1234!');
             expect(repo.insertUser).toHaveBeenCalledTimes(1);
@@ -83,13 +84,13 @@ describe('user.member.general-sign — 일반 회원가입 (큐 경로)', () => 
             });
             const user_id = repo.insertUser.mock.calls[0][0].user_id;
             expect(repo.insertUserSetting).toHaveBeenCalledWith({user_setting_id: expect.stringMatching(ID_PATTERN), user_id, bio: null});
-            expect(repo.insertSession).toHaveBeenCalledWith({session_id: expect.stringMatching(ID_PATTERN), user_id, ip: '1.2.3.4', device_os: null, device_token: null, is_delete: 0});
+            expect(repo.insertSession).toHaveBeenCalledWith({session_id: expect.stringMatching(ID_PATTERN), user_id, ip: '1.2.3.4', device_os: null, device_token: null, is_deleted: 0});
             expect(repo.insertSessionRefresh).toHaveBeenCalledWith({
                 session_id: repo.insertSession.mock.calls[0][0].session_id,
                 refresh_hash: 'b'.repeat(64),
                 refresh_encrypted: 'iv:tag:ct',
-                before_refresh_hash: null,
-                end_at: MOCK_REFRESH_EXPIRES_AT,
+                previous_refresh_hash: null,
+                expires_at: MOCK_REFRESH_EXPIRES_AT,
             });
         });
     });

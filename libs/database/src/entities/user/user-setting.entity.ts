@@ -17,11 +17,11 @@ export class UserSettingEntity {
     @Column({name: 'bio', type: 'text', nullable: true, comment: '자기소개'})
     bio: string | null;
 
-    @Column({name: 'create_at', type: 'timestamptz', nullable: false, comment: '등록일'})
-    create_at: Date;
+    @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
+    created_at: Date;
 
-    @Column({name: 'update_at', type: 'timestamptz', nullable: false, comment: '수정일'})
-    update_at: Date;
+    @Column({name: 'updated_at', type: 'timestamptz', nullable: false, comment: '수정일'})
+    updated_at: Date;
 
     /**
      * insert 직전 등록일 · 수정일을 채운다.
@@ -29,8 +29,8 @@ export class UserSettingEntity {
     @BeforeInsert()
     insertTimestamp(): void {
         const now = new Date();
-        this.create_at = now;
-        this.update_at = now;
+        this.created_at = now;
+        this.updated_at = now;
     }
 
     /**
@@ -38,6 +38,6 @@ export class UserSettingEntity {
      */
     @BeforeUpdate()
     updateTimestamp(): void {
-        this.update_at = new Date();
+        this.updated_at = new Date();
     }
 }

@@ -77,6 +77,7 @@ describe('user.member.sign — SNS 회원가입 (큐 경로)', () => {
                     refresh_token: MOCK_REFRESH_TOKEN,
                     access_token_expires_at: MOCK_ACCESS_EXPIRES_AT.toISOString(),
                     refresh_token_expires_at: MOCK_REFRESH_EXPIRES_AT.toISOString(),
+                    is_phone_verified: 0,
                 },
                 error: null,
             });
@@ -114,7 +115,7 @@ describe('user.member.sign — SNS 회원가입 (큐 경로)', () => {
 
             // t_session — 게이트웨이가 넘긴 클라이언트 IP
             const session = repo.insertSession.mock.calls[0][0];
-            expect(session).toEqual({session_id: expect.stringMatching(ID_PATTERN), user_id: user.user_id, ip: '127.0.0.1', device_os: 'iOS', device_token: 'some-device-token', is_delete: 0});
+            expect(session).toEqual({session_id: expect.stringMatching(ID_PATTERN), user_id: user.user_id, ip: '127.0.0.1', device_os: 'iOS', device_token: 'some-device-token', is_deleted: 0});
 
             // 토큰 발급
             expect(jwt.sign).toHaveBeenNthCalledWith(1, {type: 'access', user_id: user.user_id, session_id: session.session_id}, {expiresIn: '20m'});
@@ -125,8 +126,8 @@ describe('user.member.sign — SNS 회원가입 (큐 경로)', () => {
                 session_id: session.session_id,
                 refresh_hash: MOCK_REFRESH_HASH,
                 refresh_encrypted: MOCK_REFRESH_ENCRYPTED,
-                before_refresh_hash: null,
-                end_at: MOCK_REFRESH_EXPIRES_AT,
+                previous_refresh_hash: null,
+                expires_at: MOCK_REFRESH_EXPIRES_AT,
             });
             expect(sha256Hex).toHaveBeenCalledWith(MOCK_REFRESH_TOKEN);
             expect(encryptAesGcm).toHaveBeenCalledWith(MOCK_REFRESH_TOKEN);

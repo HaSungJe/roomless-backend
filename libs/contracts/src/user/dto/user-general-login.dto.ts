@@ -42,4 +42,7 @@ export class UserGeneralLoginResultDto {
 
     @ApiProperty({description: '비밀번호 변경 필요 여부(0: 불필요, 1: 필요) — 임시 비밀번호로 발급된 인력 계정은 1'})
     is_password_change_required: number;
+
+    @ApiProperty({description: '휴대폰 SMS 인증 여부(0: 미인증, 1: 인증) — 0 이면 휴대폰 인증 화면으로'})
+    is_phone_verified: number;
 }

@@ -22,8 +22,8 @@ export class SessionEntity {
     @Column({name: 'device_token', type: 'varchar', length: 255, nullable: true, comment: '디바이스 토큰'})
     device_token: string | null;
 
-    @Column({name: 'is_delete', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제)'})
-    is_delete: number;
+    @Column({name: 'is_deleted', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제)'})
+    is_deleted: number;
 
     @Column({name: 'login_at', type: 'timestamptz', nullable: false, comment: '로그인일'})
     login_at: Date;

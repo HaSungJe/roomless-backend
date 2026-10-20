@@ -19,7 +19,7 @@ const LOGIN_USER = {
     nickname: '길동',
     store_id: null,
     state_id: 'ACTIVE',
-    is_login_able: 1,
+    is_login_allowed: 1,
 };
 const ACTOR = {user_id: LOGIN_USER.user_id, auth_id: 'USER'};
 const TOKENS = {access_token: 'a', refresh_token: 'r', access_token_expires_at: '2026-01-01T00:20:00.000Z', refresh_token_expires_at: '2027-01-01T00:00:00.000Z'};
@@ -135,6 +135,87 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
         expect(res.status).toBe(400);
         expect(res.body.validation_errors[0].property).toBe('new_password');
         expect(broker.published).toHaveLength(0);
+    });
+
+    it('[FAIL:validation] SNS 가입은 네이버 · 카카오만 — GOOGLE 은 400, 발행 없음', async () => {
+        const res = await request(app.getHttpServer())
+            .post('/api/v1/user/sign')
+            .send({...SIGN_DTO, sns_id: 'GOOGLE'});
+
+        expect(res.status).toBe(400);
+        expect(res.body.validation_errors[0].property).toBe('sns_id');
+        expect(broker.published).toHaveLength(0);
+    });
+
+    describe('SMS 인증 · 아이디 찾기 · 비밀번호 초기화', () => {
+        const SEND_RESULT = {sms_verification_id: 'v'.repeat(32), expires_at: '2026-01-01T00:05:00.000Z'};
+        const CONFIRM = {sms_verification_id: 'v'.repeat(32), code: '123456'};
+
+        it.each([
+            ['/api/v1/user/phone-verification', {phone: '01012345678'}, 'user.member.phone-verification', SEND_RESULT],
+            ['/api/v1/user/phone-verification/confirm', CONFIRM, 'user.member.phone-verification-confirm', null],
+        ] as const)('[SUCCESS] POST %s — 로그인 회원을 actor 로 실어 %s 를 발행하고 accepted → done', async (path, body, type, data) => {
+            broker.reply = replyDone(data);
+
+            const res = await request(app.getHttpServer()).post(path).send(body);
+
+            expect(res.status).toBe(200);
+            expect(broker.published).toHaveLength(1);
+            expect(broker.published[0]).toMatchObject({type, actor: ACTOR, payload: body});
+            expect(parseSse(res.text).map((e) => e.event)).toEqual(['accepted', 'done']);
+            expect(parseSse(res.text)[1].data).toEqual(data);
+        });
+
+        it.each([
+            ['/api/v1/user/find-login-id', {phone: '01012345678'}, 'user.member.find-login-id', SEND_RESULT],
+            ['/api/v1/user/find-login-id/confirm', CONFIRM, 'user.member.find-login-id-confirm', {login_id: 'roomless_01', sns_id: null, created_at: '2025-06-01T00:30:00.000Z'}],
+            ['/api/v1/user/password-reset', {login_id: 'roomless_01', phone: '01012345678'}, 'user.member.password-reset', SEND_RESULT],
+            ['/api/v1/user/password-reset/confirm', CONFIRM, 'user.member.password-reset-confirm', null],
+        ] as const)('[SUCCESS] POST %s — 비로그인(actor null)으로 %s 를 발행하고 accepted → done', async (path, body, type, data) => {
+            authenticated = false;
+            broker.reply = replyDone(data);
+
+            const res = await request(app.getHttpServer()).post(path).send(body);
+
+            expect(res.status).toBe(200);
+            expect(broker.published[0]).toMatchObject({type, actor: null, payload: body});
+            expect(parseSse(res.text)[1]).toEqual({event: 'done', data});
+        });
+
+        it.each([['/api/v1/user/phone-verification'], ['/api/v1/user/phone-verification/confirm']])('[FAIL:auth] POST %s 는 인증 실패면 401, 발행 없음', async (path) => {
+            authenticated = false;
+
+            const res = await request(app.getHttpServer())
+                .post(path)
+                .send(path.endsWith('confirm') ? CONFIRM : {phone: '01012345678'});
+
+            expect(res.status).toBe(401);
+            expect(broker.published).toHaveLength(0);
+        });
+
+        it.each([
+            ['/api/v1/user/phone-verification', {phone: '010-1234-5678'}, 'phone'],
+            ['/api/v1/user/phone-verification/confirm', {...CONFIRM, code: '12345'}, 'code'],
+            ['/api/v1/user/find-login-id/confirm', {...CONFIRM, sms_verification_id: 'abc'}, 'sms_verification_id'],
+            ['/api/v1/user/password-reset', {login_id: 'roomless_01', phone: '0101234'}, 'phone'],
+        ] as const)('[FAIL:validation] POST %s 형식 오류는 400(입력 오류 %s), 발행 없음', async (path, body, property) => {
+            const res = await request(app.getHttpServer()).post(path).send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.validation_errors[0].property).toBe(property);
+            expect(broker.published).toHaveLength(0);
+        });
+
+        it('[FAIL:service] 하루 한도 초과(429)는 failed 이벤트로 그대로 전달', async () => {
+            broker.reply = replyFailed(429, {message: '오늘은 이 번호로 인증번호를 더 보낼 수 없습니다. 내일 다시 시도해주세요.', validation_errors: null});
+
+            const res = await request(app.getHttpServer()).post('/api/v1/user/find-login-id').send({phone: '01012345678'});
+
+            expect(parseSse(res.text)[1]).toEqual({
+                event: 'failed',
+                data: {status_code: 429, message: '오늘은 이 번호로 인증번호를 더 보낼 수 없습니다. 내일 다시 시도해주세요.', validation_errors: null},
+            });
+        });
     });
 
     it('[FAIL:route] 동기 경로 라우트는 이 컨트롤러에 없다 (user.controller.ts 담당)', async () => {

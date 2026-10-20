@@ -2,19 +2,19 @@ import {BeforeInsert, Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColu
 
 /**
  * API 호출 로그 (게이트웨이 이식 예정)
- * - PK 가 (id, create_at) 복합인 이유: PostgreSQL RANGE 파티셔닝은 파티션 키(create_at)가 PK 에 포함되어야 한다.
+ * - PK 가 (api_log_id, created_at) 복합인 이유: PostgreSQL RANGE 파티셔닝은 파티션 키(created_at)가 PK 에 포함되어야 한다.
  * - 파티셔닝은 api-log 를 게이트웨이에 이식할 때 별도 마이그레이션으로 전환한다.
  */
 @Entity({name: 't_api_log', comment: 'API 호출 로그'})
-@Index('IDX_ApiLog_CreateAt', ['create_at'])
+@Index('IDX_ApiLog_CreatedAt', ['created_at'])
 @Index('IDX_ApiLog_Path', ['path'])
 @Index('IDX_ApiLog_UserId', ['user_id'])
 export class ApiLogEntity {
-    @PrimaryGeneratedColumn({name: 'id', type: 'bigint', comment: '로그 ID', primaryKeyConstraintName: 'PK_ApiLog'})
-    id: string;
+    @PrimaryGeneratedColumn({name: 'api_log_id', type: 'bigint', comment: '로그 ID', primaryKeyConstraintName: 'PK_ApiLog'})
+    api_log_id: string;
 
-    @PrimaryColumn({name: 'create_at', type: 'timestamptz', precision: 3, comment: '요청 시각', primaryKeyConstraintName: 'PK_ApiLog'})
-    create_at: Date;
+    @PrimaryColumn({name: 'created_at', type: 'timestamptz', precision: 3, comment: '요청 시각', primaryKeyConstraintName: 'PK_ApiLog'})
+    created_at: Date;
 
     @Column({name: 'method', length: 10, nullable: false, comment: 'HTTP 메서드'})
     method: string;
@@ -57,6 +57,6 @@ export class ApiLogEntity {
      */
     @BeforeInsert()
     insertTimestamp(): void {
-        if (!this.create_at) this.create_at = new Date();
+        if (!this.created_at) this.created_at = new Date();
     }
 }

@@ -29,7 +29,7 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
     /** 정상 흐름의 조회 결과를 깔아 둔다 */
     const arrangeValid = () => {
         jwt.verify.mockReturnValueOnce(PAYLOAD);
-        repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, end_at: new Date(2026, 5, 1)});
+        repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
         repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: '10.0.0.1'});
         repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'ACTIVE'});
     };
@@ -75,20 +75,20 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
             expect(repo.findSession).toHaveBeenCalledWith({session_id: PAYLOAD.session_id});
             expect(repo.findUser).toHaveBeenCalledWith({user_id: PAYLOAD.user_id});
             expect(repo.updateSessionRefresh).toHaveBeenCalledTimes(1);
-            expect(repo.updateSessionRefresh).toHaveBeenCalledWith({refresh_hash: OLD_HASH}, {end_at: ONE_MINUTE_LATER});
+            expect(repo.updateSessionRefresh).toHaveBeenCalledWith({refresh_hash: OLD_HASH}, {expires_at: ONE_MINUTE_LATER});
             expect(repo.insertSessionRefresh).toHaveBeenCalledWith({
                 session_id: PAYLOAD.session_id,
                 refresh_hash: NEW_HASH,
                 refresh_encrypted: 'iv:tag:ct',
-                before_refresh_hash: OLD_HASH,
-                end_at: MOCK_REFRESH_EXPIRES_AT,
+                previous_refresh_hash: OLD_HASH,
+                expires_at: MOCK_REFRESH_EXPIRES_AT,
             });
             expect(repo.updateSessionRefresh.mock.invocationCallOrder[0]).toBeLessThan(repo.insertSessionRefresh.mock.invocationCallOrder[0]);
         });
 
         it('세션에 저장된 ip 가 없으면 ip 비교를 건너뛴다', async () => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
-            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, end_at: new Date(2026, 5, 1)});
+            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
             repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: null});
             repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'ACTIVE'});
 
@@ -132,9 +132,9 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
             expectNoWrites();
         });
 
-        it('DB end_at 이 지난 refresh (체인 재사용 차단)', async () => {
+        it('DB expires_at 이 지난 refresh (체인 재사용 차단)', async () => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
-            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, end_at: new Date(2025, 11, 31)});
+            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2025, 11, 31)});
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({refresh_token: OLD_REFRESH});
 
@@ -144,7 +144,7 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
 
         it('세션이 없음', async () => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
-            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, end_at: new Date(2026, 5, 1)});
+            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
             repo.findSession.mockResolvedValueOnce(null);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({refresh_token: OLD_REFRESH});
@@ -155,7 +155,7 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
 
         it('로그인 시점 ip 와 다른 ip — 만료 단축 없이 거부', async () => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
-            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, end_at: new Date(2026, 5, 1)});
+            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
             repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: '10.0.0.1'});
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders('10.0.0.2')).send({refresh_token: OLD_REFRESH});
@@ -171,7 +171,7 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
             ['정지 회원', {user_id: PAYLOAD.user_id, state_id: 'BLOCK'}],
         ])('%s — 안전망으로 refresh 를 1분 뒤 만료시키고 거부', async (_label, user) => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
-            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, end_at: new Date(2026, 5, 1)});
+            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
             repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: '10.0.0.1'});
             repo.findUser.mockResolvedValueOnce(user);
 
@@ -179,7 +179,7 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
 
             expect(res.status).toBe(401);
             expect(res.body).toEqual(INVALID);
-            expect(repo.updateSessionRefresh).toHaveBeenCalledWith({refresh_hash: OLD_HASH}, {end_at: ONE_MINUTE_LATER});
+            expect(repo.updateSessionRefresh).toHaveBeenCalledWith({refresh_hash: OLD_HASH}, {expires_at: ONE_MINUTE_LATER});
             expect(repo.insertSessionRefresh).not.toHaveBeenCalled();
         });
     });

@@ -3,7 +3,7 @@
 무인 객실 대여 서비스 백엔드 — NestJS 12 모노레포(MSA).
 
 - **gateway** — 유일한 외부 진입점(:3000). JWT · 입력 검증 후 서비스로 전달한다. 상태를 바꾸는 요청은 RabbitMQ 를 거쳐 처리하고 결과를 요청 단위 SSE 로 돌려준다.
-- **user-service** — 회원 도메인(:4001, 내부망). PostgreSQL 을 소유한다.
+- **user-service** — 회원 도메인(:4001, 내부망) — 가입 · 로그인 · 휴대폰 SMS 인증 · 아이디 찾기 · 비밀번호 초기화(임시 비밀번호 SMS). PostgreSQL 을 소유하고, 부팅 때 기본 데이터와 첫 총관리자(`admin` / `1234`, 첫 로그인 때 변경 필요)를 넣는다.
 
 - **외부 연동** — 발송은 SMS 하나(Amazon SNS), 업체 · 객실 사진은 Amazon S3(presigned URL 로 클라이언트가 직접 업로드). mock 없이 실제 AWS 에 붙는 코드이고, AWS 세팅은 [docs/guides/aws-setup.md](docs/guides/aws-setup.md) 를 따른다.
 
@@ -24,6 +24,7 @@ npm run docker:up           # 공용 네트워크 → postgres → rabbitmq → 
 - user-service 는 게이트웨이만 닿는다(전역 내부 토큰 가드 + internal 네트워크). 큐 명령도 gateway 브로커 계정이 발행한 것만 처리한다.
 - 마이그레이션은 `migrate` 컨테이너가 user-service 인스턴스보다 먼저 1회 적용한다.
 - AWS 값(`AWS_REGION` · `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_S3_BUCKET` · `AWS_S3_PUBLIC_URL`)은 필수가 아니다. 비어 있어도 서버는 뜨고 부팅 경고만 남으며, SMS 발송 · 파일 요청만 실패한다(사진 공개 주소를 쓰려면 `AWS_S3_PUBLIC_URL` 이 있어야 한다). 채우는 방법은 [docs/guides/aws-setup.md](docs/guides/aws-setup.md).
+- 같은 휴대폰 번호로 하루(한국 날짜)에 보내는 인증 SMS 수는 `SMS_VERIFICATION_DAILY_LIMIT`(기본 10)로 정한다.
 - 자세한 구성: [docs/architecture.md](docs/architecture.md) 의 "실행 (Docker)".
 
 앱을 로컬에서 watch 로 개발할 때는 인프라만 띄운다.

@@ -10,11 +10,11 @@
 flowchart LR
   P1["Phase 1 · MSA 기반 (9)"]:::done --> P2["Phase 2 · 회원 기반 (7)"]:::done
   P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::done
-  P2 --> P4["Phase 4 · 회원 스키마 확장 (3)"]:::todo
+  P2 --> P4["Phase 4 · 회원 스키마 확장 (5)"]:::inprog
   P1 --> P6["Phase 6 · admin-service 기반 (4)"]:::todo
   P1 --> P7["Phase 7 · store 스키마 (5)"]:::todo
   P1 --> P21["Phase 21 · api-log (1)"]:::todo
-  P3 --> P5["Phase 5 · 계정·인증 (4)"]:::todo
+  P3 --> P5["Phase 5 · 계정·인증 (2)"]:::todo
   P4 --> P5
   P3 --> P8["Phase 8 · 업체 입점·관리 (5)"]:::todo
   P4 --> P8
@@ -51,8 +51,8 @@ flowchart LR
 - Phase 1 — MSA 기반 · 유닛 9개 · 의존: — · 푼다: Phase 2, 3, 6, 7, 21 · 파일 집합: apps/, libs/, compose.*.yml, docker/, scripts/ · done
 - Phase 2 — 회원 기반 · 유닛 7개 · 의존: Phase 1 · 푼다: Phase 4 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1/user, apps/gateway/src/guards · done
 - Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 5, 8, 10 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · done
-- Phase 4 — 회원 스키마 확장 · 유닛 3개 · 의존: Phase 2 · 푼다: Phase 5, 8 · 파일 집합: libs/database/src/entities/user, libs/database/src/seeder, libs/database/src/migrations · todo
-- Phase 5 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
+- Phase 4 — 회원 스키마 확장 · 유닛 5개 · 의존: Phase 2, 3 · 푼다: Phase 5, 8 · 파일 집합: libs/database(entities · migrations · seeder), libs/contracts/src/user, apps/user-service/src/user, apps/gateway/src/api/v1/user, AGENTS.md, docs/ · in-progress
+- Phase 5 — 계정·인증 · 유닛 2개 · 의존: Phase 3, 4 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
 - Phase 6 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 8 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · todo
 - Phase 7 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 8, 11 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · todo
 - Phase 8 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 6, 7 · 푼다: Phase 9 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store, libs/contracts/src/store · todo
@@ -72,14 +72,14 @@ flowchart LR
 
 동시 가능: Phase 4·Phase 6 (지금 바로) / Phase 12·Phase 13 / Phase 14·Phase 15 / Phase 17·Phase 18 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 7 · 11 · 13 · 15 · 21).
 
-지금: Phase 3 완료 · Next up: Phase 4
+지금: Phase 4 진행 중 · Next up: Phase 4
 
 ## 지금 할 일
 
 회원 스키마 확장(Phase 4)부터 — 계정·인증과 업체 입점이 이 스키마를 기다린다
-- 정하기 — 휴대폰 인증 규칙(인증번호 자릿수 · 유효시간 · 재발송 · 시도 제한, 인증 전 회원이 할 수 있는 것) · 비밀번호 초기화 방식 (아래 Open Decisions)
-- 시작 — `/beaver:direct 회원 스키마 확장` (admin-service 기반 Phase 6 과 동시에 돌려도 된다)
-- AWS 세팅은 SMS 를 처음 보내는 Phase 5 전까지 `docs/guides/aws-setup.md` 대로 하고 `.env` 를 채운다
+- build 완료 — report(`.beaver/output/report/user/user-sms-verification-report.md`)를 보고 `/beaver:ship`
+- 컬럼 이름 정리 · SMS 인증 · 아이디 찾기 · 비밀번호 초기화 · 첫 총관리자를 한 기획으로 만들었다 (#26 · #27 을 Phase 5 에서 옮겨 옴)
+- SMS 는 이번 Phase 4 의 휴대폰 인증부터 실제로 보낸다 — 실제 발송 전에 `docs/guides/aws-setup.md` 대로 AWS 를 세팅하고 `.env` 를 채운다
 
 ## Scope & Actors
 
@@ -158,36 +158,43 @@ flowchart LR
 
 ship 완료 (2026-10-20, 커밋 c60fdfb) — report: `.beaver/output/report/common/common-infra-ports-report.md` · review: `.beaver/output/review/main-review-261020-2.md`.
 
-### Phase 4 — 회원 스키마 확장 (휴대폰 인증 · 인증번호 · 첫 총관리자) · depends: Phase 2
+### Phase 4 — 회원 스키마 확장 (컬럼 이름 정리 · 휴대폰 SMS 인증 · 아이디 찾기 · 비밀번호 초기화 · 첫 총관리자) · depends: Phase 2, Phase 3
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 21 | `t_user` 휴대폰 인증 상태 | 인증을 마친 회원만 이용 — SNS 회원 포함 | 기존 회원 처리 | — | todo |
-| 22 | 인증번호 저장 | 휴대폰 인증 · 아이디 찾기 · 비밀번호 초기화가 같이 쓰는 인증번호(용도로 구분) | 휴대폰 인증 규칙(Open Decisions) | — | todo |
-| 23 | 첫 총관리자 시드 | `admin` / `1234`, 시드 시점에 bcrypt + pepper 해시 | 첫 로그인 비밀번호 변경 강제 | — | todo |
+| 21 | 컬럼 이름 정리 + `t_user` 휴대폰 인증 상태 | `created_at` · `updated_at` · `expires_at` · `is_deleted` · `is_login_allowed` · `previous_*` · `api_log_id` 로 정리(RENAME), `phone_verified_at` · 번호 1개 = 계정 1개(`UK_User_Phone`) | — | — | in-progress |
+| 22 | SMS 인증 기록 | `t_sms_purpose`(용도 룩업) · `t_sms_verification`(발송 · 확인 기록 — 인증번호 해시 · 시도 횟수 · 만료 · 완료) | — | — | in-progress |
+| 23 | 첫 총관리자 시드 | `admin` / `1234`(시드 시점 bcrypt + pepper), login_id 로 멱등, 첫 로그인 때 변경 필요 | — | — | in-progress |
+| 26 | 휴대폰 SMS 인증 | 가입 후 발송 → 인증 ID + 인증번호 확인 → 번호 저장. 6자리 · 5분 · 3회, 같은 번호 하루 10번(env) | — | 17, 21, 22 | in-progress |
+| 27 | 아이디 찾기 · 비밀번호 초기화 | 휴대폰 인증으로 아이디(일반) · SNS 종류 · 가입일, 아이디 + 번호 인증 → 영문 + 숫자 10자리 임시 비밀번호 SMS | — | 17, 22 | in-progress |
 
 **Expected data contract**:
 
 | Unit | Table | Content |
 |------|-------|---------|
-| #21 | `t_user` | `phone_verified_at`(가칭) 컬럼 |
-| #22 | `t_phone_verification`(가칭) | 번호 · 용도 · 인증번호 해시 · 만료 시각 · 시도 횟수 · 확인 시각 |
-| #23 | seeder | 총관리자 1행 |
+| #21 | `t_user` 외 6개 | 컬럼 이름 정리 · `phone_verified_at` · `UK_User_Phone` |
+| #22 | `t_sms_purpose` · `t_sms_verification` | 용도 3개 · 번호 · 인증번호 해시 · 시도 횟수 · 만료 · 완료 · IP |
+| #23 | seeder | 총관리자 1행 + 회원 설정 1행 |
 
-### Phase 5 — 계정·인증 (페이지별 로그인 · 가입 규칙 · 휴대폰 인증 · SMS 찾기) · depends: Phase 3, Phase 4
+**Expected APIs** (큐 경로):
+
+| Unit | Method | Path | Purpose |
+|------|--------|------|---------|
+| #26 | POST | `/api/v1/user/phone-verification` · `/phone-verification/confirm` | 인증번호 발송 · 확인 (로그인 회원) |
+| #27 | POST | `/api/v1/user/find-login-id` · `/find-login-id/confirm` · `/password-reset` · `/password-reset/confirm` | 아이디 찾기 · 비밀번호 초기화 |
+
+build 완료 (2026-10-20) — report: `.beaver/output/report/user/user-sms-verification-report.md`. done 표시는 ship 때.
+
+### Phase 5 — 계정·인증 (페이지별 로그인 · 가입 규칙) · depends: Phase 3, Phase 4
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 24 | 관리자 · 이용자 페이지 로그인 분리 | 관리자 페이지는 관리자 역할만, 이용자 페이지는 `USER` 만 | 라우트 분리 방식(Open Decisions) | 23 | todo |
-| 25 | 가입 규칙 | 미성년자 가입 거부, 일반 가입은 휴대폰 번호 필수(SNS 가입은 선택) | 성인 기준 · 일반 가입 검증(Open Decisions) | — | todo |
-| 26 | 휴대폰 SMS 인증 | 가입 후 인증번호 발송 · 확인 — 인증 전 회원(SNS 포함)은 이용 제한 | 휴대폰 인증 규칙(Open Decisions) | 17, 21, 22 | todo |
-| 27 | 아이디 찾기 · 비밀번호 초기화 | 업체 총관리자 아이디 찾기, 업체 총관리자 · 일반회원 비밀번호 초기화를 SMS로 — 기존 비밀번호는 알려주지 않는다 | 초기화 방식(Open Decisions) | 17, 22 | todo |
+| 24 | 관리자 · 이용자 페이지 로그인 분리 | 관리자 페이지는 관리자 역할만, 이용자 페이지는 `USER` 만 — 아이디 찾기 · 비밀번호 초기화의 관리자 페이지 라우트도 | 라우트 분리 방식(Open Decisions) | 23 | todo |
+| 25 | 가입 규칙 | 미성년자 가입 거부 | 성인 기준 · 일반 가입 검증(Open Decisions) | — | todo |
 
 **Expected APIs** (가칭):
 
 | Unit | Method | Path | Purpose |
 |------|--------|------|---------|
 | #24 | POST | `/api/v1/admin/auth/login` | 관리자 페이지 로그인 |
-| #26 | POST | `/api/v1/user/phone-verification` · `/phone-verification/confirm` | 인증번호 발송 · 확인 |
-| #27 | POST | `/api/v1/admin/auth/find-login-id` · `/password-reset` · `/password-reset/confirm` (이용자 페이지도 초기화 2개) | 아이디 찾기 · 초기화 요청 · 확정 |
 
 ### Phase 6 — admin-service 기반 (새 서비스 앱 토대) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -386,7 +393,7 @@ ship 완료 (2026-10-20, 커밋 c60fdfb) — report: `.beaver/output/report/comm
 - **업체 공개** — 등록되고 활성화된 업체만 이용자에게 보인다. 영업중지 · 탈퇴 업체는 표시하지 않는다
 - **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 직접 변경. 업체 총관리자는 휴대폰 번호 필수, 아이디 · 비밀번호 찾기는 SMS, 비밀번호는 초기화 방식(일반회원 초기화도 SMS)
 - **연령 제한** — 성인만 가입한다(SNS 로그인의 생년월일로 판정)
-- **휴대폰 인증** — 일반 가입은 휴대폰 번호 필수, SNS 가입은 선택. 모든 회원(SNS 포함)은 가입 후 SMS 인증을 마쳐야 서비스를 이용할 수 있다
+- **휴대폰 인증** — 모든 회원(SNS · 일반)은 가입 후 SMS 인증(발송 → 인증 ID + 인증번호 확인)을 마쳐야 그 번호가 회원정보에 저장되고 서비스를 이용할 수 있다. 번호 1개 = 계정 1개. 인증번호 6자리 · 5분 · 3회, 같은 번호 하루(한국 날짜) 10번(`SMS_VERIFICATION_DAILY_LIMIT`). 인증 전 회원을 막는 가드는 회원 전용 기능이 생길 때
 - **객실 모델** — 객실 그룹 단위로 상품(이름 · 이용시간 · 가격)을 정하고 그룹 안 호실은 같은 상품을 쓴다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 업체가 그룹 상품마다 기간 가격(성수기 등)을 따로 정한다
 - **이용 단위 · 사전 예약** — 항상 시간 기반(숙박도 긴 상품). 6개월 앞 예약까지 받는다
 - **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 점유 구간 겹침 없음 + 영업시간 내 · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 스탠바이도). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
@@ -407,7 +414,7 @@ ship 완료 (2026-10-20, 커밋 c60fdfb) — report: `.beaver/output/report/comm
 - [ ] **관리자 / 이용자 API 라우트 분리** — 추천: 관리자 페이지 `/api/v1/admin/<domain>`, 이용자 페이지 `/api/v1/<domain>`. (Phase 5 이후 전부)
 - [x] **발송 채널 · 휴대폰 번호** — SMS만(이메일 · 알림톡 · 푸시 없음). 일반 가입은 휴대폰 번호 필수, SNS 가입은 선택이지만 가입 후 SMS 인증을 해야 이용할 수 있다. (결정 2026-10-20)
 - [x] **SMS 발송 업체 = AWS(Amazon SNS)** — 서울 리전. 한국은 AWS 전용 발신번호가 없어 국제 경로로만 나간다(수신 화면 국제발신, 발신번호 지정 불가, 한글 70자 단위 과금, 단가는 사용량 보고서로 확인). 새 계정은 샌드박스 · 월 한도 USD 1 — 운영 전 해제 요청. (결정 2026-10-20)
-- [ ] **휴대폰 인증 규칙 · 비밀번호 초기화 방식** — 인증번호 자릿수 · 유효시간 · 재발송 · 시도 제한, 인증 전 회원이 할 수 있는 것. 초기화는 인증번호 확인 후 새 비밀번호 / 임시 비밀번호 SMS 중. (Phase 4 · 5)
+- [x] **휴대폰 인증 규칙 · 비밀번호 초기화 방식** — 6자리 · 5분 · 3회, 같은 번호 하루 10번(env), 확인은 인증 ID + 인증번호. 초기화는 아이디 + 번호 인증 후 영문 + 숫자 10자리 임시 비밀번호 SMS(다음 로그인 때 변경 필요). (결정 2026-10-20)
 - [x] **이미지 저장소 = AWS S3** — 업로드는 presigned URL(클라이언트가 직접 올림). (결정 2026-10-20)
 - [ ] **성인 확인** — 성인 기준(청소년보호법은 만 19세가 되는 해의 1월 1일부터 성인), 일반 가입의 생년월일은 검증되지 않는다(본인인증을 붙일지 · 일반 가입을 막을지). (Phase 5)
 - [ ] **입장 QR 확인 수단** — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 13 · 18)
