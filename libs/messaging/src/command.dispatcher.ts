@@ -1,4 +1,4 @@
-import {Injectable, Logger} from '@nestjs/common';
+import {HttpException, Injectable, Logger} from '@nestjs/common';
 import {toFailResult} from '@app/common/utils/fail-result.js';
 import type {MessageEnvelope, ResultPayload} from '@app/contracts/message-envelope.js';
 import {RESULT_STATUS} from '@app/contracts/message-envelope.js';
@@ -22,8 +22,9 @@ export interface DispatchDecision {
  *
  * - 형식 오류 · 핸들러 없음 → dead (회신 불가)
  * - 성공 → done 결과 + ack
- * - 비즈니스 실패(4xx) → failed 결과 + ack — 재시도해도 결과가 같으므로
- * - 인프라 실패(5xx) → 재시도 여유가 있으면 requeue, 마지막 시도면 failed 결과 + dead
+ * - 핸들러가 HttpException 을 반환(service 가 쓰기를 커밋한 뒤 실패를 return) → failed 결과 + ack — 이미 커밋됐으므로 상태 코드와 무관하게 재시도하지 않는다
+ * - 비즈니스 실패(4xx throw) → failed 결과 + ack — 재시도해도 결과가 같으므로
+ * - 인프라 실패(5xx throw) → 재시도 여유가 있으면 requeue, 마지막 시도면 failed 결과 + dead
  *
  * 비즈니스 규칙 위반은 service 가 HttpException(4xx)으로 던지고, repository 의 DB 장애는 500 으로 던진다는 기존 규약을 그대로 쓴다.
  */
@@ -60,6 +61,12 @@ export class CommandDispatcher {
         const canReply = Boolean(command.meta?.reply_to);
         try {
             const value = await handler(command);
+            if (value instanceof HttpException) {
+                // 커밋 뒤 실패 — 같은 실패 본문(toFailResult)으로 회신하고 재시도하지 않는다
+                const fail = toFailResult(value);
+                const failed = canReply ? buildResultEnvelope(command, RESULT_STATUS.FAILED, {result: null, error: {status_code: fail.status_code, body: fail.body}}, attempt) : null;
+                return {action: 'ack', result: failed};
+            }
             const result = canReply ? buildResultEnvelope(command, RESULT_STATUS.DONE, {result: value ?? null, error: null}, attempt) : null;
             return {action: 'ack', result};
         } catch (error) {

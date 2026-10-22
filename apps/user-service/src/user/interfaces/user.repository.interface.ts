@@ -32,7 +32,6 @@ export interface UserRepositoryInterface {
     insertSession(entity: SessionEntity): Promise<void>;
     insertSessionRefresh(entity: SessionRefreshEntity): Promise<void>;
     findUser(where: FindOptionsWhere<UserEntity>): Promise<UserEntity | null>;
-    findUsers(where: FindOptionsWhere<UserEntity>): Promise<UserEntity[]>;
     findLoginUser(user_id: string): Promise<LoginUserRow | null>;
     findSession(where: FindOptionsWhere<SessionEntity>): Promise<SessionEntity | null>;
     findSessionRefresh(where: FindOptionsWhere<SessionRefreshEntity>): Promise<SessionRefreshEntity | null>;
@@ -44,7 +43,7 @@ export interface UserRepositoryInterface {
     countSmsVerifications(where: FindOptionsWhere<SmsVerificationEntity>): Promise<number>;
     /** SMS 인증 기록 단건 — 인증 ID + 용도(+ 회원)로 찾는다 */
     findSmsVerification(where: FindOptionsWhere<SmsVerificationEntity>): Promise<SmsVerificationEntity | null>;
-    /** 확인 시도 1회 소비 — 독립 트랜잭션, 한도에 닿았으면 false */
+    /** 확인 시도 1회 소비 — 한도 미만일 때만 +1, 확인과 같은 트랜잭션. 한도에 닿았으면 false */
     consumeSmsVerificationAttempt(sms_verification_id: string, max_attempts: number): Promise<boolean>;
     /** SMS 인증 기록 수정 (verified_at) */
     updateSmsVerification(where: FindOptionsWhere<SmsVerificationEntity>, entity: SmsVerificationEntity): Promise<void>;

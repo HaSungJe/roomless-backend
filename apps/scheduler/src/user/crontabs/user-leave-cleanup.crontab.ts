@@ -12,8 +12,8 @@ export const USER_LEAVE_CLEANUP_LOCK = 'user.leave-cleanup';
 
 /**
  * 회원 자동 탈퇴처리 스케줄러 — 예약시각이 지난 LEAVE_WAIT 회원을 백업 후 LEAVE 로 전환한다.
- * crontab 은 도메인 안의 crontabs 폴더에서 따로 관리한다 — 시간이 트리거인 인바운드 어댑터라 controller · handler 와 같은 층이다.
- * user-service 는 여러 대(로드밸런싱)로 뜨므로 모든 인스턴스가 같은 시각에 깨어난다 — JobLockService(DB advisory lock)로 회차마다 1대만 실행한다.
+ * crontab 은 scheduler 앱의 도메인 crontabs 폴더에만 둔다 — 시간이 트리거인 인바운드 어댑터라 controller 와 같은 층이다(서비스 앱에는 두지 않는다).
+ * scheduler 는 SCHEDULER_REPLICAS 로 여러 대일 수 있고 배포 중 두 대가 겹칠 수 있다 — JobLockService(DB advisory lock)로 회차마다 1대만 실행한다.
  * 앞 인스턴스가 끝난 뒤 다른 인스턴스가 잠금을 잡아도 대상은 LEAVE_WAIT 상태로만 고르므로 다시 처리되지 않는다.
  */
 @Injectable()

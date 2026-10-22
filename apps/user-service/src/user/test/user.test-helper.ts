@@ -1,9 +1,10 @@
 import {INestApplication, ValidationPipe} from '@nestjs/common';
-import {APP_GUARD, DiscoveryModule} from '@nestjs/core';
+import {APP_GUARD, APP_INTERCEPTOR, DiscoveryModule} from '@nestjs/core';
 import {JwtService} from '@nestjs/jwt';
 import {Test, TestingModule} from '@nestjs/testing';
 import type {Mock} from 'vitest';
 import {CustomErrorFilter} from '@app/common/exception/custom-error.filter.js';
+import {ReturnedExceptionInterceptor} from '@app/common/exception/returned-exception.interceptor.js';
 import {InternalAuthGuard} from '@app/common/internal/internal-auth.guard.js';
 import {validationExceptionFactory} from '@app/common/utils/validation.js';
 import type {Actor} from '@app/contracts/actor.js';
@@ -49,7 +50,6 @@ export function createUserRepositoryMock(): UserRepositoryMock {
         insertSession: vi.fn(),
         insertSessionRefresh: vi.fn(),
         findUser: vi.fn(),
-        findUsers: vi.fn(),
         findLoginUser: vi.fn(),
         findSession: vi.fn(),
         findSessionRefresh: vi.fn(),
@@ -109,7 +109,8 @@ export async function bootCommandPath(repo: UserRepositoryMock, jwt: JwtServiceM
 }
 
 /**
- * 동기 경로 부팅 — 실제 내부 UserController · UserService · ValidationPipe · 필터 · 전역 InternalAuthGuard(APP_GUARD, user-service.module 과 같다) 에 repository · JwtService · SMS 포트만 mock.
+ * 동기 경로 부팅 — 실제 내부 UserController · UserService · ValidationPipe · 필터 · 전역 InternalAuthGuard(APP_GUARD) · ReturnedExceptionInterceptor(APP_INTERCEPTOR)
+ * (user-service.module 과 같다) 에 repository · JwtService · SMS 포트만 mock.
  *
  * @param repo repository mock
  * @param jwt JwtService mock
@@ -126,6 +127,7 @@ export async function bootHttpPath(repo: UserRepositoryMock, jwt: JwtServiceMock
             {provide: JwtService, useValue: jwt},
             {provide: SMS_SENDER, useValue: sms},
             {provide: APP_GUARD, useClass: InternalAuthGuard},
+            {provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor},
         ],
     }).compile();
     const app = module.createNestApplication();

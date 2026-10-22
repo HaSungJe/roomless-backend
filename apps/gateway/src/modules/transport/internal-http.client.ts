@@ -1,7 +1,8 @@
 import {HttpException, Injectable, ServiceUnavailableException} from '@nestjs/common';
 import type {Actor} from '@app/contracts/actor.js';
 import {INTERNAL_HEADER} from '@app/contracts/actor.js';
-import {DEFAULT_INTERNAL_HTTP_TIMEOUT_MS, readPositiveInt, SERVICE_UNAVAILABLE_MESSAGE} from './transport.util.js';
+import {readPositiveInt} from '@app/common/utils/env.js';
+import {DEFAULT_INTERNAL_HTTP_TIMEOUT_MS, SERVICE_UNAVAILABLE_MESSAGE} from './transport.util.js';
 
 /** 게이트웨이가 동기 호출하는 내부 서비스 */
 export type InternalService = 'user';

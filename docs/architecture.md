@@ -21,9 +21,10 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | 앱 | 역할 | 외부 노출 |
 |---|---|---|
 | `apps/gateway` | 유일한 진입점. JWT · DTO 검증, 경로 선택(동기 / 큐), 요청 단위 SSE, Swagger | O (GATEWAY_PORT) |
-| `apps/user-service` | 회원 도메인. DB(PostgreSQL) 소유, 룩업 시드, 탈퇴 자동처리 crontab | X (내부망, INTERNAL_API_TOKEN) |
+| `apps/user-service` | 회원 도메인. DB(PostgreSQL) 소유, 룩업 시드 · 마이그레이션 | X (내부망, INTERNAL_API_TOKEN) |
+| `apps/scheduler` | crontab 전용(탈퇴 자동처리). 들어오는 연결 없음 — listen · 큐 소비 · 컨트롤러가 없고 DB 에만 붙는다 | X (연결을 받지 않음) |
 
-- **모노레포 ≠ 모놀리스** — `nest build gateway` · `nest build user-service` 로 따로 빌드되고 독립 프로세스로 뜬다. 트래픽이 몰리는 앱만 인스턴스를 늘린다. 산출물: `dist/apps/<app>/apps/<app>/src/main.js`.
+- **모노레포 ≠ 모놀리스** — `nest build gateway` · `nest build user-service` · `nest build scheduler` 로 따로 빌드되고 독립 프로세스로 뜬다. 트래픽이 몰리는 앱만 인스턴스를 늘린다. 산출물: `dist/apps/<app>/apps/<app>/src/main.js`.
 - 게이트웨이는 DB 를 쓰지 않는다. 로그인 회원의 상태도 user-service 에 내부 HTTP 로 묻는다.
 - 공유 DB 단계다. 엔티티는 [libs/database/src/entities/](../libs/database/src/entities/) 에서 소유 도메인 폴더별로 관리하고, 서비스별 DB 분리는 서비스 경계가 안정된 뒤 검토한다(그때 도메인 폴더째 담당 앱으로 옮긴다 — [data-layer.md](data-layer.md)).
 
@@ -38,7 +39,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | `libs/messaging` | `RabbitMqConnection` · 명령 발행 · 결과 구독 · 명령 소비 · `@OnCommand` · `CommandDispatcher` · `MessagingModule.forGateway()/forService()`(둘 다 전역) | 게이트웨이 · 서비스 |
 
 - import 는 `@app/<lib>/<경로>.js` (barrel 없음). 앱 · 도메인 내부는 상대경로. 라이브러리 안의 import 방식은 [conventions.md](conventions.md).
-- 라이브러리 의존 방향: `messaging` → `contracts` · `common`, `common` → `contracts`, `contracts` 는 외부 패키지만, `database` → `common`(시더의 bcrypt — 첫 총관리자 비밀번호 해시), `integration` 은 다른 lib 를 쓰지 않는다. 앱끼리는 서로 import 하지 않고(0건), 게이트웨이는 `@app/database` 를 쓰지 않는다.
+- 라이브러리 의존 방향: `messaging` → `contracts` · `common`, `common` → `contracts`, `contracts` 는 외부 패키지만, `database` → `common`(시더의 bcrypt — 첫 총관리자 비밀번호 해시 · typeorm.config 의 env 파서 `readPositiveInt`), `integration` 은 다른 lib 를 쓰지 않는다. 앱끼리는 서로 import 하지 않고(0건), 게이트웨이는 `@app/database` 를 쓰지 않는다.
 
 ## 전달 경로 — 동기 vs 큐
 
@@ -66,13 +67,13 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
  ┌─────────────────────────┐            ┌────────────────────────────────────────┐
  │ UserController (내부HTTP)│──┐      ┌─▶│ USER_REPOSITORY → UserRepository(TypeORM)│
  │ UserQueueController (MQ) │──┴─▶ UserService                                      │
- │ crontabs/*.crontab (시간) │───────────▶│ USER_REPOSITORY (service 를 거치지 않음)   │
+ │ (scheduler) crontabs (시간)│──────────▶│ USER_REPOSITORY (scheduler 의 repository)  │
  └─────────────────────────┘            │ (게이트웨이) COMMAND_PUBLISHER → RabbitMQ │
                                         └────────────────────────────────────────┘
 ```
 
 - **인바운드 어댑터** controller(내부 HTTP · 큐)는 입력을 꺼내 service 로 위임만 한다. 로직 0.
-- **crontab 은 예외** — API 가 아니므로 service 에 public 메서드를 두지 않고 repository 포트를 직접 주입해 배치를 처리한다(대상 조회 · 엔티티 조립 · 건별 update, user-leave-cleanup.crontab.ts:25-62). `@Transactional()` 없이 건별로 처리하고 건별 실패는 건너뛴다. 운영 가드(`NODE_ENV === 'production'`)와 `JobLockService` 는 아래 스케줄러 절.
+- **crontab 은 예외** — scheduler 앱에만 두고, API 가 아니므로 service 없이 scheduler 안의 repository 포트를 직접 주입해 배치를 처리한다(대상 조회 · 엔티티 조립 · 건별 update, apps/scheduler/src/user/crontabs/user-leave-cleanup.crontab.ts). `@Transactional()` 없이 건별로 처리하고 건별 실패는 건너뛴다. 운영 가드(`NODE_ENV === 'production'`)와 `JobLockService` 는 아래 스케줄러 절.
 - **service** 는 아웃바운드 포트(Symbol 토큰 + `import type` 인터페이스)와 프레임워크 서비스(`JwtService` — user.service.ts:43)를 안다. 전송 계층 객체(Request/Response/AMQP 채널)를 받지 않는다. 그래서 같은 `UserService.leave()` 를 HTTP · RabbitMQ 어느 쪽에서 불러도 된다.
 - **아웃바운드 어댑터**(repository · publisher)만 TypeORM 쿼리 · amqplib 를 쓴다.
 - 의도적으로 하지 않는 것: 순수 도메인 객체 ↔ TypeORM 엔티티 분리, DTO → 도메인 명령 재매핑, 도메인 예외 ↔ HTTP 예외 분리. service 는 TypeORM 엔티티 클래스와 Nest HTTP 예외를 직접 쓴다(매핑 코드가 두 배가 되는 비용에 비해 이 규모에서 얻는 것이 없다). HTTP 예외는 `toFailResult()` 가 전송 중립 실패로 바꾸므로 큐 경로에서도 그대로 쓸 수 있다.
@@ -111,7 +112,10 @@ apps/gateway/src/
 ```
 `main.ts`: `dotenv/config` → trust proxy(`TRUST_PROXY`, 값이 없으면 설정하지 않음) → 전역 `CustomErrorFilter` → 전역 ValidationPipe → CORS(`CORS_ORIGINS`) → Swagger(`SWAGGER_TITLE` · `SWAGGER_PATH` 기본 `swagger`, bearer) → 종료 훅 → `listen(GATEWAY_PORT ?? 3000)`.
 
-**user-service** — `UserServiceModule` = `DatabaseModule`(TypeORM + ClsModule `TransactionalAdapterTypeOrm`) + `ScheduleModule.forRoot()` + `MessagingModule.forService({queue: USER_COMMAND_QUEUE, binding_keys: [USER_COMMAND_BINDING], broker_user: BROKER_USER.USER_SERVICE})`(`broker_user` 필수, 큐 · 바인딩은 contracts 상수) + `UserModule` + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `SeederService`.
+**user-service** — `UserServiceModule` = `DatabaseModule`(TypeORM + ClsModule `TransactionalAdapterTypeOrm`) + `MessagingModule.forService({queue: USER_COMMAND_QUEUE, binding_keys: [USER_COMMAND_BINDING], broker_user: BROKER_USER.USER_SERVICE})`(`broker_user` 필수, 큐 · 바인딩은 contracts 상수) + `UserModule` + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`(반환된 예외 → 실패 응답) · `SeederService`. crontab 이 없다(scheduler).
+
+**scheduler** — `SchedulerModule` = `DatabaseModule` + `ScheduleModule.forRoot()` + `UserModule`(crontab + scheduler 의 회원 repository). APP_GUARD · MessagingModule · 컨트롤러 · 시드가 없다.
+`main.ts`: `dotenv/config` → `NestFactory.createApplicationContext(SchedulerModule)`(listen 하지 않는다) → 종료 훅. 등록된 `@Cron` 타이머가 프로세스를 살려 둔다.
 `main.ts`: `dotenv/config` → 전역 필터 → 전역 ValidationPipe → 종료 훅 → `listen(USER_SERVICE_PORT ?? 4001, USER_SERVICE_HOST || '127.0.0.1')`. CORS · Swagger 없음.
 `migrate.ts`(별도 진입점): `retry` 로 DB 연결을 기다린 뒤(30회 × 2초) `runMigrations` 또는 `revert` 인자면 `undoLastMigration`, 둘 다 `{transaction: 'each'}`. DataSource 설정은 앱과 같다(`synchronize: false`, 목록 테이블 `t_migration`).
 
@@ -123,9 +127,9 @@ apps/gateway/src/
 
 ## 스케줄러
 
-도메인 안 `crontabs/` 폴더에 `<domain>-<feature>.crontab.ts`(`@Cron`)를 두고 도메인 모듈 providers 에 등록한다. `ScheduleModule.forRoot()` 는 앱 루트 모듈에 1회.
-- `user/crontabs/user-leave-cleanup.crontab.ts` — `@Cron(CronExpression.EVERY_HOUR)`, 운영(`NODE_ENV === 'production'`)이 아니면 바로 return, 탈퇴 예약 경과자를 LEAVE 로 전환. 잠금 키는 파일 상수 `USER_LEAVE_CLEANUP_LOCK`.
-- user-service 는 여러 대로 뜨므로 crontab 도 인스턴스마다 깨어난다. 본문은 `JobLockService.runExclusive('<domain>.<작업>', ...)`(libs/database, PostgreSQL advisory lock)로 감싸 회차마다 1대만 실행한다. 잠금은 동시 실행만 막으므로, 대상은 상태 조건으로 골라 두 번 돌아도 결과가 같게 한다.
+crontab 은 scheduler 앱(`apps/scheduler`)의 도메인 `crontabs/` 폴더에 `<domain>-<feature>.crontab.ts`(`@Cron`)로 두고 도메인 모듈 providers 에 등록한다. 서비스 앱에는 `ScheduleModule` · crontab 을 두지 않는다 — 요청 처리와 배치가 같은 프로세스 · DB 연결 풀을 나눠 쓰지 않게 한다. `ScheduleModule.forRoot()` 는 scheduler 루트 모듈에 1회.
+- `apps/scheduler/src/user/crontabs/user-leave-cleanup.crontab.ts` — `@Cron(CronExpression.EVERY_HOUR)`, 운영(`NODE_ENV === 'production'`)이 아니면 바로 return, 탈퇴 예약 경과자를 LEAVE 로 전환. 잠금 키는 파일 상수 `USER_LEAVE_CLEANUP_LOCK`.
+- scheduler 도 여러 대일 수 있고(`SCHEDULER_REPLICAS`, 기본 1) 배포 중 두 대가 겹칠 수 있어 crontab 이 인스턴스마다 깨어날 수 있다. 본문은 `JobLockService.runExclusive('<domain>.<작업>', ...)`(libs/database, PostgreSQL advisory lock)로 감싸 회차마다 1대만 실행한다. 잠금은 동시 실행만 막으므로, 대상은 상태 조건으로 골라 두 번 돌아도 결과가 같게 한다.
 
 ## user-service 는 게이트웨이를 거친 요청만 받는다
 
@@ -137,19 +141,20 @@ apps/gateway/src/
 - 관리자 계정(관리 화면)도 `user_id` 를 gateway 로 위조할 수 없다 — RabbitMQ 는 impersonator 태그가 없는 계정의 위조를 거절한다. gateway 비밀번호만 지키면 된다.
 - CORS 는 브라우저만 지키는 규칙이라 서버 간 호출을 막지 못한다. 서비스에는 CORS 를 두지 않고, 게이트웨이에만 `CORS_ORIGINS`(허용할 프론트 주소, 비우면 다른 출처를 모두 차단)로 건다 — [cors.config.ts](../apps/gateway/src/config/cors.config.ts).
 
-## 실행 (Docker) — 묶음 4개를 따로 띄운다
+## 실행 (Docker) — 묶음 5개를 따로 띄운다
 
-postgres · rabbitmq · user-service · gateway 는 compose 파일이 하나씩 따로 있어 각자 띄우고 내린다. gateway · user-service 는 여러 대로 뜨고 앞에 nginx 로드밸런서가 붙는다. 이미지는 [Dockerfile](../Dockerfile) 하나를 `APP` 빌드 인자로 나눠 `roomless/gateway` · `roomless/user-service` 를 만든다.
+postgres · rabbitmq · user-service · scheduler · gateway 는 compose 파일이 하나씩 따로 있어 각자 띄우고 내린다. gateway · user-service 는 여러 대로 뜨고 앞에 nginx 로드밸런서가 붙는다. scheduler 는 포트 · 로드밸런서가 없다. 이미지는 [Dockerfile](../Dockerfile) 하나를 `APP` 빌드 인자로 나눠 `roomless/gateway` · `roomless/user-service` · `roomless/scheduler` 를 만든다.
 
 ```bash
-npm run docker:up            # 아래 1~5 를 순서대로
+npm run docker:up            # 아래 1~6 을 순서대로
 npm run docker:network       # 1. 공용 네트워크 4개 (이미 있으면 건너뜀)
 npm run docker:postgres      # 2. compose.postgres.yml — healthy 까지 기다림
 npm run docker:rabbitmq      # 3. compose.rabbitmq.yml — healthy 후 브로커 계정 초기화 1회
 npm run docker:user-service  # 4. compose.user-service.yml — 마이그레이션 → 인스턴스 N대 → LB
-npm run docker:gateway       # 5. compose.gateway.yml — 인스턴스 N대 → LB (:3000)
+npm run docker:scheduler     # 5. compose.scheduler.yml — crontab 전용 인스턴스 (포트 없음)
+npm run docker:gateway       # 6. compose.gateway.yml — 인스턴스 N대 → LB (:3000)
 npm run docker:down          # 모두 내림 (공용 네트워크 · 볼륨은 남는다)
-npm run docker:logs:gateway · docker:logs:user-service
+npm run docker:logs:gateway · docker:logs:user-service · docker:logs:scheduler
 ```
 
 | compose 파일 | 서비스 | 하는 일 |
@@ -157,9 +162,10 @@ npm run docker:logs:gateway · docker:logs:user-service
 | `compose.postgres.yml` | postgres | 가상 운영용 PostgreSQL 17 (127.0.0.1:5432), 볼륨 `roomless-postgres-data` — 실제 운영(RDS 등)이면 띄우지 않는다 |
 | `compose.rabbitmq.yml` | rabbitmq · rabbitmq-init | 가상 운영용 RabbitMQ 4 + 관리 화면 (127.0.0.1:5672 · :15672), 브로커 계정 gateway · user-service 와 권한 생성 ([init.sh](../docker/rabbitmq/init.sh)) |
 | `compose.user-service.yml` | migrate · user-service × `USER_SERVICE_REPLICAS` · user-service-lb | 마이그레이션 1회(DB 를 최대 1분 기다림) → 인스턴스 → 내부 HTTP 로드밸런서 ([user-service.conf](../docker/nginx/user-service.conf)) |
+| `compose.scheduler.yml` | scheduler × `SCHEDULER_REPLICAS`(기본 1) | crontab 전용 — `roomless-data` 네트워크만, 포트 · LB 없음. 마이그레이션은 user-service 묶음이 먼저 적용한다 |
 | `compose.gateway.yml` | gateway × `GATEWAY_REPLICAS` · gateway-lb | 인스턴스 → 외부 진입점 로드밸런서, 호스트 포트 `GATEWAY_PORT` · Swagger `/swagger` ([gateway.conf](../docker/nginx/gateway.conf)) |
 
-- 묶음끼리는 depends_on 으로 묶을 수 없어 기다림을 앱이 맡는다 — migrate 는 DB 연결을 최대 1분 재시도, user-service 는 `@nestjs/typeorm` 기본 재시도(10회 · 3초 간격, 명시 설정 없음), 두 앱 모두 RabbitMQ 자동 재연결(로그인 거부도 재시도). 그래도 순서는 위 1~5 를 따른다.
+- 묶음끼리는 depends_on 으로 묶을 수 없어 기다림을 앱이 맡는다 — migrate 는 DB 연결을 최대 1분 재시도, user-service 는 `@nestjs/typeorm` 기본 재시도(10회 · 3초 간격, 명시 설정 없음), 두 앱 모두 RabbitMQ 자동 재연결(로그인 거부도 재시도). 그래도 순서는 위 1~6 을 따른다.
 
 ### 설정 — `.env` 하나가 곧 서버 설정
 
@@ -167,9 +173,9 @@ npm run docker:logs:gateway · docker:logs:user-service
 
 | 구분 | 정하는 곳 | 항목 |
 |---|---|---|
-| 환경 값 | `.env` 그대로 — compose 는 바꾸지 않는다. 비밀값 · 접속정보는 기본값 없이 필수(`${VAR:?}`), 비밀이 아닌 구성값만 기본값이 있다(`TRUST_PROXY:-1` · `*_REPLICAS:-2` · `GATEWAY_PORT:-3000` · 호스트 포트) | `NODE_ENV` · `DATABASE_URL` · `RABBITMQ_HOST` · `RABBITMQ_PORT` · 비밀값 · `CORS_ORIGINS` · `TRUST_PROXY` · `*_REPLICAS` |
+| 환경 값 | `.env` 그대로 — compose 는 바꾸지 않는다. 비밀값 · 접속정보는 기본값 없이 필수(`${VAR:?}`), 비밀이 아닌 구성값만 기본값이 있다(`TRUST_PROXY:-1` · `*_REPLICAS:-2`(scheduler `:-1`) · `GATEWAY_PORT:-3000` · 호스트 포트) | `NODE_ENV` · `DATABASE_URL` · `RABBITMQ_HOST` · `RABBITMQ_PORT` · 비밀값 · `CORS_ORIGINS` · `TRUST_PROXY` · `*_REPLICAS` |
 | 서버 구성 | compose 고정 — 어느 환경이든 같다 | 컨테이너 안 포트(gateway 3000 · user-service 4001, nginx upstream 과 짝) · `USER_SERVICE_HOST=0.0.0.0` · `USER_SERVICE_URL=http://user-service-lb:4001` · `GATEWAY_INSTANCE_ID`(빈 값 → `gw-<컨테이너 호스트명>-<pid>`) · `TZ=Asia/Seoul` |
-| 쓰지 않는 비밀값 | 빈 값으로 덮어 전달하지 않는다(앱 동작과 무관) | 두 앱 공통: 다른 앱의 브로커 비밀번호 · 브로커 관리자 비밀번호. 게이트웨이만: DB 주소 · DB 비밀번호 · bcrypt pepper · 토큰 암호화 키 |
+| 쓰지 않는 비밀값 | 빈 값으로 덮어 전달하지 않는다(앱 동작과 무관) | gateway · user-service 공통: 다른 앱의 브로커 비밀번호 · 브로커 관리자 비밀번호. 게이트웨이만: DB 주소 · DB 비밀번호 · bcrypt pepper · 토큰 암호화 키. scheduler: DB 주소 외 비밀값 전부(브로커 · JWT · 토큰 암호화 · 내부 토큰 · bcrypt · AWS · DB 관리자) |
 
 - **가상 운영 · 실제 운영은 `.env` 의 접속정보로 고른다.** 가상 운영은 같은 서버에 postgres · rabbitmq 묶음을 띄우고 주소를 컨테이너 이름(`postgres` · `rabbitmq`)으로 둔다. 실제 운영은 두 묶음을 띄우지 않고 주소를 RDS · Amazon MQ 같은 실제 주소로 둔다(브로커에는 [init.sh](../docker/rabbitmq/init.sh) 와 같은 계정 · 권한을 만들어 둔다). user-service · gateway 묶음과 compose 파일은 그대로다.
 - 컨테이너 안에서 `localhost` 는 그 컨테이너 자신이다. `.env` 의 접속 주소를 `localhost` 로 두면 Docker 에서 DB · 브로커에 닿지 않는다.
@@ -184,9 +190,9 @@ npm run docker:logs:gateway · docker:logs:user-service
 | gateway → user-service 내부 HTTP | user-service-lb(nginx) 라운드로빈 |
 | gateway → user-service 명령(큐) | 모든 user-service 가 `q.user.cmd` 를 경쟁 소비 — 브로커가 나눠 준다 |
 | user-service → gateway 결과 | 명령의 `reply_to` 인스턴스 결과 큐로만 돌아가 요청을 받은 인스턴스가 SSE 로 돌려준다 — sticky session 불필요 |
-| crontab | 모든 인스턴스가 깨어나지만 `JobLockService`(PostgreSQL advisory lock)로 회차마다 1대만 실행 |
+| crontab | scheduler 인스턴스가 여러 대여도 `JobLockService`(PostgreSQL advisory lock)로 회차마다 1대만 실행 |
 
-- 인스턴스 수: `.env` 의 `GATEWAY_REPLICAS` · `USER_SERVICE_REPLICAS`(기본 2). 실행 중 변경은 `docker compose -f compose.gateway.yml up -d --scale gateway=4` — LB 가 Docker DNS 를 10초마다 다시 읽어(nginx 1.27.3+ upstream `resolve`) 재시작 없이 따라간다.
+- 인스턴스 수: `.env` 의 `GATEWAY_REPLICAS` · `USER_SERVICE_REPLICAS`(기본 2) · `SCHEDULER_REPLICAS`(기본 1). 실행 중 변경은 `docker compose -f compose.gateway.yml up -d --scale gateway=4` — LB 가 Docker DNS 를 10초마다 다시 읽어(nginx 1.27.3+ upstream `resolve`) 재시작 없이 따라간다.
 - 게이트웨이 인스턴스 ID 는 `gw-<컨테이너 호스트명>-<pid>` 로 정해진다(compose 가 `GATEWAY_INSTANCE_ID` 를 비운다, 영숫자 · `-` 외 문자는 `-` 로 바꾼다 — messaging.util.ts:52-55) — 결과 큐가 겹치지 않는다.
 - 실제 클라이언트 IP: gateway-lb 가 `X-Forwarded-For` 를 붙이고 게이트웨이는 `TRUST_PROXY=1`(앞단 1단)로 읽는다 — [trust-proxy.config.ts](../apps/gateway/src/config/trust-proxy.config.ts).
 - 기본 데이터 시드는 인스턴스마다 부팅 때 돈다. 빈 DB 에 동시에 뜨면 늦은 쪽은 PK 충돌 경고만 남기고 계속 뜬다(행은 먼저 넣은 쪽이 넣는다).
@@ -218,7 +224,7 @@ npm run start:gateway         # :3000
 
 1. **엔티티** — `libs/database/src/entities/<domain>/<feature>.entity.ts` + `ENTITIES` 등록 → `npm run db:generate -- <Name>` → `npm run db:check`([data-layer.md](data-layer.md)).
 2. **규격** — `libs/contracts/src/<domain>/dto/*.dto.ts`(요청 · 응답 DTO), 큐 경로가 있으면 `<domain>.commands.ts`(type · 큐 이름 · 바인딩 키 · 내부 경로).
-3. **서비스** — 담당 앱(없으면 `apps/<x>-service` 를 nest-cli.json 프로젝트로 추가) 안에 `src/<domain>/`: `service` · `repositories/` + `interfaces/` + `<domain>.symbols.ts` · `controllers/<domain>.controller.ts`(내부, 동기 경로) · `controllers/<domain>.controller.queue.ts`(`@OnCommand`, 큐 경로) · `<domain>.constants.ts` · `crontabs/` · `test/`.
+3. **서비스** — 담당 앱(없으면 `apps/<x>-service` 를 nest-cli.json 프로젝트로 추가) 안에 `src/<domain>/`: `service` · `repositories/` + `interfaces/` + `<domain>.symbols.ts` · `controllers/<domain>.controller.ts`(내부, 동기 경로) · `controllers/<domain>.controller.queue.ts`(`@OnCommand`, 큐 경로) · `<domain>.constants.ts` · `test/`. crontab 은 서비스가 아니라 `apps/scheduler/src/<domain>/crontabs/`(+ scheduler 의 repository)에 둔다.
 4. **게이트웨이** — `apps/gateway/src/api/v1/<domain>/controllers/` 에 동기 라우트 `<domain>.controller.ts` · 큐 라우트 `<domain>.controller.queue.ts`(한 파일에 섞지 않는다) + `<domain>.module.ts`(두 controller 등록), Swagger.
 5. 새 서비스 앱이면 —
    - `nest-cli.json` 프로젝트 · `apps/<x>-service/tsconfig.app.json`

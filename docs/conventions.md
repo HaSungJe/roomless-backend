@@ -29,7 +29,7 @@
 **도메인 레이어 파일** — `<domain>.<role>.ts`:
 - `controllers/user.controller.ts`(내부 HTTP) · `controllers/user.controller.queue.ts`(RabbitMQ) · `user.service.ts` · `user.module.ts` · `user.constants.ts`(도메인 상수 · 공유 메시지) · `user.symbols.ts` · `user.util.ts`
 - repository `repositories/user.repository.ts`, 포트 `interfaces/user.repository.interface.ts`
-- crontab `crontabs/<domain>-<feature>.crontab.ts` (예: `user-leave-cleanup.crontab.ts`, 클래스 `UserLeaveCleanupCrontab`). 잠금 키는 같은 파일에서 상수로 export(`USER_LEAVE_CLEANUP_LOCK = 'user.leave-cleanup'`).
+- crontab 은 scheduler 앱에만 — `apps/scheduler/src/<domain>/crontabs/<domain>-<feature>.crontab.ts` (예: `user-leave-cleanup.crontab.ts`, 클래스 `UserLeaveCleanupCrontab`), 데이터 접근은 같은 도메인의 `repositories/` · `interfaces/` · `<domain>.symbols.ts`. 잠금 키는 같은 파일에서 상수로 export(`USER_LEAVE_CLEANUP_LOCK = 'user.leave-cleanup'`).
 - controller 는 게이트웨이 · 서비스 모두 도메인 폴더의 `controllers/` 에 두고, **전달 경로별로 파일을 나눈다(한 파일에 섞지 않는다)**:
   - 동기(내부 HTTP) `controllers/<domain>.controller.ts` · 클래스 `<Domain>Controller`
   - 큐(RabbitMQ) `controllers/<domain>.controller.queue.ts` · 클래스 `<Domain>QueueController`
@@ -142,7 +142,7 @@ return this.storeService.list(user_id, dto);
 - service 는 `Request` · `Response` · AMQP 채널 같은 전송 계층 객체를 받지 않고 값만 받는다.
 - **JSDoc 에 전송 경로를 표시한다** — `(RabbitMQ: user.member.sign)` / `(내부 HTTP: POST /internal/v1/user/login)` (user.service.ts 9/9).
 - 성공 결과는 현재 두 방식이 섞여 있다 — service 는 `XResultDto` 모양의 객체 리터럴을 반환하고(user.service.ts:114), util 은 `new XResultDto()` + 할당(user.util.ts:65). <!-- TODO: 결과 DTO 생성 방식 통일 여부 -->
-- **crontab 은 service 가 아니다.** 시간이 트리거인 인바운드 어댑터로, API 가 아니므로 service 에 public 메서드를 만들지 않고 **repository 포트를 직접 주입**해 처리한다(user-leave-cleanup.crontab.ts:25-29). 본문은 `JobLockService.runExclusive` 로 감싼다([architecture.md](architecture.md)).
+- **crontab 은 service 가 아니다.** 시간이 트리거인 인바운드 어댑터로, API 가 아니므로 service 에 public 메서드를 만들지 않고 **repository 포트를 직접 주입**해 처리한다(apps/scheduler/src/user/crontabs/user-leave-cleanup.crontab.ts). 서비스 앱에는 두지 않는다. 본문은 `JobLockService.runExclusive` 로 감싼다([architecture.md](architecture.md)).
 
 ## 공통 로직 분리
 

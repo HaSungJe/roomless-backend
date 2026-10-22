@@ -8,7 +8,7 @@ roomless-backend — 무인 객실 대여 서비스 백엔드. 규칙은 지금 
 
 ## ⚠️ 주의사항
 
-- **서버 · 인프라 기동은 반드시 사용자가 직접 실행** — `npm run start:*` / `nest start` / `npm run docker:*`(network · postgres · rabbitmq · user-service · gateway · infra · up — `docker compose up` · `docker network create`) 를 Claude 가 실행하지 않는다. `docker compose config` 검증 · `docker build` 는 해도 된다(컨테이너를 띄우지 않음).
+- **서버 · 인프라 기동은 반드시 사용자가 직접 실행** — `npm run start:*` / `nest start` / `npm run docker:*`(network · postgres · rabbitmq · user-service · scheduler · gateway · infra · up — `docker compose up` · `docker network create`) 를 Claude 가 실행하지 않는다. `docker compose config` 검증 · `docker build` 는 해도 된다(컨테이너를 띄우지 않음).
 - **DB 마이그레이션 적용 · 배포는 사용자 몫** — `npm run db:migrate` · `db:revert` 와 Docker 의 migrate 컨테이너는 실제 DB 를 바꾸므로 Claude 가 실행하지 않는다. 운영 반영도 사용자 몫이다. 엔티티(`libs/database/src/entities/**`)를 바꾸면 Claude 는 엔티티 수정 + 마이그레이션 파일 생성(`npm run db:generate -- <Name>` — DB 없이 PGlite 로 계산) + `npm run db:check` 까지만 한다([docs/data-layer.md](docs/data-layer.md) 마이그레이션 절).
 - **스키마 반영을 구현 차단 조건으로 걸지 않는다** — 기획의 사전 조건(Prerequisites)에 "DB 스키마 반영" 을 build 를 막는 항목으로 두지 않는다. build · 테스트는 DB 없이 통과하므로 막을 이유가 없다.
 - 예외 — Claude 가 Bash 로 직접 실행해 검증한다: `npm test` · `npm run typecheck` · `npm run build` · `npm run lint` · `npm run db:check` · `npm run db:generate`.
@@ -37,11 +37,13 @@ apps/
 │   ├── guards/               # passport.jwt.auth(JWT) · roles(권한 — 미적용)
 │   ├── modules/transport/    # InternalHttpClient · CommandStreamService
 │   └── config/               # cors.config.ts · trust-proxy.config.ts
-└── user-service/src/
-    ├── user/                 # 회원 도메인: controllers/(user.controller.ts 내부 HTTP · user.controller.queue.ts RabbitMQ) → UserService / crontabs/ → repository 직접
-    └── migrate.ts            # 마이그레이션 실행기
+├── user-service/src/
+│   ├── user/                 # 회원 도메인: controllers/(user.controller.ts 내부 HTTP · user.controller.queue.ts RabbitMQ) → UserService
+│   └── migrate.ts            # 마이그레이션 실행기
+└── scheduler/src/            # crontab 전용 — 들어오는 연결 없음(listen · 큐 소비 · 컨트롤러 없음), DB 직접
+    └── user/                 # crontabs/(탈퇴 자동처리) → repository 직접
 libs/
-├── common/       # 실패 응답 DTO · toFailResult · 예외 필터 · ValidationPipe 팩토리 · 순수 util · 내부 요청 가드
+├── common/       # 실패 응답 DTO · toFailResult · 예외 필터 · 반환된 예외 인터셉터 · ValidationPipe 팩토리 · 순수 util · 내부 요청 가드
 ├── contracts/    # 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type · 큐 · 바인딩 · 내부 HTTP 경로 상수, 메시지 봉투, Actor, 내부 헤더, SSE 이벤트
 ├── database/     # entities/<domain>/ · entities.ts · migrations/ · migrations.ts · DatabaseModule · JobLockService · typeorm-error · seeder
 ├── integration/  # 외부 연동 포트 — SMS 발송(SMS_SENDER · Amazon SNS) · 파일 저장(STORAGE_GATEWAY · S3) · SmsModule · StorageModule(전역)
@@ -51,7 +53,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 - **모노레포 ≠ 모놀리스**: 앱마다 `nest build <app>` 으로 따로 빌드 · 배포 · 확장한다. 공유 코드는 libs 한 곳에서 import. 앱끼리는 서로 import 하지 않는다.
 - **두 전달 경로**: 즉시 끝나는 요청(조회 · 로그인 · 토큰 재발급 · 게이트웨이 인증 조회)은 게이트웨이 → 서비스 **내부 HTTP**(동기), 상태를 바꾸는 쓰기는 **RabbitMQ 명령 → 결과 이벤트 → 요청 단위 SSE**. 어느 라우트가 어느 경로인지는 게이트웨이 controller 파일로 정한다.
-- **헥사고날 경계(포트·어댑터)**: 인바운드 어댑터 controller(내부 HTTP · 큐 `@OnCommand`)는 service 로 위임만 하고, service 는 아웃바운드 포트(repository · 외부 연동 인터페이스 Symbol 토큰)와 프레임워크 서비스(`JwtService`)만 안다. 같은 service 를 HTTP 와 RabbitMQ 양쪽에서 부른다. **crontab 은 예외** — API 가 아니므로 service 를 거치지 않고 repository 포트를 직접 쓴다. 폴더 배치(api · guards · modules · config)는 헥사고날과 무관한 정리 기준이다. 순수 도메인 객체 분리(클린 아키텍처)는 하지 않는다.
+- **헥사고날 경계(포트·어댑터)**: 인바운드 어댑터 controller(내부 HTTP · 큐 `@OnCommand`)는 service 로 위임만 하고, service 는 아웃바운드 포트(repository · 외부 연동 인터페이스 Symbol 토큰)와 프레임워크 서비스(`JwtService`)만 안다. 같은 service 를 HTTP 와 RabbitMQ 양쪽에서 부른다. **crontab 은 예외** — API 가 아니므로 service 를 거치지 않고 repository 포트를 직접 쓴다. crontab 은 **scheduler 앱에만** 두고(서비스 앱에는 `ScheduleModule` · `crontabs/` 없음), 그 데이터 접근은 scheduler 안의 도메인 repository 다(공유 DB — 같은 엔티티). 폴더 배치(api · guards · modules · config)는 헥사고날과 무관한 정리 기준이다. 순수 도메인 객체 분리(클린 아키텍처)는 하지 않는다.
 - 레이어: **controller → service → repository**, **crontab → repository**, 단방향. repository 만 TypeORM(`txHost.tx`)을 쓴다.
 - **엔티티는 `libs/database/src/entities/<domain>/`** — 공유 DB 단계라 여러 앱이 같은 엔티티를 쓰므로 앱이 아니라 공용 라이브러리 안의 소유 도메인 폴더에 둔다.
 - **도메인 간 데이터 접근**: 다른 도메인 테이블이 필요하면 소유 도메인의 repository 가 그 엔티티를 직접 다룬다(service→service ❌). 메서드명은 소유 도메인 어휘(예: `t_user` 를 다뤄도 store 에서는 `insertStaff`).
@@ -83,12 +85,13 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - **service 내부 private 헬퍼 금지**(0건) — 재사용 · 순수 변환은 `<domain>.util.ts`(도메인) 또는 `libs/common/src/utils/`(전역)로 추출.
 - service 는 `new XEntity()`+필드 할당으로 엔티티를 만들고(객체 리터럴 ❌), WHERE 는 `FindOptionsWhere<XEntity>`(`In` · `LessThanOrEqual` 등)로 만들어 repository 를 인터페이스 토큰으로 호출하며, 규칙 위반 시 HTTP 예외 throw.
 - **쓰기가 있는 메서드에 `@Transactional()`**(`@nestjs-cls/transactional`) — 세션을 insert 하는 로그인 · 토큰 재발급 포함. 큐 경로에서도 HTTP 예외를 그대로 던지면 failed 결과로 바뀐다.
+- **커밋해야 하는 실패는 return**: 쓰기를 커밋한 채 실패를 알려야 할 때만(인증번호 불일치 — 시도 횟수를 남겨야 함) 예외를 throw 하지 않고 **return** 한다 — 큐 경로는 `CommandDispatcher`, 내부 HTTP 는 전역 `ReturnedExceptionInterceptor` 가 같은 실패 본문으로 바꾸고, 이미 커밋된 실패라 상태 코드와 무관하게 재시도하지 않는다. 그 밖의 실패는 throw → 롤백. 반환 타입은 `Promise<T | BadRequestException>`(user.service.ts `confirmPhoneVerification` 등).
 - service 는 `Request`/`Response`/AMQP 채널 같은 전송 계층 객체를 받지 않고 값만 받는다.
 - service 메서드 JSDoc 에 전송 경로를 적는다 — `(RabbitMQ: <type>)` / `(내부 HTTP: <METHOD> <path>)`.
 
 ## 공통 로직 분리
 
-- **순수 함수(stateless) → util**: 전역 `libs/common/src/utils/*.ts`(`bcrypt` · `hash` · `cipher` · `jwt` · `validation` · `fail-result` · `retry` · `pagination`), 도메인 전용 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. `@Injectable` 없이 named `function` export — `pagination.ts` 의 `Pagination` 만 계산 결과를 들고 다니는 값 객체라 class 다. 파일 전용 헬퍼(export 안 함)는 인프라 · util 파일에만.
+- **순수 함수(stateless) → util**: 전역 `libs/common/src/utils/*.ts`(`bcrypt` · `hash` · `cipher` · `jwt` · `validation` · `fail-result` · `retry` · `pagination` · `env`), 도메인 전용 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. `@Injectable` 없이 named `function` export — `pagination.ts` 의 `Pagination` 만 계산 결과를 들고 다니는 값 객체라 class 다. 파일 전용 헬퍼(export 안 함)는 인프라 · util 파일에만.
 - **DI/lifecycle/외부연동 → `@Module`/`@Injectable`**: 여러 앱이 쓰는 인프라는 `libs/`, 앱 전용은 그 앱 안(`src/modules/`).
 - **로깅**: 인프라 클래스만 `private readonly logger = new Logger(X.name)`. 도메인 계층(service · repository · crontab · controller)은 로그를 남기지 않는다. `console.*` 금지.
 
@@ -108,9 +111,9 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 - **실패 본문은 전송 경로와 무관하게 하나**: `ApiFailResultDto {message, validation_errors: ValidationErrorResultDto[] | null, ...기능별 추가 필드}`. 모든 예외는 `toFailResult()` 를 거친다 — HTTP 는 `CustomErrorFilter` 가 상태 코드 + 본문으로, 큐 경로는 `CommandDispatcher` 가 failed 결과로, 게이트웨이가 SSE `failed` 이벤트(`{status_code, ...본문}`)로 내보낸다.
 - **repository**: DB 를 실행하는 메서드는 모두 try/catch, 최종 실패는 통일 `InternalServerErrorException({message: SERVER_ERROR_MESSAGE})`('서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'). 제약 위반은 그 제약이 걸리는 쓰기에서 `isUniqueViolation(error, 'UK_…')` · `isForeignKeyViolation(error, 'FK_…')`(PostgreSQL 23505/23503)로 **제약명별 if 분기** → `BadRequestException`. QueryBuilder 빌더 메서드는 실행하지 않으므로 try/catch 없음.
-- **service**: 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw, body `{message: '<한국어 문자열>'}`(+필요 시 추가 필드). controller 는 throw 안 함. crontab 은 건별 실패를 catch 하고 건너뛴다.
+- **service**: 규칙 위반을 `BadRequestException`/`NotFoundException`/`UnauthorizedException`/`HttpException(…, HttpStatus.X)` 로 throw, body `{message: '<한국어 문자열>'}`(+필요 시 추가 필드). controller 는 throw 안 함. 쓰기를 커밋한 채 알리는 실패만 예외를 return 한다(서비스 계층 규칙). crontab 은 건별 실패를 catch 하고 건너뛴다.
 - **메시지 상수**: 인프라 · 공통 실패 메시지는 export 되는 `*_MESSAGE` 상수. 비즈니스 메시지는 한 곳에서만 쓰면 throw 옆 인라인 리터럴, 반복되거나 여러 파일(service · repository)이 쓰면 도메인 `<domain>.constants.ts` 의 export `*_MESSAGE`. 도메인 값 상수(용도 · 한도 · 상태 목록)도 같은 파일에 둔다.
-- **4xx 는 비즈니스, 5xx 는 인프라**: 큐 경로에서 4xx 는 즉시 failed 회신, 5xx 는 재시도(최대 3회) 후 failed + DLQ.
+- **4xx 는 비즈니스, 5xx 는 인프라**: 큐 경로에서 4xx 는 즉시 failed 회신, 5xx 는 재시도(최대 3회) 후 failed + DLQ. 반환된(return) 예외는 이미 커밋된 실패라 상태 코드와 무관하게 재시도 없이 failed + ack.
 - **`validation_errors` 기준**: 사용자 입력 필드 오류만, 비즈니스 · 내부값 오류는 `null`. 입력 필드에 귀속되는 비즈니스 오류는 `createValidationError(property, message)` 로 담는다.
 - 상태코드는 동기 핸들러마다 `@HttpCode(200|204)` 명시(현재 200 만, 204 는 미적용). **응답 필드 생략 금지 — 없으면 `null` 포함**(`x: T | null`).
 
@@ -146,7 +149,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 ### 서비스는 게이트웨이를 거친 요청만 받는다
 
-- **내부 HTTP**: 서비스 루트 모듈에 `{provide: APP_GUARD, useClass: InternalAuthGuard}` — 모든 HTTP 요청에 게이트웨이의 `x-internal-token`(INTERNAL_API_TOKEN, 시간차 안전 비교, 미설정이면 전부 거부)을 요구한다. 컨트롤러마다 붙이지 않는다. 바인딩 주소는 `USER_SERVICE_HOST`(기본 127.0.0.1), Docker 에서는 `roomless-service` 네트워크(internal — gateway · user-service-lb · user-service 만)로 닿는다. 서비스에는 CORS 를 두지 않는다.
+- **내부 HTTP**: 서비스 루트 모듈에 `{provide: APP_GUARD, useClass: InternalAuthGuard}` — 모든 HTTP 요청에 게이트웨이의 `x-internal-token`(INTERNAL_API_TOKEN, 시간차 안전 비교, 미설정이면 전부 거부)을 요구한다. 컨트롤러마다 붙이지 않는다. 같은 자리에 `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}` 도 둔다(반환된 예외 → 실패 응답). 바인딩 주소는 `USER_SERVICE_HOST`(기본 127.0.0.1), Docker 에서는 `roomless-service` 네트워크(internal — gateway · user-service-lb · user-service 만)로 닿는다. 서비스에는 CORS 를 두지 않는다.
 - **큐(명령)**: 앱마다 다른 브로커 계정(`BROKER_USER`: gateway · user-service, 비밀번호 `RABBITMQ_<계정>_PASSWORD`). `roomless.cmd` 에 쓸 수 있는 계정은 gateway 뿐이다(권한: [docker/rabbitmq/init.sh](docker/rabbitmq/init.sh)). 연결 모듈은 발행하는 모든 메시지에 자기 계정을 `user_id` 로 붙이고, 브로커가 접속 계정과 대조한다. 서비스 소비자는 `user_id` 가 신뢰 발행자(`trusted_publisher`, 기본 `'gateway'`)가 아닌 명령을 처리 · 회신 없이 DLQ 로 보낸다.
 - **CORS** 는 브라우저 규칙이라 서버 간 호출을 막지 못한다 — 게이트웨이에만 `CORS_ORIGINS`(프론트 주소, 비우면 모두 차단)로 건다.
 
@@ -156,7 +159,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - `MessagingModule.forGateway()/forService()` 는 전역 모듈이다. 연결 준비 작업은 provider 의 `onModuleInit` 에서 `connection.register(setup)` 하고, 연결은 `onApplicationBootstrap` 에서 연다. 브로커가 없어도 부팅은 막지 않고 발행만 503.
 - 명령 추가: `libs/contracts/src/<domain>/<domain>.commands.ts` 에 type 상수 → 서비스 `controllers/<domain>.controller.queue.ts` 에 `@OnCommand(TYPE)` 메서드(service 위임만, **같은 type 이 두 번 등록되면 부팅 실패**) → 게이트웨이 `controllers/<domain>.controller.queue.ts` 에서 `commandStream.dispatch`.
 - **요청 단위 SSE**: 큐 경로 응답 = `event: accepted` → `done | failed | pending` → 종료. 상태 저장소 · 상시 연결 없음. 대기 시간 초과(`COMMAND_STREAM_TIMEOUT_MS`, 기본 30초)나 게이트웨이 종료면 pending, 클라이언트는 리소스를 재조회한다.
-- **스케줄러**: 도메인 안 `crontabs/` 폴더에 `<domain>-<feature>.crontab.ts`(`@Cron`), 도메인 모듈 providers 에 등록. `ScheduleModule.forRoot()` 는 앱 루트 모듈에 1회. 운영 데이터를 바꾸는 crontab 은 `NODE_ENV !== 'production'` 이면 바로 return 한다. **서비스는 여러 대로 뜨므로 crontab 본문은 `JobLockService.runExclusive('<domain>.<작업>', async () => {...})`(libs/database, PostgreSQL advisory lock — DatabaseModule 이 전역 제공, 잠금 키는 crontab 파일 상수)로 감싸 회차마다 1대만 실행**하고, 대상은 상태 조건으로 골라 두 번 돌아도 같은 결과가 나게 한다.
+- **스케줄러**: crontab 은 **scheduler 앱(`apps/scheduler`)** 의 도메인 `crontabs/` 폴더에 `<domain>-<feature>.crontab.ts`(`@Cron`)로 두고 도메인 모듈 providers 에 등록한다. 서비스 앱에는 `ScheduleModule` · crontab 을 두지 않는다. scheduler 는 들어오는 연결이 없고(`NestFactory.createApplicationContext` — listen · 큐 소비 · 컨트롤러 없음) DB 에만 붙으며, crontab 이 쓰는 데이터 접근은 scheduler 안의 도메인 repository 로 둔다. `ScheduleModule.forRoot()` 는 scheduler 루트 모듈에 1회. 운영 데이터를 바꾸는 crontab 은 `NODE_ENV !== 'production'` 이면 바로 return 한다. **scheduler 도 여러 대일 수 있고(`SCHEDULER_REPLICAS`) 배포 중 겹칠 수 있으므로 crontab 본문은 `JobLockService.runExclusive('<domain>.<작업>', async () => {...})`(libs/database, PostgreSQL advisory lock — DatabaseModule 이 전역 제공, 잠금 키는 crontab 파일 상수)로 감싸 회차마다 1대만 실행**하고, 대상은 상태 조건으로 골라 두 번 돌아도 같은 결과가 나게 한다.
 
 → 상세: [docs/messaging.md](docs/messaging.md)
 
@@ -171,21 +174,21 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
   - 포트를 쓰는 앱 루트 모듈이 `SmsModule` · `StorageModule` 중 필요한 것을 import 한다.
   - 외부 실패는 어댑터가 503(`SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE`)으로 던지고, service 는 잡지 않는다. 재시도되면 다시 나가므로 발송은 명령의 마지막 단계에 둔다.
   - → 상세: [docs/integration.md](docs/integration.md) · AWS 세팅: [docs/guides/aws-setup.md](docs/guides/aws-setup.md)
-- **Transaction**: service 쓰기 메서드에 `@Transactional()`, repository 는 `txHost.tx`. 실패해도 남겨야 하는 쓰기(SMS 인증 시도 횟수 소비)만 repository 메서드에 `@Transactional(Propagation.RequiresNew)` — 독립 커밋(user.repository.ts `consumeSmsVerificationAttempt`). DB 를 쓰는 앱 루트 모듈은 `DatabaseModule`(TypeOrmModule + ClsModule `TransactionalAdapterTypeOrm` + `JobLockService`)을 import 한다.
+- **Transaction**: service 쓰기 메서드에 `@Transactional()`, repository 는 `txHost.tx`. 커밋해야 하는 실패는 예외를 return 한다(서비스 계층 규칙) — 시도 횟수 소비도 확인과 같은 트랜잭션이라 요청 1건이 DB 연결 1개만 쓴다. 풀에서 연결을 기다리는 시간은 `DATABASE_CONNECTION_TIMEOUT_MS`(기본 30초)로 제한한다(typeorm.config.ts). DB 를 쓰는 앱 루트 모듈은 `DatabaseModule`(TypeOrmModule + ClsModule `TransactionalAdapterTypeOrm` + `JobLockService`)을 import 한다.
 - **기본 데이터 시드**: `libs/database/src/seeder/seeder.targets.ts` 의 `<X>_SEED_DATA` + `SEED_TARGETS` 를 DB 소유 서비스(user-service)의 `SeederService` 가 부팅 시 PK 기준 멱등 입력. 시드 행은 객체 리터럴 허용(유일 예외). DTO 허용값(`@IsIn`)은 모두 시드에 있어야 한다.
-- **Docker 실행 — 묶음 4개를 따로**: `compose.postgres.yml` · `compose.rabbitmq.yml`(+rabbitmq-init 브로커 계정 · 권한) · `compose.user-service.yml`(migrate 1회 → user-service × `USER_SERVICE_REPLICAS` → user-service-lb) · `compose.gateway.yml`(gateway × `GATEWAY_REPLICAS` → gateway-lb, 호스트 `GATEWAY_PORT`). 각자 띄우고 내리며(`npm run docker:<묶음>`, 전체는 `docker:up`), 묶음끼리는 `npm run docker:network` 가 만든 공용 external 네트워크(`roomless-edge` · `roomless-service`(internal) · `roomless-broker` · `roomless-data`)에서 서비스 이름으로 만난다. gateway · user-service 는 **로드밸런싱 전제** — 앞단 nginx(1.28, upstream `resolve` 로 `--scale` 을 재시작 없이 따라감), 큐 명령은 경쟁 소비, 결과는 `reply_to` 인스턴스로(sticky session 불필요), crontab 은 JobLockService. 그래서 앱 코드는 인스턴스 로컬 상태(메모리 캐시 · 세션 등)에 기대지 않는다.
-- **`.env` 하나가 곧 서버 설정** — compose 는 환경 값(NODE_ENV · DB/RabbitMQ 접속정보 · 비밀값 · CORS · TRUST_PROXY · 인스턴스 수)을 바꾸지 않고 그대로 쓴다. 비밀값 · 접속정보는 기본값 없이 필수(`${VAR:?}` — 비면 띄우지 않음), 비밀이 아닌 구성값만 기본값(`TRUST_PROXY:-1` · `*_REPLICAS:-2` · 호스트 포트). compose 가 고정하는 것은 서버 구성(컨테이너 안 포트 · 바인딩 0.0.0.0 · user-service-lb 주소 · 인스턴스 ID 비움 · TZ)뿐이다. 가상 운영(같은 서버의 postgres · rabbitmq 묶음, 주소 = 컨테이너 이름)과 실제 운영(RDS · Amazon MQ)은 `.env` 의 접속정보로 사용자가 고르고, 운영으로 옮길 때 compose 를 다시 세팅하지 않는다 — compose 에 환경별 값 · 약한 기본 비밀번호를 넣지 않는다. 각 앱에는 쓰지 않는 다른 앱 · 관리자 비밀값을 빈 값으로 덮어 전달하지 않는다. 이미지는 `Dockerfile` 하나를 `APP` 빌드 인자로(Node 24 slim, 운영 의존성만, `node` 사용자). 앱 코드 개발 중에는 `npm run docker:infra` 로 인프라만 띄우고 `npm run start:*` 로 로컬 실행해도 된다.
+- **Docker 실행 — 묶음 5개를 따로**: `compose.postgres.yml` · `compose.rabbitmq.yml`(+rabbitmq-init 브로커 계정 · 권한) · `compose.user-service.yml`(migrate 1회 → user-service × `USER_SERVICE_REPLICAS` → user-service-lb) · `compose.scheduler.yml`(scheduler × `SCHEDULER_REPLICAS`, `roomless-data` 만 — 포트 · LB 없음) · `compose.gateway.yml`(gateway × `GATEWAY_REPLICAS` → gateway-lb, 호스트 `GATEWAY_PORT`). `docker:up` 순서는 user-service(마이그레이션) → scheduler → gateway. 각자 띄우고 내리며(`npm run docker:<묶음>`, 전체는 `docker:up`), 묶음끼리는 `npm run docker:network` 가 만든 공용 external 네트워크(`roomless-edge` · `roomless-service`(internal) · `roomless-broker` · `roomless-data`)에서 서비스 이름으로 만난다. gateway · user-service 는 **로드밸런싱 전제** — 앞단 nginx(1.28, upstream `resolve` 로 `--scale` 을 재시작 없이 따라감), 큐 명령은 경쟁 소비, 결과는 `reply_to` 인스턴스로(sticky session 불필요), crontab 은 JobLockService. 그래서 앱 코드는 인스턴스 로컬 상태(메모리 캐시 · 세션 등)에 기대지 않는다.
+- **`.env` 하나가 곧 서버 설정** — compose 는 환경 값(NODE_ENV · DB/RabbitMQ 접속정보 · 비밀값 · CORS · TRUST_PROXY · 인스턴스 수)을 바꾸지 않고 그대로 쓴다. 비밀값 · 접속정보는 기본값 없이 필수(`${VAR:?}` — 비면 띄우지 않음), 비밀이 아닌 구성값만 기본값(`TRUST_PROXY:-1` · `*_REPLICAS:-2`(scheduler `:-1`) · 호스트 포트). compose 가 고정하는 것은 서버 구성(컨테이너 안 포트 · 바인딩 0.0.0.0 · user-service-lb 주소 · 인스턴스 ID 비움 · TZ)뿐이다. 가상 운영(같은 서버의 postgres · rabbitmq 묶음, 주소 = 컨테이너 이름)과 실제 운영(RDS · Amazon MQ)은 `.env` 의 접속정보로 사용자가 고르고, 운영으로 옮길 때 compose 를 다시 세팅하지 않는다 — compose 에 환경별 값 · 약한 기본 비밀번호를 넣지 않는다. 각 앱에는 쓰지 않는 다른 앱 · 관리자 비밀값을 빈 값으로 덮어 전달하지 않는다. 이미지는 `Dockerfile` 하나를 `APP` 빌드 인자로(Node 24 slim, 운영 의존성만, `node` 사용자). 앱 코드 개발 중에는 `npm run docker:infra` 로 인프라만 띄우고 `npm run start:*` 로 로컬 실행해도 된다.
 
 ## Testing
 
 - **Vitest 4** + `@nestjs/testing` + `supertest`. `globals: true` — spec 은 describe · it · expect · vi 를 import 하지 않는다. 위치는 **대상 코드 옆 `test/` 폴더**(`apps/<app>/src/<domain>/test/<domain>-<feature>.spec.ts`, 게이트웨이 `api/v1/<domain>/test/` · `guards/test/` · `config/test/` · `modules/<m>/test/`, 라이브러리 `libs/<lib>/src/**/test/`). 실행 `npm test`, 단일 `npm test -- <파일 경로 일부>`.
 - 전역 setup([vitest.setup.ts](vitest.setup.ts)): `@Transactional()` pass-through mock + Nest 로거 끔. spec 마다 반복하지 않는다.
 - **큐 경로**: 실제 큐 컨트롤러 · service · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅(`DiscoveryModule` + `module.init()` 필수)하고 **repository · 외부 연동 포트(Symbol 토큰) · `JwtService` 만 mock** 주입, 봉투를 `dispatcher.dispatch()` 에 넣어 판정(ack/requeue/dead)과 done/failed 결과를 단언.
-- **동기 경로**: 실제 controller + service + ValidationPipe + 필터 + 전역 InternalAuthGuard 부팅, repository · 외부 연동 포트 · JwtService 만 mock.
+- **동기 경로**: 실제 controller + service + ValidationPipe + 필터 + 전역 InternalAuthGuard · ReturnedExceptionInterceptor 부팅, repository · 외부 연동 포트 · JwtService 만 mock.
 - **게이트웨이**: controller 2파일과 짝인 spec 2개 — 동기는 InternalHttpClient mock, 큐는 가짜 브로커(FakeBroker)로 SSE 이벤트 순서를 실제 HTTP 로 단언. 다른 경로 라우트 404 단언.
 - 외부 util 은 `vi.mock('<alias 경로>.js', ...)` + `vi.mocked(fn).mockReturnValue`(ESM 이라 `spyOn(모듈)` 불가), 외부 패키지는 `vi.hoisted` + `vi.mock`. 시간은 날짜만 필요하면 `vi.useFakeTimers({toFake: ['Date']})`, 타이머 의존 로직은 전체 `vi.useFakeTimers()`.
 - 강도: 상태코드만 검사 금지 — mock 호출 횟수 · 인자(쓰기는 엔티티 컬럼 값, `toBeInstanceOf(XEntity)`) · 실패 후 `.not.toHaveBeenCalled()` 까지. 메시지는 한국어 리터럴. `[SUCCESS]`/`[FAIL:*]`/`[SKIP]`/`[SECURITY]` 등 분류 태그를 describe 또는 it 제목에. **실 DB · 브로커 · 외부 IO 금지.**
-- **Data-Access Smoke**: 매핑 민감 쿼리(관계 필드 where · QueryBuilder · raw select · 동적 조립) 메서드는 repository-mock spec 만으로 커버 금지 — repository mock 은 쿼리 매핑을 실행하지 않는다. DB 연결 없이 `new DataSource(...)` + `buildMetadatas()` 로 SQL 을 빌드해 고정하는 smoke 케이스 필수. 현재 적용 [user.repository.spec.ts](apps/user-service/src/user/test/user.repository.spec.ts) `findLoginUser`.
+- **Data-Access Smoke**: 매핑 민감 쿼리(관계 필드 where · QueryBuilder · raw select · 동적 조립) 메서드는 repository-mock spec 만으로 커버 금지 — repository mock 은 쿼리 매핑을 실행하지 않는다. DB 연결 없이 `new DataSource(...)` + `buildMetadatas()` 로 SQL 을 빌드해 고정하는 smoke 케이스 필수. 현재 적용 [user.repository.spec.ts](apps/user-service/src/user/test/user.repository.spec.ts) `findLoginUser` · `consumeSmsVerificationAttempt`, [scheduler user.repository.spec.ts](apps/scheduler/src/user/test/user.repository.spec.ts) `buildUsersQuery`.
 - 공유 service 생성자에 DI 를 추가하면 그 service 를 부팅하는 모든 spec · 도우미의 providers 에 mock 을 추가한다. repository 메서드를 추가하면 `createUserRepositoryMock()` 에도 추가해야 typecheck 를 통과한다.
 - 엔티티 ↔ 마이그레이션 일치는 `npm run db:check` 로 확인한다(테스트와 별도). 타입은 Vitest 가 검사하지 않으므로 `npm run typecheck` 도 함께 통과시킨다.
 
@@ -202,11 +205,11 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - [ ] DTO 검증: `message: '<한국어 문자열>'` 필수, `@IsNotEmpty` 맨 마지막, `@IsString` 미사용, 입력 필드마다 검증 데코레이터 1개 이상
 - [ ] Entity: `@Entity({name:'t_<feature>', comment})`, 제약명 `PK_/UK_/FK_/IDX_`, 컬럼 이름 · comment 명시, FK `onDelete` 규칙, `@BeforeInsert/@BeforeUpdate`, `ENTITIES` 등록, 마이그레이션 생성 + `db:check` 통과
 - [ ] Repository: `txHost.tx.getRepository`, DB 실행 메서드 try/catch + `SERVER_ERROR_MESSAGE` 500, `isUniqueViolation`/`isForeignKeyViolation` 제약명 분기, `FindOptionsWhere`, `loadRelationIds:true`, `update` 는 엔티티 인스턴스 전달
-- [ ] Service: public=API/명령 1:1, private 헬퍼 없이 util, 쓰기 `@Transactional()`, 엔티티는 `new`+할당, JSDoc 에 전송 경로
+- [ ] Service: public=API/명령 1:1, private 헬퍼 없이 util, 쓰기 `@Transactional()`, 커밋해야 하는 실패만 예외 return, 엔티티는 `new`+할당, JSDoc 에 전송 경로
 - [ ] Error: 실패 본문 `{message, validation_errors}` 하나, `validation_errors` 는 입력 필드 오류만, 공통 메시지는 `*_MESSAGE` 상수
 - [ ] Swagger: 공개 핸들러 필수, 큐 핸들러는 `@ApiProduces('text/event-stream')`, 응답 데코레이터는 `type` 만
 - [ ] 메시징: 명령 type 은 contracts, 서비스 큐 컨트롤러는 `@OnCommand` + 위임만, 로그인 필요 명령은 `requireActor()`
-- [ ] 여러 인스턴스 전제: crontab 은 운영 가드 + `JobLockService.runExclusive`, 인스턴스 메모리에 상태를 두지 않는다
+- [ ] 여러 인스턴스 전제: crontab 은 scheduler 앱에만 · 운영 가드 + `JobLockService.runExclusive`, 인스턴스 메모리에 상태를 두지 않는다
 - [ ] 외부 연동: mock · 가짜 어댑터 없음(실제 어댑터 + `docs/guides/` 가이드), 발송은 `SMS_SENDER` 하나(이메일 · 알림톡 · 푸시 ❌), 파일은 `STORAGE_GATEWAY` presigned URL(파일 본문을 게이트웨이 · 브로커로 보내지 않음), 발송은 명령의 마지막 단계
 - [ ] README.md: 코드 · 설정 · 구조 · 명령 · 실행 방법이 바뀌었으면 같은 변경에서 갱신
 - [ ] 응답 필드 생략 금지 — 없으면 `null`

@@ -589,13 +589,15 @@ export class UserService {
 
     /**
      * 휴대폰 인증번호 확인 — 발송 결과의 인증 ID + 인증번호. 확인되면 그 기록의 번호를 회원정보에 저장한다. (RabbitMQ: user.member.phone-verification-confirm)
-     * 시도 횟수는 비교 전에 독립 트랜잭션으로 소비한다(실패해도 남는다, 최대 3회).
+     * 시도 횟수는 비교 전에 같은 트랜잭션에서 소비한다(최대 3회). 불일치는 예외를 throw 하지 않고 return 한다 —
+     * 트랜잭션이 커밋돼 소비한 횟수가 남고, CommandDispatcher 가 반환된 예외를 failed(400)로 회신한다.
      *
      * @param user_id 로그인 회원 ID
      * @param dto 인증 ID · 인증번호
+     * @returns 없음 — 불일치면 BadRequestException(반환, 커밋 뒤 실패)
      */
     @Transactional()
-    async confirmPhoneVerification(user_id: string, dto: UserPhoneVerificationConfirmDto): Promise<void> {
+    async confirmPhoneVerification(user_id: string, dto: UserPhoneVerificationConfirmDto): Promise<void | BadRequestException> {
         // 1. 회원 — 이미 인증했으면 다시 할 수 없다
         const user = await this.userRepository.findUser({user_id});
         if (!user) {
@@ -616,13 +618,13 @@ export class UserService {
             throw new BadRequestException({message: SMS_STATE_MESSAGE[state]});
         }
 
-        // 3. 시도 1회 소비 (독립 트랜잭션) → 인증번호 비교
+        // 3. 시도 1회 소비 → 인증번호 비교 (불일치는 return — 소비한 횟수를 커밋한다)
         const consumed = await this.userRepository.consumeSmsVerificationAttempt(verification.sms_verification_id, SMS_MAX_ATTEMPTS);
         if (!consumed) {
             throw new BadRequestException({message: SMS_ATTEMPTS_EXCEEDED_MESSAGE});
         }
         if (sha256Hex(dto.code) !== verification.code_hash) {
-            throw new BadRequestException({message: SMS_CODE_MISMATCH_MESSAGE, validation_errors: createValidationError('code', SMS_CODE_MISMATCH_MESSAGE)});
+            return new BadRequestException({message: SMS_CODE_MISMATCH_MESSAGE, validation_errors: createValidationError('code', SMS_CODE_MISMATCH_MESSAGE)});
         }
 
         // 4. 인증 완료 + 회원정보에 그 기록의 번호 저장 (다른 계정과 경쟁하면 UK_User_Phone → 400)
@@ -668,12 +670,13 @@ export class UserService {
 
     /**
      * 아이디 찾기 — 인증 ID + 인증번호 확인 → 일반 계정은 login_id, SNS 계정은 sns_id, 그리고 가입일시. (RabbitMQ: user.member.find-login-id-confirm)
+     * 불일치는 예외를 return 한다 — 소비한 시도 횟수를 커밋하고 CommandDispatcher 가 failed(400)로 회신한다.
      *
      * @param dto 인증 ID · 인증번호
-     * @returns 아이디 또는 가입한 SNS · 가입일시
+     * @returns 아이디 또는 가입한 SNS · 가입일시 — 불일치면 BadRequestException(반환, 커밋 뒤 실패)
      */
     @Transactional()
-    async confirmFindLoginId(dto: UserFindLoginIdConfirmDto): Promise<UserFindLoginIdConfirmResultDto> {
+    async confirmFindLoginId(dto: UserFindLoginIdConfirmDto): Promise<UserFindLoginIdConfirmResultDto | BadRequestException> {
         // 1. 인증 기록 — 아이디 찾기 용도만. 사용함 · 만료
         const now = new Date();
         const verification = await this.userRepository.findSmsVerification({sms_verification_id: dto.sms_verification_id, sms_purpose_id: SMS_PURPOSE.FIND_LOGIN_ID});
@@ -691,13 +694,13 @@ export class UserService {
             throw new NotFoundException({message: ACCOUNT_NOT_FOUND_MESSAGE});
         }
 
-        // 3. 시도 1회 소비 (독립 트랜잭션) → 인증번호 비교
+        // 3. 시도 1회 소비 → 인증번호 비교 (불일치는 return — 소비한 횟수를 커밋한다)
         const consumed = await this.userRepository.consumeSmsVerificationAttempt(verification.sms_verification_id, SMS_MAX_ATTEMPTS);
         if (!consumed) {
             throw new BadRequestException({message: SMS_ATTEMPTS_EXCEEDED_MESSAGE});
         }
         if (sha256Hex(dto.code) !== verification.code_hash) {
-            throw new BadRequestException({message: SMS_CODE_MISMATCH_MESSAGE, validation_errors: createValidationError('code', SMS_CODE_MISMATCH_MESSAGE)});
+            return new BadRequestException({message: SMS_CODE_MISMATCH_MESSAGE, validation_errors: createValidationError('code', SMS_CODE_MISMATCH_MESSAGE)});
         }
 
         // 4. 인증 완료 → 결과 (SNS 계정은 자동 생성 아이디 대신 가입한 SNS)
@@ -743,11 +746,13 @@ export class UserService {
     /**
      * 비밀번호 초기화 — 인증 ID + 인증번호 확인 → 임시 비밀번호(영문 + 숫자 10자리)로 바꾸고 그 기록의 번호로 SMS 를 보낸다. (RabbitMQ: user.member.password-reset-confirm)
      * 다음 로그인 때 비밀번호 변경이 필요하다는 표시(is_password_change_required = 1)를 남긴다. SMS 발송은 마지막 단계.
+     * 불일치는 예외를 return 한다(소비한 시도 횟수 커밋). SMS 실패(503)는 throw — 비밀번호 변경과 시도 소비가 함께 롤백되고 재시도된다.
      *
      * @param dto 인증 ID · 인증번호
+     * @returns 없음 — 불일치면 BadRequestException(반환, 커밋 뒤 실패)
      */
     @Transactional()
-    async confirmPasswordReset(dto: UserPasswordResetConfirmDto): Promise<void> {
+    async confirmPasswordReset(dto: UserPasswordResetConfirmDto): Promise<void | BadRequestException> {
         // 1. 인증 기록 — 비밀번호 초기화 용도만. 사용함 · 만료
         const now = new Date();
         const verification = await this.userRepository.findSmsVerification({sms_verification_id: dto.sms_verification_id, sms_purpose_id: SMS_PURPOSE.PASSWORD_RESET});
@@ -765,13 +770,13 @@ export class UserService {
             throw new NotFoundException({message: ACCOUNT_NOT_FOUND_MESSAGE});
         }
 
-        // 3. 시도 1회 소비 (독립 트랜잭션) → 인증번호 비교
+        // 3. 시도 1회 소비 → 인증번호 비교 (불일치는 return — 소비한 횟수를 커밋한다)
         const consumed = await this.userRepository.consumeSmsVerificationAttempt(verification.sms_verification_id, SMS_MAX_ATTEMPTS);
         if (!consumed) {
             throw new BadRequestException({message: SMS_ATTEMPTS_EXCEEDED_MESSAGE});
         }
         if (sha256Hex(dto.code) !== verification.code_hash) {
-            throw new BadRequestException({message: SMS_CODE_MISMATCH_MESSAGE, validation_errors: createValidationError('code', SMS_CODE_MISMATCH_MESSAGE)});
+            return new BadRequestException({message: SMS_CODE_MISMATCH_MESSAGE, validation_errors: createValidationError('code', SMS_CODE_MISMATCH_MESSAGE)});
         }
 
         // 4. 인증 완료 → 임시 비밀번호로 교체 + 변경 필요 표시 → SMS 발송(마지막)

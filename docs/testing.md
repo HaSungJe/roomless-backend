@@ -18,7 +18,7 @@ Vitest 4 + `@nestjs/testing` + `supertest`. 설정 [vitest.config.ts](../vitest.
 |---|---|---|
 | 서비스 기능(큐 · 동기) | `apps/<app>/src/<domain>/test/<domain>-<feature>.spec.ts` | `user-sign.spec.ts` · `user-login.spec.ts` |
 | 서비스 repository | 같은 폴더 `<domain>.repository.spec.ts` | `user.repository.spec.ts` |
-| 서비스 crontab | 같은 폴더 `<domain>-<feature>.crontab.spec.ts` | `user-leave-cleanup.crontab.spec.ts` |
+| crontab (scheduler) | `apps/scheduler/src/<domain>/test/<domain>-<feature>.crontab.spec.ts` · repository smoke `user.repository.spec.ts` | `user-leave-cleanup.crontab.spec.ts` |
 | 게이트웨이 라우트 | `apps/gateway/src/api/v1/<domain>/test/<domain>.controller.spec.ts` · `<domain>.controller.queue.spec.ts` (`controllers/` 의 controller 파일과 짝 — spec 은 도메인 폴더 `test/` 에 둔다) | `user.controller.queue.spec.ts` |
 | 게이트웨이 인프라 · 가드 · 설정 | `apps/gateway/src/{modules/<module>,guards,config}/test/<소스 파일명>.spec.ts` | `command-stream.service.spec.ts` · `guards.spec.ts` · `cors.config.spec.ts` |
 | 라이브러리 | `libs/<lib>/src/test/` 또는 `libs/<lib>/src/<폴더>/test/`, 이름은 소스 파일명 | `libs/messaging/src/test/command.dispatcher.spec.ts` · `libs/common/src/utils/test/retry.spec.ts` |
@@ -67,7 +67,7 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 
 ## 스타일 ② — 동기 경로 (서비스 내부 HTTP)
 
-실제 내부 controller + service + ValidationPipe(`validationExceptionFactory`) + `CustomErrorFilter` + 전역 `InternalAuthGuard`(APP_GUARD) 를 부팅한다. 요청에는 `internalHeaders(ip)` 로 내부 토큰 · 클라이언트 IP 헤더를 붙인다. 토큰 없는 요청이 403 인지도 단언한다. 정리는 `afterEach` 에서 `vi.clearAllMocks()` + `app.close()`.
+실제 내부 controller + service + ValidationPipe(`validationExceptionFactory`) + `CustomErrorFilter` + 전역 `InternalAuthGuard`(APP_GUARD) + `ReturnedExceptionInterceptor`(APP_INTERCEPTOR) 를 부팅한다(user-service.module 과 같다). 요청에는 `internalHeaders(ip)` 로 내부 토큰 · 클라이언트 IP 헤더를 붙인다. 토큰 없는 요청이 403 인지도 단언한다. 정리는 `afterEach` 에서 `vi.clearAllMocks()` + `app.close()`.
 
 ## 스타일 ③ — 게이트웨이
 
@@ -160,7 +160,7 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 repository 를 mock 하는 spec 은 **쿼리 매핑 자체**(조인 조건, raw select 별칭, 관계 필드 where, 동적 조립)를 실행하지 않는다. 이 종류의 버그는 mock spec 을 전부 통과한다.
 
 - **대상(매핑 민감 쿼리)**: QueryBuilder, raw select, 관계 필드 where, `Like()` · 배열 OR 같은 동적 조립을 쓰는 repository 메서드.
-- **규칙**: 대상 메서드는 쿼리를 빌더 메서드로 분리(`buildLoginUserQuery`)하고, smoke 케이스로 **실제 SQL 과 파라미터를 고정**한다. repository-mock spec 만으로 커버하는 것은 금지.
+- **규칙**: 대상 메서드는 쿼리를 빌더 메서드로 분리(`buildLoginUserQuery` · scheduler `buildUsersQuery` — find 와 같은 `setFindOptions` 빌더)하고, smoke 케이스로 **실제 SQL 과 파라미터를 고정**한다. repository-mock spec 만으로 커버하는 것은 금지.
 - **방법**: `beforeAll` 에서 접속하지 않는 DataSource 로 메타데이터만 만든다.
   ```ts
   const dataSource = new DataSource({type: 'postgres', database: 'smoke', entities: ENTITIES});

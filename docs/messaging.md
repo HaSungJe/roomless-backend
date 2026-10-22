@@ -94,6 +94,7 @@ AMQP 속성에도 `messageId` · `correlationId`(=request_id) · `replyTo` · `t
 | 상황 | 회신 | 브로커 |
 |---|---|---|
 | 핸들러 성공 | done (`result` = 반환값 또는 null) | ack |
+| 핸들러가 HttpException 을 **반환**(service 가 쓰기를 커밋한 뒤 실패를 return — 인증번호 불일치) | failed (`toFailResult` — 던진 예외와 같은 본문) | ack — 이미 커밋돼 상태 코드와 무관하게 재시도하지 않는다 |
 | HttpException 4xx (비즈니스 규칙 위반 · 중복 · 미존재 · actor 없음) | failed | ack — 재시도해도 결과가 같다 |
 | 5xx · 처리되지 않은 예외, 이전 전달 < 3 | 없음 | nack(requeue) |
 | 5xx, 마지막 시도(이전 전달 3) | failed (500) | nack(dead) → `q.dead` |

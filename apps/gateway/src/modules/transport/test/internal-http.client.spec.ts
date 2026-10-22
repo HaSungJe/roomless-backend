@@ -1,6 +1,6 @@
 import {HttpException, ServiceUnavailableException} from '@nestjs/common';
 import {InternalHttpClient} from '../internal-http.client.js';
-import {formatSseEvent, readPositiveInt} from '../transport.util.js';
+import {formatSseEvent} from '../transport.util.js';
 
 describe('InternalHttpClient — 게이트웨이 → 서비스 내부 HTTP', () => {
     const client = new InternalHttpClient();
@@ -83,15 +83,5 @@ describe('transport.util', () => {
     it('formatSseEvent — event/data 두 줄 + 빈 줄', () => {
         expect(formatSseEvent('done', {a: '한글'})).toBe('event: done\ndata: {"a":"한글"}\n\n');
         expect(formatSseEvent('done', undefined)).toBe('event: done\ndata: null\n\n');
-    });
-
-    it.each([
-        ['5000', 5000],
-        [undefined, 30000],
-        ['abc', 30000],
-        ['-1', 30000],
-        ['0', 30000],
-    ])('readPositiveInt(%s) = %i', (value, expected) => {
-        expect(readPositiveInt(value, 30000)).toBe(expected);
     });
 });

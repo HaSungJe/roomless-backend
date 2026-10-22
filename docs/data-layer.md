@@ -15,7 +15,7 @@ libs/database/src/
 ├── migrations.ts    # MIGRATIONS — 실행할 마이그레이션 목록
 ├── typeorm.config.ts · data-source.ts · database.module.ts
 ├── typeorm-error.ts # isUniqueViolation · isForeignKeyViolation
-├── job-lock/        # JobLockService — 인스턴스 여러 대 중 1대만 실행하는 잠금(crontab 용)
+├── job-lock/        # JobLockService — 인스턴스 여러 대 중 1대만 실행하는 잠금(scheduler 의 crontab 용)
 └── seeder/          # 룩업 기본 데이터
 scripts/db-schema.mjs   # 오프라인 마이그레이션 생성 · 검사
 apps/user-service/src/migrate.ts   # 마이그레이션 실행기 (db:migrate · Docker migrate)
@@ -148,8 +148,9 @@ export class UserRepository implements UserRepositoryInterface {
 ## 트랜잭션
 
 - service 의 쓰기가 있는 메서드에 `@Transactional()`(`@nestjs-cls/transactional`) — 세션을 insert 하는 로그인 · 토큰 재발급도 포함(8개), 읽기만 하는 `getLoginUser` 는 없음. 그 안에서 호출된 repository 의 `txHost.tx` 가 같은 트랜잭션을 쓴다.
-- 예외 — 실패해도 남겨야 하는 쓰기는 repository 메서드에 `@Transactional(Propagation.RequiresNew)`(독립 커밋). 현재 `consumeSmsVerificationAttempt` 1개다. SMS 인증 시도 횟수는 확인이 실패해 바깥 트랜잭션이 롤백돼도 남아야 한다.
-- crontab 은 트랜잭션 없이 건별로 처리한다(한 건 실패가 나머지를 막지 않도록).
+- 실패해도 남겨야 하는 쓰기(SMS 인증 시도 횟수)는 별도 트랜잭션으로 빼지 않는다. 확인과 같은 트랜잭션에서 소비하고, 불일치는 service 가 예외를 **return** 해 트랜잭션을 커밋한다([error-handling.md](error-handling.md)). 그래서 요청 1건이 DB 연결 1개만 쓴다 — 연결을 잡은 채 하나를 더 기다리는 구조(RequiresNew)는 동시 요청이 풀만큼 몰리면 교착된다.
+- 풀에서 연결을 기다리는 시간은 `DATABASE_CONNECTION_TIMEOUT_MS`(기본 30000, typeorm.config.ts `connectTimeoutMS`)로 제한한다 — 막혀도 영구 대기 대신 500(큐 경로는 재시도).
+- crontab(scheduler)은 트랜잭션 없이 건별로 처리한다(한 건 실패가 나머지를 막지 않도록). 데이터 접근은 scheduler 안의 도메인 repository(apps/scheduler/src/user/repositories/user.repository.ts)다.
 - DB 를 쓰는 앱 루트 모듈은 `DatabaseModule` 을 import 한다 — `TypeOrmModule.forRootAsync(buildDataSourceOptions)` + `ClsModule.forRoot({plugins: [new ClsPluginTransactional({adapter: new TransactionalAdapterTypeOrm({dataSourceToken: getDataSourceToken()})})]})`.
 - 큐 경로에서 5xx 로 재시도해도 롤백 덕분에 안전하다.
 

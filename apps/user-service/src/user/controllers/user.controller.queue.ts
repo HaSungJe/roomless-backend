@@ -1,3 +1,4 @@
+import type {BadRequestException} from '@nestjs/common';
 import {Injectable} from '@nestjs/common';
 import type {MessageEnvelope} from '@app/contracts/message-envelope.js';
 import type {UserGeneralSignDto, UserGeneralSignResultDto} from '@app/contracts/user/dto/user-general-sign.dto.js';
@@ -81,12 +82,13 @@ export class UserQueueController {
     }
 
     /**
-     * 휴대폰 인증번호 확인 — 로그인 회원
+     * 휴대폰 인증번호 확인 — 로그인 회원. 불일치는 service 가 반환한 BadRequestException 을 그대로 돌려준다(CommandDispatcher 가 failed 로 회신).
      *
      * @param command 명령 봉투 (actor 필수)
+     * @returns 없음 또는 반환된 실패
      */
     @OnCommand(USER_COMMAND.PHONE_VERIFICATION_CONFIRM)
-    async confirmPhoneVerification(command: MessageEnvelope<UserPhoneVerificationConfirmDto>): Promise<void> {
+    async confirmPhoneVerification(command: MessageEnvelope<UserPhoneVerificationConfirmDto>): Promise<void | BadRequestException> {
         return this.userService.confirmPhoneVerification(requireActor(command).user_id, command.payload);
     }
 
@@ -102,13 +104,13 @@ export class UserQueueController {
     }
 
     /**
-     * 아이디 찾기 — 인증번호 확인 (비로그인)
+     * 아이디 찾기 — 인증번호 확인 (비로그인). 불일치는 반환된 BadRequestException.
      *
      * @param command 명령 봉투
-     * @returns 아이디 또는 가입한 SNS
+     * @returns 아이디 또는 가입한 SNS — 또는 반환된 실패
      */
     @OnCommand(USER_COMMAND.FIND_LOGIN_ID_CONFIRM)
-    async confirmFindLoginId(command: MessageEnvelope<UserFindLoginIdConfirmDto>): Promise<UserFindLoginIdConfirmResultDto> {
+    async confirmFindLoginId(command: MessageEnvelope<UserFindLoginIdConfirmDto>): Promise<UserFindLoginIdConfirmResultDto | BadRequestException> {
         return this.userService.confirmFindLoginId(command.payload);
     }
 
@@ -124,12 +126,13 @@ export class UserQueueController {
     }
 
     /**
-     * 비밀번호 초기화 — 인증번호 확인 → 임시 비밀번호 SMS (비로그인)
+     * 비밀번호 초기화 — 인증번호 확인 → 임시 비밀번호 SMS (비로그인). 불일치는 반환된 BadRequestException.
      *
      * @param command 명령 봉투
+     * @returns 없음 또는 반환된 실패
      */
     @OnCommand(USER_COMMAND.PASSWORD_RESET_CONFIRM)
-    async confirmPasswordReset(command: MessageEnvelope<UserPasswordResetConfirmDto>): Promise<void> {
+    async confirmPasswordReset(command: MessageEnvelope<UserPasswordResetConfirmDto>): Promise<void | BadRequestException> {
         return this.userService.confirmPasswordReset(command.payload);
     }
 }

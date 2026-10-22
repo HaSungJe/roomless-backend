@@ -200,14 +200,12 @@ describe('UserRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
             expect(sms.findOne).toHaveBeenCalledWith({where: {sms_verification_id: 'v1', sms_purpose_id: 'PHONE_VERIFY'}, loadRelationIds: true});
         });
 
-        it('findUser · findUsers 는 loadRelationIds 로 FK ID 를 채운다', async () => {
+        it('findUser 는 loadRelationIds 로 FK ID 를 채운다', async () => {
             const {repository, user} = makeRepository();
 
             await repository.findUser({user_id: 'x'});
-            await repository.findUsers({state_id: 'ACTIVE'});
 
             expect(user.findOne).toHaveBeenCalledWith({where: {user_id: 'x'}, loadRelationIds: true});
-            expect(user.find).toHaveBeenCalledWith({where: {state_id: 'ACTIVE'}, loadRelationIds: true});
         });
 
         it('updateUser 는 where 와 엔티티를 그대로 update 에 넘긴다 (@BeforeUpdate 트리거)', async () => {
@@ -221,7 +219,6 @@ describe('UserRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
 
         it.each([
             ['findUser', 'user', 'findOne'],
-            ['findUsers', 'user', 'find'],
             ['findSession', 'session', 'findOne'],
             ['findSessionRefresh', 'refresh', 'findOne'],
             ['updateSessionRefresh', 'refresh', 'update'],

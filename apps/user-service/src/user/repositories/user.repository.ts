@@ -1,5 +1,5 @@
 import {BadRequestException, Injectable, InternalServerErrorException} from '@nestjs/common';
-import {Propagation, Transactional, TransactionHost} from '@nestjs-cls/transactional';
+import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
 import type {FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
 import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
@@ -142,20 +142,6 @@ export class UserRepository implements UserRepositoryInterface {
     async findUser(where: FindOptionsWhere<UserEntity>): Promise<UserEntity | null> {
         try {
             return await this.users.findOne({where, loadRelationIds: true});
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
-     * 회원 목록 조회
-     *
-     * @param where 조회 조건
-     * @returns 회원 목록
-     */
-    async findUsers(where: FindOptionsWhere<UserEntity>): Promise<UserEntity[]> {
-        try {
-            return await this.users.find({where, loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -311,13 +297,13 @@ export class UserRepository implements UserRepositoryInterface {
 
     /**
      * 확인 시도 1회 소비 — attempt_count < max 인 행만 원자적으로 +1 한다.
-     * 독립 트랜잭션(RequiresNew)이라, 바깥 확인이 실패해 롤백돼도 소비한 횟수는 남는다(이 repository 의 유일한 예외).
+     * 확인과 같은 트랜잭션에서 실행한다 — 인증번호 불일치는 service 가 예외를 return 해 트랜잭션이 커밋되므로 소비한 횟수가 남는다.
+     * 갱신이 그 행을 잠가 같은 인증 기록의 동시 확인은 차례로 처리된다(한도를 넘겨 소비되지 않는다).
      *
      * @param sms_verification_id 인증 기록 ID
      * @param max_attempts 시도 한도
      * @returns 소비했으면 true, 이미 한도에 닿았으면 false
      */
-    @Transactional(Propagation.RequiresNew)
     async consumeSmsVerificationAttempt(sms_verification_id: string, max_attempts: number): Promise<boolean> {
         try {
             const result = await this.buildConsumeSmsVerificationAttemptQuery(sms_verification_id, max_attempts).execute();

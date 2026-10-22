@@ -61,6 +61,41 @@ describe('CommandDispatcher — 명령 1건 판정', () => {
         });
     });
 
+    describe('[CASES:returned-exception] 핸들러가 예외를 반환 — service 가 쓰기를 커밋한 뒤 돌려준 실패', () => {
+        it('① 400 예외 반환 → failed(400 · validation_errors) 회신 후 ack', async () => {
+            const message = '인증번호가 일치하지 않습니다.';
+            const returned = new BadRequestException({message, validation_errors: [{property: 'code', message}]});
+            const handler = vi.fn().mockResolvedValue(returned);
+            const {envelope, content} = command();
+
+            const decision = await makeDispatcher(handler).dispatch(content, 0);
+
+            expect(handler).toHaveBeenCalledTimes(1);
+            expect(decision.action).toBe('ack');
+            expect(decision.result).toMatchObject({
+                request_id: envelope.request_id,
+                type: 'test.cmd.failed',
+                actor: ACTOR,
+                payload: {result: null, error: {status_code: 400, body: {message, validation_errors: [{property: 'code', message}]}}},
+                meta: {reply_to: 'gw-1', attempt: 1},
+            });
+        });
+
+        it('② 500 예외 반환 → 이미 커밋돼 재시도하지 않고 failed 회신 후 ack (던진 500 은 requeue)', async () => {
+            const decision = await makeDispatcher(vi.fn().mockResolvedValue(new InternalServerErrorException({message: '서버 오류'}))).dispatch(command().content, 0);
+
+            expect(decision.action).toBe('ack');
+            expect(decision.result?.type).toBe('test.cmd.failed');
+            expect(decision.result?.payload).toEqual({result: null, error: {status_code: 500, body: {message: '서버 오류', validation_errors: null}}});
+        });
+
+        it('③ reply_to 가 없으면 예외를 반환해도 회신 없이 ack', async () => {
+            const decision = await makeDispatcher(vi.fn().mockResolvedValue(new BadRequestException({message: '인증번호가 일치하지 않습니다.'}))).dispatch(command(null).content, 0);
+
+            expect(decision).toEqual({action: 'ack', result: null});
+        });
+    });
+
     describe('[FAIL:business] 4xx — 재시도해도 같으므로 failed 회신 후 ack', () => {
         it.each([
             [new BadRequestException({message: '중복입니다.'}), 400, {message: '중복입니다.', validation_errors: null}],

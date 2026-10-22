@@ -5,7 +5,8 @@ import {COMMAND_STREAM_EVENT} from '@app/contracts/message-envelope.js';
 import type {CommandPublisherInterface, ResultEnvelope, ResultSubscriberInterface} from '@app/messaging/interfaces/messaging.interface.js';
 import {COMMAND_PUBLISHER, GATEWAY_INSTANCE_ID, RESULT_SUBSCRIBER} from '@app/messaging/messaging.symbols.js';
 import {buildCommandEnvelope} from '@app/messaging/messaging.util.js';
-import {COMMAND_PENDING_MESSAGE, DEFAULT_COMMAND_STREAM_TIMEOUT_MS, formatSseEvent, readPositiveInt} from './transport.util.js';
+import {readPositiveInt} from '@app/common/utils/env.js';
+import {COMMAND_PENDING_MESSAGE, DEFAULT_COMMAND_STREAM_TIMEOUT_MS, formatSseEvent} from './transport.util.js';
 
 /** 큐 경로 명령 1건의 입력 */
 export interface CommandRequest {

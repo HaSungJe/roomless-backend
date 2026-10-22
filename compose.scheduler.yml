@@ -1,0 +1,56 @@
+# scheduler — crontab 만 도는 서버. 들어오는 연결이 없다(포트 · 로드밸런서 없음). 단독 실행
+#   npm run docker:scheduler   (docker compose -f compose.scheduler.yml up -d --build)
+#   인스턴스 수: .env 의 SCHEDULER_REPLICAS(기본 1) — 여러 대여도 JobLockService(DB 잠금)로 회차마다 1대만 실행한다
+#   마이그레이션은 user-service 묶음의 migrate 가 적용한다 — user-service 묶음을 먼저 띄운다(docker:up 순서)
+#
+# 설정 원칙 — compose.user-service.yml 과 같다
+#   - 환경 값(NODE_ENV · DATABASE_URL)은 .env 를 그대로 쓴다. compose 는 바꾸지 않고, 필수값이 비어 있으면 띄우지 않는다.
+#   - 서버 구성(TZ)만 아래에 고정한다.
+#   - 쓰지 않는 비밀값(브로커 · JWT · 토큰 암호화 · 내부 토큰 · 비밀번호 해시 · AWS · DB 관리자)은 빈 값으로 덮어 전달하지 않는다.
+#
+# 네트워크 — DB 로 나가는 roomless-data 하나뿐이다(서비스 · 브로커 · 외부 진입 네트워크에 붙지 않는다)
+name: roomless-scheduler
+
+x-logging: &logging
+    driver: json-file
+    options:
+        max-size: '10m'
+        max-file: '5'
+
+services:
+    scheduler:
+        image: roomless/scheduler
+        build:
+            context: .
+            args:
+                APP: scheduler
+        env_file:
+            - path: .env
+              required: true
+        environment:
+            # ── 환경 값: .env 그대로 (비어 있으면 띄우지 않는다) ──
+            NODE_ENV: '${NODE_ENV:?.env 에 NODE_ENV 가 필요합니다}'
+            DATABASE_URL: '${DATABASE_URL:?.env 에 DATABASE_URL 이 필요합니다}'
+            # ── 서버 구성: 어느 환경이든 같다 ──
+            TZ: Asia/Seoul
+            # ── 쓰지 않는 비밀값은 전달하지 않는다 ──
+            RABBITMQ_GATEWAY_PASSWORD: ''
+            RABBITMQ_USER_SERVICE_PASSWORD: ''
+            RABBITMQ_PASSWORD: ''
+            POSTGRES_PASSWORD: ''
+            JWT_SECRET: ''
+            TOKEN_CIPHER_KEY: ''
+            INTERNAL_API_TOKEN: ''
+            BCRYPT_CODE: ''
+            AWS_ACCESS_KEY_ID: ''
+            AWS_SECRET_ACCESS_KEY: ''
+        deploy:
+            replicas: ${SCHEDULER_REPLICAS:-1}
+        networks: [data]
+        logging: *logging
+        restart: unless-stopped
+
+networks:
+    data:
+        name: roomless-data
+        external: true

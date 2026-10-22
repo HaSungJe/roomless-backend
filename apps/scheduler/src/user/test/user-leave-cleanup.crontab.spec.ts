@@ -39,7 +39,7 @@ describe('UserLeaveCleanupCrontab — 탈퇴 자동처리', () => {
         expect(repo.updateUser).not.toHaveBeenCalled();
     });
 
-    it('[SKIP] 다른 user-service 인스턴스가 잠금을 잡고 있으면 이번 회차를 건너뛴다', async () => {
+    it('[SKIP] 다른 scheduler 인스턴스가 잠금을 잡고 있으면 이번 회차를 건너뛴다', async () => {
         process.env.NODE_ENV = 'production';
         jobLock.runExclusive.mockResolvedValueOnce(false);
 
