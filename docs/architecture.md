@@ -106,14 +106,14 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 ```
 apps/gateway/src/
-├── api/v1/user-service/user/      # 이용자 도메인 라우트(/api/v1/user-service/user) — controllers/(user.controller.ts 동기 · user.controller.queue.ts 큐) · user.module.ts · test/
-├── api/v1/admin-service/manager/  # 매니저 도메인 라우트(/api/v1/admin-service/manager) — controllers/(manager.controller.ts · manager.controller.queue.ts) · manager.module.ts · test/
-├── api/v1/admin-service/admin/    # 관리자 도메인 라우트(/api/v1/admin-service/admin) — controllers/(admin.controller.ts · admin.controller.queue.ts) · admin.module.ts · test/
+├── api/v1/user-service/user/      # 이용자 도메인 라우트(/api/v1/user-service/user) — controllers/(user.controller.ts 동기 · user.controller.queue.ts 큐) · user.module.ts
+├── api/v1/admin-service/manager/  # 매니저 도메인 라우트(/api/v1/admin-service/manager) — controllers/(manager.controller.ts · manager.controller.queue.ts) · manager.module.ts
+├── api/v1/admin-service/admin/    # 관리자 도메인 라우트(/api/v1/admin-service/admin) — controllers/(admin.controller.ts · admin.controller.queue.ts) · admin.module.ts
 ├── guards/
 │   ├── passport.jwt.auth/  # 그룹별 strategy · guard(auth=이용자 · manager · admin) · util(공통 옵션 · 회원 조회 · 401) · decorator(@PassportUser · @PassportActor) · module
 │   └── roles/              # roles.guard.ts · roles.decorator.ts(@Roles — 그룹 안 권한, 사용 0)
-├── modules/transport/      # internal-http.client · command-stream.service · transport.util · test/
-├── config/                 # cors.config.ts(buildCorsOptions) · trust-proxy.config.ts(parseTrustProxy) · test/
+├── modules/transport/      # internal-http.client · command-stream.service · transport.util
+├── config/                 # cors.config.ts(buildCorsOptions) · trust-proxy.config.ts(parseTrustProxy)
 ├── gateway.module.ts
 └── main.ts
 ```

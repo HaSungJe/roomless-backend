@@ -131,11 +131,11 @@ export class UserRepository implements UserRepositoryInterface {
 - **`txHost.tx.getRepository(XEntity)` 로만 접근** — `@Transactional()` 범위면 트랜잭션 EntityManager, 밖이면 기본 EntityManager. `@InjectRepository` 는 쓰지 않는다(트랜잭션 전파가 안 된다). 엔티티별 private getter 로 묶는다.
 - **DB 를 실행하는 메서드는 모두 try/catch**, 최종 실패는 통일 500 — 문구는 파일 상수 `SERVER_ERROR_MESSAGE`(user.repository.ts:14). 조회 · update 는 `catch {` + 500.
 - **제약 위반은 그 제약이 걸릴 수 있는 쓰기에서 제약명별 `if … else if … else` 분기** — `isUniqueViolation(error, 'UK_…')`(23505) · `isForeignKeyViolation(error, 'FK_…')`(23503), 마지막 else 는 500. 지금은 insert 만 분기하고 update 2개는 500 만 던진다(user.repository.ts:230-250). 멱등 insert 는 UK 중복을 `return` 으로 무시(`insertUserSetting`).
-- **QueryBuilder 빌더 메서드는 예외** — 쿼리만 만들고 실행하지 않으므로 try/catch 없이 public 으로 두고 포트 인터페이스에 넣지 않는다(`buildLoginUserQuery` — user.repository.ts:177). 실행하는 메서드(`findLoginUser`)가 try/catch 를 가진다. 빌더를 public 으로 두는 이유는 Data-Access Smoke spec 이 SQL 을 고정하기 위해서다.
+- **QueryBuilder 빌더 메서드는 예외** — 쿼리만 만들고 실행하지 않으므로 try/catch 없이 public 으로 두고 포트 인터페이스에 넣지 않는다(`buildLoginUserQuery` — user.repository.ts:177). 실행하는 메서드(`findLoginUser`)가 try/catch 를 가진다. 빌더를 public 으로 두는 이유는 repository spec 의 Data-Access Smoke 가 SQL 을 고정하기 위해서다.
 - **범용 메서드 우선**(`insertX`/`findX`/`findXs`/`updateX`). WHERE 는 service 가 `FindOptionsWhere<XEntity>`(❌ `Partial`)로 만들고 repository 는 실행만.
 - 조회 시 `loadRelationIds: true`.
 - `update(where, entity)` 의 `entity` 는 호출자가 `new XEntity()` + 바꿀 필드만 할당해 넘긴다(`@BeforeUpdate` 트리거). `undefined` 필드는 건드리지 않고 `null` 은 NULL 로 비운다 — 수정 API 의 선택 필드는 `?? null`.
-- **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery`)하고 Data-Access Smoke spec 으로 SQL 을 고정한다([testing.md](testing.md)).
+- **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery`)하고 repository spec 의 Data-Access Smoke 로 SQL 을 고정한다 — service spec 은 repository 를 mock 하므로 쿼리를 실행하지 않는다([testing.md](testing.md)).
 - 메서드명은 소유 도메인 어휘.
 
 - **로그인 그룹 조건** — 회원 조회는 자기 도메인의 로그인 그룹(`login_scope`)을 WHERE 에 넣어 다른 그룹 계정을 없는 계정처럼 다룬다(`findManager({login_id, login_scope: LOGIN_SCOPE.MANAGER, state_id: In([...])})`). 휴대폰 번호 중복 확인도 같은 그룹 안에서 한다.

@@ -120,7 +120,7 @@ AMQP 속성에도 `messageId` · `correlationId`(=request_id) · `replyTo` · `t
 1. `libs/contracts/src/<domain>/<domain>.commands.ts` — `<DOMAIN>_COMMAND.<X>: '<server>.<resource>.<action>'` (+ 새 서비스면 큐 이름 · 바인딩 키).
 2. 서비스 `controllers/<domain>.controller.queue.ts` — `@OnCommand(<DOMAIN>_COMMAND.X)` 메서드에서 service 로 위임만. 로그인 필요 명령은 `requireActor(command).user_id`, IP 는 `command.meta.client_ip ?? ''`.
 3. 게이트웨이 `controllers/<domain>.controller.queue.ts` — `@Res() res` + `await this.commandStream.dispatch(res, {type, actor, payload: dto, client_ip: ip})`(비인증은 `actor: null`, 입력 없는 명령은 `payload: {}`), Swagger `@ApiProduces('text/event-stream')`.
-4. 테스트 — 서비스: `runCommand()` 로 done/failed · ack/requeue/dead, 게이트웨이: FakeBroker 로 이벤트 순서([testing.md](testing.md)).
+4. 테스트 — 서비스 기능 spec 이 `runCommand()` 로 done/failed · ack/requeue/dead 를 단언한다(게이트웨이 · 메시징 라이브러리 spec 은 두지 않는다 — [testing.md](testing.md)).
 
 ## 운영 메모
 

@@ -72,4 +72,4 @@ await this.smsSender.send({to: phone, text: `[roomless] 인증번호 ${code}`});
 - **포트를 쓰는 service spec** — repository 처럼 Symbol 토큰으로 mock 을 주입한다: `{provide: SMS_SENDER, useValue: {send: vi.fn()}}`.
   - 호출 인자(번호 · 본문)를 단언한다.
   - 앞 단계 실패 후 미호출(`.not.toHaveBeenCalled()`)을 단언한다.
-- **어댑터 spec** — `vi.hoisted` + `vi.mock('@aws-sdk/…')` 로 SDK 를 막는다. 보낸 명령의 input · 클라이언트 설정 · 서명 옵션과 오류 → 503 · 404 → false 매핑을 단언한다. 실제 AWS 호출은 하지 않는다.
+- **어댑터 spec 은 두지 않는다** — spec 은 service 기능 · repository 만([testing.md](testing.md)). 실제 AWS 호출은 테스트에서 하지 않는다.
