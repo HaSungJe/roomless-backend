@@ -147,7 +147,7 @@ export class UserService {
     }
 
     /**
-     * 이용자 SNS 로그인 (내부 HTTP: POST /internal/v1/user/login)
+     * 이용자 SNS 로그인 (내부 HTTP: POST /internal/v1/user-service/user/login)
      * - (sns_id, sns_user_id) + login_scope USER + state_id IN (ACTIVE, BLOCK) 로 조회, 미존재 → 404
      * - BLOCK → 403 + block_comment
      * - device_os/device_token 둘 다 입력된 경우에만 t_user 동기화(마지막 로그인 기기 유지)
@@ -210,7 +210,7 @@ export class UserService {
     }
 
     /**
-     * 이용자 토큰 재발급 (내부 HTTP: POST /internal/v1/user/token-refresh)
+     * 이용자 토큰 재발급 (내부 HTTP: POST /internal/v1/user-service/user/token-refresh)
      * - 서명 · 만료 · payload type 검증 실패 → 401
      * - refresh_hash 로 t_session_refresh 조회, 미존재 · DB expires_at 경과 → 401
      * - 세션 미존재 · 로그인 시점 ip 와 요청 ip 불일치 → 401 (어느 한쪽 ip 가 없으면 비교 생략)
@@ -337,7 +337,7 @@ export class UserService {
     }
 
     /**
-     * 로그인 이용자 조회 — 게이트웨이 jwt-user 전략이 매 인증 요청마다 호출한다. (내부 HTTP: GET /internal/v1/user/auth-user/:user_id)
+     * 로그인 이용자 조회 — 게이트웨이 jwt-user 전략이 매 인증 요청마다 호출한다. (내부 HTTP: GET /internal/v1/user-service/user/auth-user/:user_id)
      * 이용자 그룹이고 로그인 가능 상태(is_login_allowed = 1)이며 회원 설정이 있는 회원만 돌려준다 — 매니저 · 관리자 토큰은 여기서 404(게이트웨이 401).
      *
      * @param user_id 토큰의 회원 ID

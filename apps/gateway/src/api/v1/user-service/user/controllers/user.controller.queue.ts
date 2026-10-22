@@ -23,9 +23,9 @@ import {UserPhoneVerificationConfirmDto} from '@app/contracts/user/dto/user-phon
 import {UserPhoneVerificationDto, UserPhoneVerificationResultDto} from '@app/contracts/user/dto/user-phone-verification.dto.js';
 import {UserSignDto, UserSignResultDto} from '@app/contracts/user/dto/user-sign.dto.js';
 import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
-import {PassportActor} from '../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
-import {PassportJwtAuthGuard} from '../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
-import {CommandStreamService} from '../../../../modules/transport/command-stream.service.js';
+import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
+import {PassportJwtAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
+import {CommandStreamService} from '../../../../../modules/transport/command-stream.service.js';
 
 /**
  * 이용자 공개 API — 큐 경로(RabbitMQ 명령 + 요청 단위 SSE). 게이트웨이 인바운드 어댑터.
@@ -36,7 +36,7 @@ import {CommandStreamService} from '../../../../modules/transport/command-stream
  * 동기 경로(내부 HTTP) 라우트는 같은 경로 접두의 user.controller.ts(UserController)에 둔다.
  */
 @ApiTags('회원')
-@Controller('/api/v1/user')
+@Controller('/api/v1/user-service/user')
 export class UserQueueController {
     /**
      * @param commandStream 큐 경로 — 명령 발행 + 결과를 SSE 로 전달

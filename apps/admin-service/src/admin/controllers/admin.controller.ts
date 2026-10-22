@@ -9,7 +9,7 @@ import {AdminService} from '../admin.service.js';
  * 관리자 내부 HTTP 인바운드 어댑터 — 게이트웨이의 동기 경로만 받는다(외부 비공개, Swagger 없음).
  * 내부 토큰 검사는 admin-service 전역 InternalAuthGuard(APP_GUARD)가 한다 — 게이트웨이를 거치지 않은 요청은 여기 닿지 않는다.
  */
-@Controller('/internal/v1/admin')
+@Controller('/internal/v1/admin-service/admin')
 export class AdminController {
     /**
      * @param adminService 관리자 service

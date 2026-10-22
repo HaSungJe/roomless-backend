@@ -39,7 +39,7 @@ export class AdminService {
     ) {}
 
     /**
-     * 관리자 로그인 (내부 HTTP: POST /internal/v1/admin/login)
+     * 관리자 로그인 (내부 HTTP: POST /internal/v1/admin-service/admin/login)
      * - login_id + 관리자 그룹 + state_id IN (ACTIVE, BLOCK) 조회 → 미존재(다른 그룹 포함) 404
      * - 비밀번호 불일치 → 동일 404 (아이디/비밀번호 구분 비노출)
      * - BLOCK → 403 + block_comment (비밀번호 검증 후 판정 — 비밀번호 없이 정지 여부 탐지 방지)
@@ -109,7 +109,7 @@ export class AdminService {
     }
 
     /**
-     * 관리자 토큰 재발급 (내부 HTTP: POST /internal/v1/admin/token-refresh)
+     * 관리자 토큰 재발급 (내부 HTTP: POST /internal/v1/admin-service/admin/token-refresh)
      * - 서명 · 만료 · payload type 검증 실패 → 401
      * - refresh_hash 로 t_session_refresh 조회, 미존재 · DB expires_at 경과 → 401
      * - 세션 미존재 · 로그인 시점 ip 와 요청 ip 불일치 → 401 (어느 한쪽 ip 가 없으면 비교 생략)
@@ -187,7 +187,7 @@ export class AdminService {
     }
 
     /**
-     * 로그인 관리자 조회 — 게이트웨이 jwt-admin 전략이 매 인증 요청마다 호출한다. (내부 HTTP: GET /internal/v1/admin/auth-user/:user_id)
+     * 로그인 관리자 조회 — 게이트웨이 jwt-admin 전략이 매 인증 요청마다 호출한다. (내부 HTTP: GET /internal/v1/admin-service/admin/auth-user/:user_id)
      * 관리자 그룹이고 로그인 가능 상태(is_login_allowed = 1)인 회원만 돌려준다 — 다른 그룹 토큰은 여기서 404(게이트웨이 401).
      *
      * @param user_id 토큰의 회원 ID

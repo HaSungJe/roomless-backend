@@ -33,7 +33,7 @@ NestJS 12 **모노레포**(ESM, `"type": "module"`) + TypeORM 1.x(PostgreSQL, pg
 ```
 apps/
 ├── gateway/src/
-│   ├── api/v1/<group>/       # 공개 라우트 — 로그인 그룹별 user(이용자) · manager(매니저) · admin(관리자). controllers/<x>.controller.ts(동기 · 내부 HTTP) · controllers/<x>.controller.queue.ts(큐 · RabbitMQ + 요청 단위 SSE)
+│   ├── api/v1/<service>/<domain>/  # 공개 라우트 — user-service/user · admin-service/{manager,admin}. controllers/<domain>.controller.ts(동기 · 내부 HTTP) · controllers/<domain>.controller.queue.ts(큐 · RabbitMQ + 요청 단위 SSE)
 │   ├── guards/               # passport.jwt.auth(로그인 그룹별 JWT 전략 · 가드 — jwt-user · jwt-manager · jwt-admin) · roles(그룹 안 권한 — 미적용)
 │   ├── modules/transport/    # InternalHttpClient · CommandStreamService
 │   └── config/               # cors.config.ts · trust-proxy.config.ts
@@ -68,16 +68,16 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 - **ESM**: 상대 · alias import 는 **`.js` 확장자 필수**(`./user.service.js`, `@app/common/utils/jwt.js`). 패키지 import 는 확장자 없음 — 단, exports 맵 없는 패키지 하위 경로를 깊게 가져오면 `.js`(`dayjs/plugin/customParseFormat.js`). Node 내장은 `node:` 접두. 타입만 쓰는 import 는 `import type`. CJS 패키지는 default import(`import bcrypt from 'bcrypt'`). `__dirname`/`require` ❌.
 - **Import alias**: 앱 간 공유는 `@app/<lib>/<경로>.js`(`@app/common` · `@app/contracts` · `@app/database` · `@app/integration` · `@app/messaging`). 앱 · 도메인 내부는 상대경로. 라이브러리 안은 현재 혼재(`libs/common` 만 자기 alias) — 그 라이브러리의 기존 방식을 따른다. barrel(`index.ts`) 없음.
-- **게이트웨이 폴더**: 공개 라우트는 로그인 그룹 접두 `/api/v1/{user,manager,admin}`(폴더 `src/api/v1/<group>/`, controller 는 `controllers/`) — 그룹의 기능 라우트는 `/api/v1/<group>/<domain>`(폴더 `src/api/v1/<group>/<domain>/`). 가드 `src/guards/<guard>/`, 인프라 `src/modules/<module>/`, 부트스트랩 설정 함수 `src/config/`.
+- **게이트웨이 폴더**: 공개 라우트는 `src/api/v1/<service>/<domain>/`(경로와 같은 모양 — `api/v1/user-service/user/` · `api/v1/admin-service/manager/`, controller 는 `controllers/`). 가드 `src/guards/<guard>/`, 인프라 `src/modules/<module>/`, 부트스트랩 설정 함수 `src/config/`.
 - **controller 는 `controllers/` 폴더 · 전달 경로별 2파일 (게이트웨이 · 서비스 공통)**: 동기(내부 HTTP) 라우트는 `controllers/<domain>.controller.ts` 의 `<Domain>Controller`, 큐(RabbitMQ) 라우트는 `controllers/<domain>.controller.queue.ts` 의 `<Domain>QueueController`. **한 파일에 두 경로를 섞지 않고, controller 를 `controllers/` 밖에 두지 않는다.**
-  - 게이트웨이(`src/api/v1/<domain>/controllers/`): 동기는 `InternalHttpClient` 만, 큐(요청 단위 SSE)는 `CommandStreamService` 만 주입한다. 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<domain>')` 를 쓰고, 도메인 모듈 `controllers` 에 `[동기, 큐]` 순으로 등록한다. 테스트는 도메인 폴더 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts` 로 나누고, 다른 경로의 라우트가 404 인지 단언한다.
-  - 서비스(`src/<domain>/controllers/`): 동기는 `@Controller('/internal/v1/<domain>')`(도메인 모듈 `controllers` 에 등록), 큐는 `@Injectable` + `@OnCommand` 메서드를 가진 provider 다 — HTTP 컨트롤러가 아니므로 도메인 모듈 `providers` 에 등록한다(`CommandHandlerRegistry` 가 provider 를 스캔한다). 테스트는 도메인 폴더 `test/` 의 기능별 spec 이 두 경로를 부팅해 지난다.
+  - 게이트웨이(`src/api/v1/<service>/<domain>/controllers/`): 동기는 `InternalHttpClient` 만, 큐(요청 단위 SSE)는 `CommandStreamService` 만 주입한다. 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<service>/<domain>')` 를 쓰고, 도메인 모듈 `controllers` 에 `[동기, 큐]` 순으로 등록한다. 테스트는 도메인 폴더 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts` 로 나누고, 다른 경로의 라우트가 404 인지 단언한다.
+  - 서비스(`src/<domain>/controllers/`): 동기는 `@Controller('/internal/v1/<service>/<domain>')`(도메인 모듈 `controllers` 에 등록), 큐는 `@Injectable` + `@OnCommand` 메서드를 가진 provider 다 — HTTP 컨트롤러가 아니므로 도메인 모듈 `providers` 에 등록한다(`CommandHandlerRegistry` 가 provider 를 스캔한다). 테스트는 도메인 폴더 `test/` 의 기능별 spec 이 두 경로를 부팅해 지난다.
 - **파일명**: 도메인 레이어 `<domain>.<role>.ts`(`controllers/user.controller.ts`, `controllers/user.controller.queue.ts`, `user.service.ts`, `user.constants.ts`, `user.symbols.ts`), 인프라 · 라이브러리 `<kebab-이름>.<role>.ts`(`internal-http.client.ts`, `command.dispatcher.ts`), 전역 util `utils/<이름>.ts`, DTO kebab `<domain>-<feature>.dto.ts`, 엔티티 kebab `<feature>.entity.ts`, crontab `<domain>-<feature>.crontab.ts`. 클래스 `<Domain><Feature><Role>`(큐 컨트롤러 `<Domain>QueueController` — 게이트웨이 · 서비스 공통) — 응답은 항상 `ResultDto`(❌ `ResponseDto`).
 - **DTO 는 `libs/contracts/src/<domain>/dto/`** — 게이트웨이(검증)와 서비스(타입)가 같은 클래스를 쓴다. 기능당 DTO 1개, 모양 같아도 독립 선언. void 기능은 ResultDto 없음.
 - **규격 상수는 `libs/contracts/src/<domain>/<domain>.commands.ts`** — 명령 type(`<server>.<resource>.<action-kebab>` — server 는 서비스 앱: user-service `user.*`, admin-service `admin.*`) · 큐 이름 · 바인딩 키 · 내부 HTTP 경로(`USER_INTERNAL_PATH` · `MANAGER_INTERNAL_PATH` · `ADMIN_INTERNAL_PATH`). 게이트웨이는 경로 문자열을 직접 쓰지 않는다. 권한 · 로그인 그룹 값은 도메인 공통이라 `libs/contracts/src/roles.ts` 의 `AUTH_ID` · `LOGIN_SCOPE`.
 - **DI 토큰**: `<domain>.symbols.ts` 의 `Symbol('<Interface 이름>')`(`USER_REPOSITORY = Symbol('UserRepositoryInterface')`). 값 주입 토큰(`GATEWAY_INSTANCE_ID` · `BROKER_ACCOUNT` · `COMMAND_CONSUMER_OPTIONS`)도 Symbol.
 - **snake_case 전 레이어 통일**: 밖(HTTP · 메시지 · DB · 토큰)으로 나가는 키 — DTO 필드 · entity 컬럼 · path/query param · JWT payload · 메시지 봉투 · 실패 본문(`validation_errors`) · util 옵션 객체 키 — 는 모두 snake_case. camelCase 는 코드 안 이름만: 함수 · util 함수명, repository private getter(`users`), 밖으로 나가지 않는 util 내부 반환 타입 필드(`AccessRefreshSet`).
-- **라우트**: 공개 `@Controller('/api/v1/<domain>')`(게이트웨이), 내부 `@Controller('/internal/v1/<domain>')`(서비스). 핸들러 앞 `/` + 다단어 kebab, snake path param.
+- **라우트**: 공개 `/api/v1/<service>/<domain>/<action>` · 내부 `/internal/v1/<service>/<domain>/<action>` — service 는 서비스 앱(`user-service` · `admin-service`), domain 은 그 앱의 도메인 폴더. 로그인 그룹은 경로가 아니라 게이트웨이 가드로 가른다(예: `/api/v1/admin-service/manager/login` → `/internal/v1/admin-service/manager/login`, 객실 관리는 `/api/v1/admin-service/room` + 매니저 가드). 게이트웨이 `@Controller('/api/v1/<service>/<domain>')`, 서비스 `@Controller('/internal/v1/<service>/<domain>')`. 핸들러 앞 `/` + 다단어 kebab, snake path param.
 - **컨트롤러 입력은 항상 DTO 타입**(`any`·`@Param('key')` 금지), 파라미터 한 줄, 본문 위임 한 줄. 큐 핸들러 시그니처 세 형태(인증 + 입력 / 비인증 `actor: null` / 입력 없음 `payload: {}`) · 서비스 내부 핸들러의 `@ClientIp()` — [docs/conventions.md](docs/conventions.md).
 - 코드 스타일: Prettier(4칸, 200자, `bracketSpacing: false`) + oxlint.
 
@@ -150,15 +150,15 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - 게이트웨이: 핸들러 단위 `@UseGuards(<그룹 가드>)`(클래스 단위 0건). 서비스로 넘기는 핸들러는 `@PassportActor() actor: Actor` 를 첫 파라미터로. **로그인 그룹마다 JWT 전략 · 가드가 따로다** — 전략은 `type === 'access'` 를 확인한 뒤 그 그룹의 서비스에 로그인 회원을 묻고(그 그룹 · 로그인 가능 회원만 돌려준다), 실패는 모두 401(다른 그룹 토큰 포함). 공통 로직은 `passport.jwt.auth.util.ts`. **`NODE_ENV=development` 면 만료를 검사하지 않는다** — 서버는 production.
   | 그룹 | 전략(이름) · 가드 | 확인 |
   |---|---|---|
-  | 이용자 | `PassportJwtAuthStrategy`(`jwt-user`) · `PassportJwtAuthGuard` | user-service `GET /internal/v1/user/auth-user/:user_id` |
-  | 매니저 | `PassportJwtManagerAuthStrategy`(`jwt-manager`) · `PassportJwtManagerAuthGuard` | admin-service `GET /internal/v1/manager/auth-user/:user_id` |
-  | 관리자 | `PassportJwtAdminAuthStrategy`(`jwt-admin`) · `PassportJwtAdminAuthGuard` | admin-service `GET /internal/v1/admin/auth-user/:user_id` |
+  | 이용자 | `PassportJwtAuthStrategy`(`jwt-user`) · `PassportJwtAuthGuard` | user-service `GET /internal/v1/user-service/user/auth-user/:user_id` |
+  | 매니저 | `PassportJwtManagerAuthStrategy`(`jwt-manager`) · `PassportJwtManagerAuthGuard` | admin-service `GET /internal/v1/admin-service/manager/auth-user/:user_id` |
+  | 관리자 | `PassportJwtAdminAuthStrategy`(`jwt-admin`) · `PassportJwtAdminAuthGuard` | admin-service `GET /internal/v1/admin-service/admin/auth-user/:user_id` |
 - **로그인 그룹 3개(`t_user.login_scope`) = 도메인 3개** — 그룹마다 경로 접두 · 서비스 · 로그인 · 토큰 재발급 API 가 따로다.
   | 그룹 `LOGIN_SCOPE` | 권한(`AUTH_ID`, `t_auth` PK) | 경로 접두 · 서비스 | 로그인 |
   |---|---|---|---|
-  | `USER` | `USER`(이용자) | `/api/v1/user` · user-service | SNS 만(`/login`) — 이용자는 SNS 로만 가입하고 비밀번호가 없다 |
-  | `MANAGER` | `HEAD_MANAGER` · `MANAGER`(총매니저 · 매니저) | `/api/v1/manager` · admin-service | 아이디 · 비밀번호 — 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(등록된 휴대폰) |
-  | `ADMIN` | `SUPER_ADMIN` · `ADMIN`(총관리자 · 관리자) | `/api/v1/admin` · admin-service | 아이디 · 비밀번호 — 비밀번호 변경만 |
+  | `USER` | `USER`(이용자) | `/api/v1/user-service/user` · user-service | SNS 만(`/login`) — 이용자는 SNS 로만 가입하고 비밀번호가 없다 |
+  | `MANAGER` | `HEAD_MANAGER` · `MANAGER`(총매니저 · 매니저) | `/api/v1/admin-service/manager` · admin-service | 아이디 · 비밀번호 — 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(등록된 휴대폰) |
+  | `ADMIN` | `SUPER_ADMIN` · `ADMIN`(총관리자 · 관리자) | `/api/v1/admin-service/admin` · admin-service | 아이디 · 비밀번호 — 비밀번호 변경만 |
   - 다른 그룹 계정은 로그인에서 없는 계정과 같은 404, 재발급에서 401(refresh 만료 단축). 각 도메인 service 가 자기 그룹 조건으로 찾는다(`findManager({..., login_scope: LOGIN_SCOPE.MANAGER})`).
   - `login_scope` 는 계정을 만들 때 권한에 맞춰 넣는다(가입 · 시드 · 이후 입점 승인 · 매니저 등록). 아이디 · 휴대폰 번호 UK 도 그룹 단위다.
 - **미적용 규약(정의만 있고 사용 0)**: 그룹 안에서 권한을 더 좁히는 API(예: 총매니저만)는 그룹 가드 뒤에 `RolesGuard` + `@Roles(AUTH_ID.HEAD_MANAGER)`(`guards/roles/roles.decorator.ts`)를 **한 세트로** 붙이고 `@ApiForbiddenResponse` 를 명시한다 — 불일치 403 `{message: '접근 권한이 없습니다.'}`. 그룹 자체는 그룹 가드가 가르므로 그룹 전체에 열린 라우트에는 `@Roles` 를 붙이지 않는다. 게이트웨이 안에서만 쓰는 회원 값은 `@PassportUser('user_id')`, 서비스 내부 HTTP 의 로그인 회원은 `@InternalActor('user_id')`.
@@ -199,7 +199,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 ## Testing
 
-- **Vitest 4** + `@nestjs/testing` + `supertest`. `globals: true` — spec 은 describe · it · expect · vi 를 import 하지 않는다. 위치는 **대상 코드 옆 `test/` 폴더**(`apps/<app>/src/<domain>/test/<domain>-<feature>.spec.ts`, 게이트웨이 `api/v1/<domain>/test/` · `guards/test/` · `config/test/` · `modules/<m>/test/`, 라이브러리 `libs/<lib>/src/**/test/`). 실행 `npm test`, 단일 `npm test -- <파일 경로 일부>`.
+- **Vitest 4** + `@nestjs/testing` + `supertest`. `globals: true` — spec 은 describe · it · expect · vi 를 import 하지 않는다. 위치는 **대상 코드 옆 `test/` 폴더**(`apps/<app>/src/<domain>/test/<domain>-<feature>.spec.ts`, 게이트웨이 `api/v1/<service>/<domain>/test/` · `guards/test/` · `config/test/` · `modules/<m>/test/`, 라이브러리 `libs/<lib>/src/**/test/`). 실행 `npm test`, 단일 `npm test -- <파일 경로 일부>`.
 - 전역 setup([vitest.setup.ts](vitest.setup.ts)): `@Transactional()` pass-through mock + Nest 로거 끔. spec 마다 반복하지 않는다.
 - **큐 경로**: 실제 큐 컨트롤러 · service · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅(`DiscoveryModule` + `module.init()` 필수)하고 **repository · 외부 연동 포트(Symbol 토큰) · `JwtService` 만 mock** 주입, 봉투를 `dispatcher.dispatch()` 에 넣어 판정(ack/requeue/dead)과 done/failed 결과를 단언.
 - **동기 경로**: 실제 controller + service + ValidationPipe + 필터 + 전역 InternalAuthGuard · ReturnedExceptionInterceptor 부팅, repository · 외부 연동 포트 · JwtService 만 mock.
@@ -216,7 +216,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 - [ ] ESM: 상대 · alias import `.js` 확장자, 타입 전용 `import type`, alias 는 `@app/<lib>/...`, 앱끼리 import 없음
 - [ ] 파일/클래스명: 도메인 레이어 `<domain>.<role>.ts`, 인프라 `<kebab>.<role>.ts`, DTO kebab(`libs/contracts`), 엔티티 `libs/database/src/entities/<domain>/<feature>.entity.ts`, crontab `crontabs/<domain>-<feature>.crontab.ts`, 응답 `ResultDto`
-- [ ] 게이트웨이: 라우트 `api/v1/<domain>/controllers/`, 가드 `guards/`, 인프라 `modules/`, 설정 함수 `config/`
+- [ ] 게이트웨이: 라우트 `api/v1/<service>/<domain>/controllers/`(경로 `/api/v1/<service>/<domain>`, 내부 `/internal/v1/<service>/<domain>`), 가드 `guards/`, 인프라 `modules/`, 설정 함수 `config/`
 - [ ] 경로 선택: 큐(쓰기 · 상태 변경) vs 동기(즉시 응답 · 조회)를 게이트웨이에서 결정하고, 파일을 `controllers/<domain>.controller.ts`(동기) · `controllers/<domain>.controller.queue.ts`(큐)로 나눈다(게이트웨이 · 서비스 공통)
 - [ ] 규격 상수(명령 type · 큐 · 바인딩 · 내부 경로)는 `libs/contracts/src/<domain>/<domain>.commands.ts`
 - [ ] 컨트롤러 입력 DTO 타입, 파라미터 한 줄, 인증은 `@PassportActor()` 첫 파라미터, 비인증 명령은 `actor: null`
@@ -227,7 +227,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - [ ] Error: 실패 본문 `{message, validation_errors}` 하나, `validation_errors` 는 입력 필드 오류만, 공통 메시지는 `*_MESSAGE` 상수
 - [ ] Swagger: 공개 핸들러 필수, 큐 핸들러는 `@ApiProduces('text/event-stream')`, 응답 데코레이터는 `type` 만
 - [ ] 메시징: 명령 type 은 contracts, 서비스 큐 컨트롤러는 `@OnCommand` + 위임만, 로그인 필요 명령은 `requireActor()`
-- [ ] 로그인 그룹 = 도메인: 라우트는 그룹 접두(`/api/v1/{user,manager,admin}`), 로그인 필요 라우트는 그 그룹의 가드(`PassportJwtAuthGuard` · `PassportJwtManagerAuthGuard` · `PassportJwtAdminAuthGuard`), 그룹마다 자기 service · DTO · 명령, 공통 계정 로직은 `libs/account`
+- [ ] 로그인 그룹 = 도메인: 로그인 필요 라우트는 그 그룹의 가드(`PassportJwtAuthGuard` · `PassportJwtManagerAuthGuard` · `PassportJwtAdminAuthGuard`), 그룹마다 자기 service · DTO · 명령, 공통 계정 로직은 `libs/account`
 - [ ] 여러 인스턴스 전제: crontab 은 scheduler 앱에만 · 운영 가드 + `JobLockService.runExclusive`, 인스턴스 메모리에 상태를 두지 않는다
 - [ ] 외부 연동: mock · 가짜 어댑터 없음(실제 어댑터 + `docs/guides/` 가이드), 발송은 `SMS_SENDER` 하나(이메일 · 알림톡 · 푸시 ❌), 파일은 `STORAGE_GATEWAY` presigned URL(파일 본문을 게이트웨이 · 브로커로 보내지 않음), 발송은 명령의 마지막 단계
 - [ ] README.md: 코드 · 설정 · 구조 · 명령 · 실행 방법이 바뀌었으면 같은 변경에서 갱신

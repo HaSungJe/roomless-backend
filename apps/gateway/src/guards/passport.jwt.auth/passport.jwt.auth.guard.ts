@@ -3,7 +3,7 @@ import {AuthGuard} from '@nestjs/passport';
 import {passLoginUser} from './passport.jwt.auth.util.js';
 
 /**
- * 이용자 JWT 인증 가드(`jwt-user`) — 이용자 라우트(`/api/v1/user`)에 핸들러 단위로 붙인다.
+ * 이용자 JWT 인증 가드(`jwt-user`) — 이용자 라우트(`/api/v1/user-service/user`)에 핸들러 단위로 붙인다.
  * 이용자 그룹 회원만 통과한다(매니저 · 관리자 토큰은 user-service auth-user 에서 걸러져 401).
  */
 @Injectable()

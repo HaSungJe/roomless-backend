@@ -15,7 +15,7 @@ import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import {UserLoginDto, UserLoginResultDto} from '@app/contracts/user/dto/user-login.dto.js';
 import {UserTokenRefreshDto, UserTokenRefreshResultDto} from '@app/contracts/user/dto/user-token-refresh.dto.js';
 import {USER_INTERNAL_PATH} from '@app/contracts/user/user.commands.js';
-import {InternalHttpClient} from '../../../../modules/transport/internal-http.client.js';
+import {InternalHttpClient} from '../../../../../modules/transport/internal-http.client.js';
 
 /**
  * 이용자 공개 API — 동기 경로(내부 HTTP). 게이트웨이 인바운드 어댑터. 이용자는 SNS 로만 로그인한다.
@@ -24,7 +24,7 @@ import {InternalHttpClient} from '../../../../modules/transport/internal-http.cl
  * 큐 경로(RabbitMQ + 요청 단위 SSE) 라우트는 같은 경로 접두의 user.controller.queue.ts(UserQueueController)에 둔다.
  */
 @ApiTags('회원')
-@Controller('/api/v1/user')
+@Controller('/api/v1/user-service/user')
 export class UserController {
     /**
      * @param internalHttp 동기 경로 — user-service 내부 HTTP

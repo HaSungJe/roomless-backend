@@ -11,14 +11,14 @@ vi.mock('@app/common/utils/hash.js', () => ({sha256Hex: vi.fn()}));
 vi.mock('@app/common/utils/cipher.js', () => ({encryptAesGcm: vi.fn(), decryptAesGcm: vi.fn()}));
 vi.mock('@app/common/utils/jwt.js', () => ({extractJwtExpiresAt: vi.fn()}));
 
-const PATH = '/internal/v1/user/login';
+const PATH = '/internal/v1/user-service/user/login';
 const MOCK_ACCESS_TOKEN = 'mock.access.token';
 const MOCK_REFRESH_TOKEN = 'mock.refresh.token';
 const MOCK_ACCESS_EXPIRES_AT = new Date(2026, 0, 1, 0, 20, 0);
 const MOCK_REFRESH_EXPIRES_AT = new Date(2027, 0, 1);
 const ACTIVE_USER = {user_id: 'u'.repeat(32), state_id: 'ACTIVE', block_comment: null};
 
-describe('POST /internal/v1/user/login — 이용자 SNS 로그인 (동기 경로)', () => {
+describe('POST /internal/v1/user-service/user/login — 이용자 SNS 로그인 (동기 경로)', () => {
     let app: INestApplication;
     let repo: UserRepositoryMock;
     let jwt: JwtServiceMock;

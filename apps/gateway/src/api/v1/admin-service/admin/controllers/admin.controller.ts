@@ -15,14 +15,14 @@ import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import {ADMIN_INTERNAL_PATH} from '@app/contracts/admin/admin.commands.js';
 import {AdminLoginDto, AdminLoginResultDto} from '@app/contracts/admin/dto/admin-login.dto.js';
 import {AdminTokenRefreshDto, AdminTokenRefreshResultDto} from '@app/contracts/admin/dto/admin-token-refresh.dto.js';
-import {InternalHttpClient} from '../../../../modules/transport/internal-http.client.js';
+import {InternalHttpClient} from '../../../../../modules/transport/internal-http.client.js';
 
 /**
  * 관리자 그룹(총관리자 · 관리자) 공개 API — 동기 경로(내부 HTTP → admin-service 관리자 도메인). 로그인 · 토큰 재발급.
  * 큐 경로(비밀번호 변경)는 같은 경로 접두의 admin.controller.queue.ts(AdminQueueController)에 둔다.
  */
 @ApiTags('관리자')
-@Controller('/api/v1/admin')
+@Controller('/api/v1/admin-service/admin')
 export class AdminController {
     /**
      * @param internalHttp 동기 경로 — admin-service 내부 HTTP

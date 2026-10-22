@@ -33,12 +33,12 @@
 - controller 는 게이트웨이 · 서비스 모두 도메인 폴더의 `controllers/` 에 두고, **전달 경로별로 파일을 나눈다(한 파일에 섞지 않는다)**:
   - 동기(내부 HTTP) `controllers/<domain>.controller.ts` · 클래스 `<Domain>Controller`
   - 큐(RabbitMQ) `controllers/<domain>.controller.queue.ts` · 클래스 `<Domain>QueueController`
-  - 게이트웨이(`apps/gateway/src/api/v1/<domain>/controllers/`): 동기는 `InternalHttpClient` 만, 큐(요청 단위 SSE)는 `CommandStreamService` 만 주입. 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<domain>')`, 도메인 모듈 `controllers: [<Domain>Controller, <Domain>QueueController]`. 테스트는 도메인 폴더 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts`.
-  - 서비스(`apps/<app>/src/<domain>/controllers/`): 동기는 `@Controller('/internal/v1/<domain>')` → 모듈 `controllers`. 큐는 `@Injectable` + `@OnCommand` provider → 모듈 `providers`(HTTP 컨트롤러가 아니다 — `CommandHandlerRegistry` 가 provider 를 스캔한다).
+  - 게이트웨이(`apps/gateway/src/api/v1/<service>/<domain>/controllers/`): 동기는 `InternalHttpClient` 만, 큐(요청 단위 SSE)는 `CommandStreamService` 만 주입. 둘 다 같은 `@ApiTags` · `@Controller('/api/v1/<service>/<domain>')`, 도메인 모듈 `controllers: [<Domain>Controller, <Domain>QueueController]`. 테스트는 도메인 폴더 `test/<domain>.controller.spec.ts` · `test/<domain>.controller.queue.spec.ts`.
+  - 서비스(`apps/<app>/src/<domain>/controllers/`): 동기는 `@Controller('/internal/v1/<service>/<domain>')` → 모듈 `controllers`. 큐는 `@Injectable` + `@OnCommand` provider → 모듈 `providers`(HTTP 컨트롤러가 아니다 — `CommandHandlerRegistry` 가 provider 를 스캔한다).
 
 **인프라 · 라이브러리 파일** — `<kebab-이름>.<role>.ts`: `internal-http.client.ts` · `command-stream.service.ts` · `command.dispatcher.ts` · `command-handler.registry.ts` · `rabbitmq-command.publisher.ts` · `on-command.decorator.ts` · `custom-error.filter.ts` · `internal-auth.guard.ts` · `job-lock/job-lock.service.ts` · `cors.config.ts`. 모듈 전용 util 은 `<module>.util.ts`(transport.util.ts · messaging.util.ts · seeder.util.ts). 전역 util 은 role 접미사 없이 `utils/<이름>.ts`. 이름에 점이 들어간 예외: `passport.jwt.auth.*` · `global.result.dto.ts`.
 
-**게이트웨이 폴더** — 공개 라우트는 로그인 그룹(= 도메인)별 `api/v1/<group>/`(`user` · `manager` · `admin`, 그룹 기능은 `api/v1/<group>/<domain>/`), 가드 `guards/<guard>/`, 인프라 `modules/<module>/`, 부트스트랩 설정 함수 `config/`(cors.config.ts · trust-proxy.config.ts).
+**게이트웨이 폴더** — 공개 라우트는 경로와 같은 모양의 `api/v1/<service>/<domain>/`(`user-service/user` · `admin-service/manager` · `admin-service/admin`), 가드 `guards/<guard>/`, 인프라 `modules/<module>/`, 부트스트랩 설정 함수 `config/`(cors.config.ts · trust-proxy.config.ts).
 
 **DTO 파일** — `libs/contracts/src/<domain>/dto/<domain>-<feature>.dto.ts` (kebab). 요청 DTO 와 응답 `ResultDto` 는 같은 파일에 함께 export. 결과가 없는(void) 기능은 ResultDto 를 두지 않는다(user-leave.dto.ts · user-password.dto.ts).
 
@@ -65,7 +65,9 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 ## 라우트
 
-- 공개(게이트웨이): 로그인 그룹 접두 `@Controller('/api/v1/<group>')`(`user` · `manager` · `admin`), 그룹의 기능은 `/api/v1/<group>/<domain>`. 내부(서비스): `@Controller('/internal/v1/<domain>')`(`/internal/v1/manager/login` — 도메인마다 따로).
+- 공개 `/api/v1/<service>/<domain>/<action>` · 내부 `/internal/v1/<service>/<domain>/<action>` — service 는 서비스 앱(`user-service` · `admin-service`), domain 은 그 앱의 도메인 폴더. 로그인 그룹은 경로가 아니라 게이트웨이 가드로 가른다.
+- 공개(게이트웨이): `@Controller('/api/v1/<service>/<domain>')`(`/api/v1/user-service/user` · `/api/v1/admin-service/manager` · `/api/v1/admin-service/admin`). 내부(서비스): `@Controller('/internal/v1/<service>/<domain>')`(`/internal/v1/admin-service/manager/login`). 내부 경로 문자열은 contracts 의 `*_INTERNAL_PATH` 상수로만 쓴다.
+- 이후 기능도 같은 규칙이다 — 객실 관리(매니저)는 `/api/v1/admin-service/room`, 입점 승인(관리자)은 `/api/v1/admin-service/store`, 예약(이용자)은 `/api/v1/user-service/reservation`. 같은 도메인 안에서 그룹이 다른 라우트는 가드로 가른다.
 - 앞 `/` 필수, 다단어 kebab(`/token-refresh`), path param 은 snake_case(`/auth-user/:user_id`).
 - 같은 경로 다른 verb 가능(`DELETE /leave` · `PATCH /leave`).
 
@@ -143,7 +145,7 @@ return this.storeService.list(user_id, dto);
 - 규칙 위반은 HTTP 예외 throw, body `{message: '<한국어 문자열>'}`.
 - **쓰기가 있는 메서드에 `@Transactional()`** — 세션을 insert 하는 login · tokenRefresh(세 도메인 모두)도 포함. 읽기만 하는 메서드(`getLoginUser` · `getLoginManager` · `getLoginAdmin`)에는 없다.
 - service 는 `Request` · `Response` · AMQP 채널 같은 전송 계층 객체를 받지 않고 값만 받는다.
-- **JSDoc 에 전송 경로를 표시한다** — `(RabbitMQ: user.member.sign)` / `(내부 HTTP: POST /internal/v1/user/login)` (user.service.ts 전 메서드 — 그룹별 API 가 함께 쓰는 메서드는 그 경로를 모두 적는다).
+- **JSDoc 에 전송 경로를 표시한다** — `(RabbitMQ: user.member.sign)` / `(내부 HTTP: POST /internal/v1/user-service/user/login)` (user.service.ts 전 메서드 — 그룹별 API 가 함께 쓰는 메서드는 그 경로를 모두 적는다).
 - 성공 결과는 현재 두 방식이 섞여 있다 — service 는 `XResultDto` 모양의 객체 리터럴을 반환하고(user.service.ts:114), util 은 `new XResultDto()` + 할당(user.util.ts:65). <!-- TODO: 결과 DTO 생성 방식 통일 여부 -->
 - **crontab 은 service 가 아니다.** 시간이 트리거인 인바운드 어댑터로, API 가 아니므로 service 에 public 메서드를 만들지 않고 **repository 포트를 직접 주입**해 처리한다(apps/scheduler/src/user/crontabs/user-leave-cleanup.crontab.ts). 서비스 앱에는 두지 않는다. 본문은 `JobLockService.runExclusive` 로 감싼다([architecture.md](architecture.md)).
 

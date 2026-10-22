@@ -201,3 +201,58 @@ build 규약상 실행하지 않았다.
   - `npm run docker:rabbitmq` 로 계정을 만든다.
   - `npm run docker:admin-service` 를 user-service 묶음 뒤에 띄운다. 로컬 실행은 `ADMIN_SERVICE_URL` 기본값 `http://localhost:4002` 이다.
 - **마이그레이션** `LoginScopeStoreDetail` 적용(앞 회차와 같다).
+
+## Modification - 261023-2
+
+리비전: [user-account-auth-revision-261023-2.md](../../revision/user/user-account-auth-revision-261023-2.md)
+
+### Change summary
+- **경로를 서비스 이름으로 시작하게 바꿨다.**
+  - 공개 경로는 `/api/v1/<service>/<domain>/<action>` 이다.
+    - `/api/v1/user-service/user/login`
+    - `/api/v1/admin-service/manager/login`
+    - `/api/v1/admin-service/admin/password`
+  - 내부 경로는 `/internal/v1/<service>/<domain>/<action>` 이다.
+    - `/internal/v1/admin-service/manager/auth-user/:user_id`
+  - 로그인 그룹은 지금처럼 게이트웨이 가드가 가른다.
+- **게이트웨이 폴더**를 `api/v1/user-service/user/` · `api/v1/admin-service/manager/` · `api/v1/admin-service/admin/` 로 옮겼다. 상대 import 는 한 단계 깊어졌다.
+- 명령 · 큐 · 도메인 · 가드 · DTO 는 그대로다.
+- **로드맵 정리**
+  - 이후 Phase 9 ~ 21 의 기대 API · 파일 집합을 새 규칙으로 바꿨다.
+  - Phase 20 관리자 계정 관리 → admin-service `admin` 도메인
+  - Phase 21 통계 → admin-service `stats`
+  - Phase 10 업체 관리자 계정 → `manager` 도메인 + `@Roles(HEAD_MANAGER)`
+  - Cross-Cutting "서버 분할"(그룹 가드) · "경로 규칙" 을 고쳤다.
+  - 결정 1건을 추가했다.
+
+### Changed files
+| File | Change Type | Description |
+|------|-----------|------|
+| `apps/gateway/src/api/v1/{user,manager,admin}/**` → `apps/gateway/src/api/v1/{user-service/user,admin-service/manager,admin-service/admin}/**` | moved · modified | `@Controller('/api/v1/<service>/<domain>')`, import 깊이, spec 경로 |
+| `apps/gateway/src/gateway.module.ts` · `guards/passport.jwt.auth/*.guard.ts` · `guards/test/guards.spec.ts` · `modules/transport/internal-http.client.ts` · `test/internal-http.client.spec.ts` | modified | 모듈 import · 주석 · 경로 |
+| `libs/contracts/src/{user/user,manager/manager,admin/admin}.commands.ts` | modified | `*_INTERNAL_PATH` 값 |
+| `apps/user-service/src/user/{controllers/user.controller,user.service}.ts` · `test/*` | modified | 내부 경로 · JSDoc · spec |
+| `apps/admin-service/src/{manager,admin}/{controllers/*.controller,*.service}.ts` · `test/*` | modified | 내부 경로 · JSDoc · spec |
+| `AGENTS.md` · `README.md` · `docs/{api,architecture,conventions,testing}.md` | modified | 경로 규칙 · 게이트웨이 폴더 · 예시 |
+| `.beaver/output/roadmap/roomless-roadmap.md` · `.html` | modified | 경로 · 파일 집합 · 규칙 · 결정 |
+
+### Tests written
+build 규약상 실행하지 않았다.
+
+기존 spec 의 단언은 그대로 두고 경로 문자열만 새 규칙으로 바꿨다.
+- 게이트웨이 라우트 · 없어진 라우트 404
+- 내부 HTTP 호출 인자
+- 서비스 내부 경로 · auth-user
+- 가드 전략의 조회 경로
+
+### Verification
+- 통과:
+  - `npm run typecheck`
+  - `npm run lint`
+  - Prettier
+  - `npm run build`(앱 4개)
+- 소스의 `@Controller` 를 확인했다. 게이트웨이는 모두 `/api/v1/{user-service,admin-service}/…`, 서비스는 모두 `/internal/v1/{user-service,admin-service}/…` 다.
+- `apps` · `libs` 와 규약 문서에 옛 경로(`/api/v1/{user,manager,admin}` · `/internal/v1/{user,manager,admin}`)가 남아 있지 않다. 로드맵의 완료 Phase 표에는 당시 경로가 메모와 함께 남아 있다.
+
+### Remaining issues
+- **테스트 미실행** — `/beaver:test` 에서 돌린다.

@@ -20,9 +20,9 @@ export const MANAGER_COMMAND = {
 /** 매니저 도메인 내부 HTTP 경로 (게이트웨이 → admin-service) */
 export const MANAGER_INTERNAL_PATH = {
     /** 매니저 로그인 */
-    LOGIN: '/internal/v1/manager/login',
+    LOGIN: '/internal/v1/admin-service/manager/login',
     /** 매니저 토큰 재발급 */
-    TOKEN_REFRESH: '/internal/v1/manager/token-refresh',
+    TOKEN_REFRESH: '/internal/v1/admin-service/manager/token-refresh',
     /** 로그인 매니저 조회(게이트웨이 jwt-manager 전략) — 뒤에 `/<user_id>` */
-    AUTH_USER: '/internal/v1/manager/auth-user',
+    AUTH_USER: '/internal/v1/admin-service/manager/auth-user',
 } as const;

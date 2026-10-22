@@ -30,7 +30,7 @@ describe('PassportJwtAuthStrategy.validate — 이용자(jwt-user)', () => {
         const user = await new PassportJwtAuthStrategy(internalHttp).validate({type: 'access', user_id: LOGIN_USER.user_id, session_id: 's'});
 
         expect(user).toEqual(LOGIN_USER);
-        expect(internalHttp.request).toHaveBeenCalledWith('user', 'GET', `/internal/v1/user/auth-user/${LOGIN_USER.user_id}`);
+        expect(internalHttp.request).toHaveBeenCalledWith('user', 'GET', `/internal/v1/user-service/user/auth-user/${LOGIN_USER.user_id}`);
     });
 
     it.each([
@@ -53,8 +53,8 @@ describe('PassportJwtAuthStrategy.validate — 이용자(jwt-user)', () => {
 });
 
 describe.each([
-    ['매니저(jwt-manager)', (http: InternalHttpClient) => new PassportJwtManagerAuthStrategy(http), '/internal/v1/manager/auth-user'],
-    ['관리자(jwt-admin)', (http: InternalHttpClient) => new PassportJwtAdminAuthStrategy(http), '/internal/v1/admin/auth-user'],
+    ['매니저(jwt-manager)', (http: InternalHttpClient) => new PassportJwtManagerAuthStrategy(http), '/internal/v1/admin-service/manager/auth-user'],
+    ['관리자(jwt-admin)', (http: InternalHttpClient) => new PassportJwtAdminAuthStrategy(http), '/internal/v1/admin-service/admin/auth-user'],
 ])('그룹별 전략 validate — %s', (_label, create, path) => {
     process.env.JWT_SECRET = 'test-secret';
 

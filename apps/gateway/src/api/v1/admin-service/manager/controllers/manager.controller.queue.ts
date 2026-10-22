@@ -22,9 +22,9 @@ import {ManagerPasswordResetConfirmDto} from '@app/contracts/manager/dto/manager
 import {ManagerPasswordResetDto, ManagerPasswordResetResultDto} from '@app/contracts/manager/dto/manager-password-reset.dto.js';
 import {ManagerPasswordDto} from '@app/contracts/manager/dto/manager-password.dto.js';
 import {MANAGER_COMMAND} from '@app/contracts/manager/manager.commands.js';
-import {PassportActor} from '../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
-import {PassportJwtManagerAuthGuard} from '../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
-import {CommandStreamService} from '../../../../modules/transport/command-stream.service.js';
+import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
+import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
+import {CommandStreamService} from '../../../../../modules/transport/command-stream.service.js';
 
 /**
  * 매니저 그룹(총매니저 · 매니저) 공개 API — 큐 경로(RabbitMQ `admin.manager.*` → admin-service + 요청 단위 SSE).
@@ -32,7 +32,7 @@ import {CommandStreamService} from '../../../../modules/transport/command-stream
  * 동기 경로(로그인 · 재발급)는 같은 경로 접두의 manager.controller.ts(ManagerController)에 둔다.
  */
 @ApiTags('매니저')
-@Controller('/api/v1/manager')
+@Controller('/api/v1/admin-service/manager')
 export class ManagerQueueController {
     /**
      * @param commandStream 큐 경로 — 명령 발행 + 결과 SSE

@@ -12,7 +12,7 @@ vi.mock('@app/common/utils/hash.js', () => ({sha256Hex: vi.fn()}));
 vi.mock('@app/common/utils/cipher.js', () => ({encryptAesGcm: vi.fn(), decryptAesGcm: vi.fn()}));
 vi.mock('@app/common/utils/jwt.js', () => ({extractJwtExpiresAt: vi.fn()}));
 
-const PATH = '/internal/v1/admin/login';
+const PATH = '/internal/v1/admin-service/admin/login';
 const MOCK_ACCESS_TOKEN = 'mock.access.token';
 const MOCK_REFRESH_TOKEN = 'mock.refresh.token';
 const MOCK_ACCESS_EXPIRES_AT = new Date(2026, 0, 1, 0, 20, 0);
@@ -21,7 +21,7 @@ const ADMIN = {user_id: 'u'.repeat(32), login_pw: '$2b$12$stored', state_id: 'AC
 const BODY = {login_id: 'admin', login_pw: '1234'};
 const ADMIN_WHERE = {login_id: 'admin', login_scope: 'ADMIN', state_id: In(['ACTIVE', 'BLOCK'])};
 
-describe('POST /internal/v1/admin/login — 관리자 로그인 (동기 경로)', () => {
+describe('POST /internal/v1/admin-service/admin/login — 관리자 로그인 (동기 경로)', () => {
     let app: INestApplication;
     let repo: AdminRepositoryMock;
     let jwt: JwtServiceMock;

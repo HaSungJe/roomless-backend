@@ -9,7 +9,7 @@ vi.mock('@app/common/utils/hash.js', () => ({sha256Hex: vi.fn()}));
 vi.mock('@app/common/utils/cipher.js', () => ({encryptAesGcm: vi.fn(), decryptAesGcm: vi.fn()}));
 vi.mock('@app/common/utils/jwt.js', () => ({extractJwtExpiresAt: vi.fn()}));
 
-const PATH = '/internal/v1/admin/token-refresh';
+const PATH = '/internal/v1/admin-service/admin/token-refresh';
 const OLD_REFRESH = 'old.refresh.token';
 const OLD_HASH = 'o'.repeat(64);
 const NEW_HASH = 'n'.repeat(64);
@@ -20,7 +20,7 @@ const MOCK_REFRESH_EXPIRES_AT = new Date(2027, 0, 1);
 const ONE_MINUTE_LATER = new Date(2026, 0, 1, 0, 1, 0);
 const PAYLOAD = {type: 'refresh', user_id: 'u'.repeat(32), session_id: 's'.repeat(32)};
 
-describe('POST /internal/v1/admin/token-refresh — 관리자 토큰 재발급 (동기 경로)', () => {
+describe('POST /internal/v1/admin-service/admin/token-refresh — 관리자 토큰 재발급 (동기 경로)', () => {
     let app: INestApplication;
     let repo: AdminRepositoryMock;
     let jwt: JwtServiceMock;

@@ -18,9 +18,9 @@ export const ADMIN_COMMAND_BINDING = 'admin.#';
 /** 관리자 도메인 내부 HTTP 경로 (게이트웨이 → admin-service) */
 export const ADMIN_INTERNAL_PATH = {
     /** 관리자 로그인 */
-    LOGIN: '/internal/v1/admin/login',
+    LOGIN: '/internal/v1/admin-service/admin/login',
     /** 관리자 토큰 재발급 */
-    TOKEN_REFRESH: '/internal/v1/admin/token-refresh',
+    TOKEN_REFRESH: '/internal/v1/admin-service/admin/token-refresh',
     /** 로그인 관리자 조회(게이트웨이 jwt-admin 전략) — 뒤에 `/<user_id>` */
-    AUTH_USER: '/internal/v1/admin/auth-user',
+    AUTH_USER: '/internal/v1/admin-service/admin/auth-user',
 } as const;

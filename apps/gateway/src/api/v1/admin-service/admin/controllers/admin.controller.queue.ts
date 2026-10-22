@@ -16,9 +16,9 @@ import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
 import {ADMIN_COMMAND} from '@app/contracts/admin/admin.commands.js';
 import {AdminPasswordDto} from '@app/contracts/admin/dto/admin-password.dto.js';
-import {PassportJwtAdminAuthGuard} from '../../../../guards/passport.jwt.auth/passport.jwt.admin.guard.js';
-import {PassportActor} from '../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
-import {CommandStreamService} from '../../../../modules/transport/command-stream.service.js';
+import {PassportJwtAdminAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.admin.guard.js';
+import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
+import {CommandStreamService} from '../../../../../modules/transport/command-stream.service.js';
 
 /**
  * 관리자 그룹(총관리자 · 관리자) 공개 API — 큐 경로(RabbitMQ `admin.admin.*` → admin-service + 요청 단위 SSE). 비밀번호 변경.
@@ -26,7 +26,7 @@ import {CommandStreamService} from '../../../../modules/transport/command-stream
  * 동기 경로(로그인 · 재발급)는 같은 경로 접두의 admin.controller.ts(AdminController)에 둔다.
  */
 @ApiTags('관리자')
-@Controller('/api/v1/admin')
+@Controller('/api/v1/admin-service/admin')
 export class AdminQueueController {
     /**
      * @param commandStream 큐 경로 — 명령 발행 + 결과 SSE

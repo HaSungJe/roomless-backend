@@ -2,10 +2,10 @@
 
 무인 객실 대여 서비스 백엔드 — NestJS 12 모노레포(MSA).
 
-- **gateway** — 유일한 외부 진입점(:3000). 로그인 그룹별 JWT 인증 · 입력 검증 후 서비스로 전달한다. 상태를 바꾸는 요청은 RabbitMQ 를 거쳐 처리하고 결과를 요청 단위 SSE 로 돌려준다. 공개 경로는 로그인 그룹마다 따로다 — 이용자 `/api/v1/user` · 매니저(총매니저 · 매니저) `/api/v1/manager` · 관리자(총관리자 · 관리자) `/api/v1/admin`.
+- **gateway** — 유일한 외부 진입점(:3000). 로그인 그룹별 JWT 인증 · 입력 검증 후 서비스로 전달한다. 상태를 바꾸는 요청은 RabbitMQ 를 거쳐 처리하고 결과를 요청 단위 SSE 로 돌려준다. 공개 경로는 `/api/v1/<서비스>/<도메인>/...` 이다 — 이용자 `/api/v1/user-service/user` · 매니저(총매니저 · 매니저) `/api/v1/admin-service/manager` · 관리자(총관리자 · 관리자) `/api/v1/admin-service/admin`. 서비스 내부 경로도 `/internal/v1/<서비스>/<도메인>/...` 다.
 - **scheduler** — crontab 전용 서버(탈퇴 자동처리). 들어오는 연결이 없고(포트 없음) DB 에만 붙는다. 여러 대여도 DB 잠금으로 회차마다 1대만 실행한다.
 - **user-service** — 이용자 서버(:4001, 내부망). SNS 가입 · 로그인(만 19세가 되는 해부터 — 청소년보호법) · 휴대폰 SMS 인증 · 아이디 찾기 · 탈퇴. PostgreSQL 을 소유하고(마이그레이션), 부팅 때 기본 데이터와 첫 총관리자(`admin` / `1234`)를 넣는다.
-- **admin-service** — 관리자 서버(:4002, 내부망). 매니저(총매니저 · 매니저): 아이디 로그인 · 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(임시 비밀번호 SMS). 관리자(총관리자 · 관리자): 아이디 로그인 · 비밀번호 변경(첫 총관리자는 `POST /api/v1/admin/login` 후 `PATCH /api/v1/admin/password` 로 변경). user-service 와 같은 DB 를 직접 쓴다.
+- **admin-service** — 관리자 서버(:4002, 내부망). 매니저(총매니저 · 매니저): 아이디 로그인 · 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(임시 비밀번호 SMS). 관리자(총관리자 · 관리자): 아이디 로그인 · 비밀번호 변경(첫 총관리자는 `POST /api/v1/admin-service/admin/login` 후 `PATCH /api/v1/admin-service/admin/password` 로 변경). user-service 와 같은 DB 를 직접 쓴다.
 - 아이디 · 휴대폰 번호는 로그인 그룹(이용자 · 매니저 · 관리자) 안에서만 겹치지 않는다.
 
 - **외부 연동** — 발송은 SMS 하나(Amazon SNS), 업체 · 객실 사진은 Amazon S3(presigned URL 로 클라이언트가 직접 업로드). mock 없이 실제 AWS 에 붙는 코드이고, AWS 세팅은 [docs/guides/aws-setup.md](docs/guides/aws-setup.md) 를 따른다.

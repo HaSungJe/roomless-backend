@@ -32,9 +32,9 @@ export const USER_COMMAND_BINDING = 'user.#';
 /** 이용자 도메인 내부 HTTP 경로 (게이트웨이 → user-service) */
 export const USER_INTERNAL_PATH = {
     /** 이용자 SNS 로그인 */
-    LOGIN: '/internal/v1/user/login',
+    LOGIN: '/internal/v1/user-service/user/login',
     /** 이용자 토큰 재발급 */
-    TOKEN_REFRESH: '/internal/v1/user/token-refresh',
+    TOKEN_REFRESH: '/internal/v1/user-service/user/token-refresh',
     /** 로그인 이용자 조회(게이트웨이 jwt-user 전략) — 뒤에 `/<user_id>` */
-    AUTH_USER: '/internal/v1/user/auth-user',
+    AUTH_USER: '/internal/v1/user-service/user/auth-user',
 } as const;

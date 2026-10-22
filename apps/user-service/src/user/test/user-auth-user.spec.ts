@@ -17,7 +17,7 @@ const ROW = {
     is_login_allowed: 1,
 };
 
-describe('GET /internal/v1/user/auth-user/:user_id — 로그인 이용자 조회 (게이트웨이 jwt-user 전략용)', () => {
+describe('GET /internal/v1/user-service/user/auth-user/:user_id — 로그인 이용자 조회 (게이트웨이 jwt-user 전략용)', () => {
     let app: INestApplication;
     let repo: UserRepositoryMock;
 
@@ -34,7 +34,7 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 이용자 조�
     it('[SUCCESS] 로그인 회원 행을 회원 정보 DTO 로 돌려준다', async () => {
         repo.findLoginUser.mockResolvedValueOnce(ROW);
 
-        const res = await request(app.getHttpServer()).get(`/internal/v1/user/auth-user/${USER_ID}`).set(internalHeaders());
+        const res = await request(app.getHttpServer()).get(`/internal/v1/user-service/user/auth-user/${USER_ID}`).set(internalHeaders());
 
         expect(res.status).toBe(200);
         expect(res.body).toEqual({
@@ -56,7 +56,7 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 이용자 조�
     it('[SUCCESS] 휴대폰 SMS 인증을 마친 회원이면 is_phone_verified 1', async () => {
         repo.findLoginUser.mockResolvedValueOnce({...ROW, phone_verified_at: new Date(2025, 11, 1)});
 
-        const res = await request(app.getHttpServer()).get(`/internal/v1/user/auth-user/${USER_ID}`).set(internalHeaders());
+        const res = await request(app.getHttpServer()).get(`/internal/v1/user-service/user/auth-user/${USER_ID}`).set(internalHeaders());
 
         expect(res.status).toBe(200);
         expect(res.body.is_phone_verified).toBe(1);
@@ -65,7 +65,7 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 이용자 조�
     it('[FAIL:service] 로그인 불가 · 미존재 · 이용자 그룹이 아니면(조회 null) 404', async () => {
         repo.findLoginUser.mockResolvedValueOnce(null);
 
-        const res = await request(app.getHttpServer()).get(`/internal/v1/user/auth-user/${USER_ID}`).set(internalHeaders());
+        const res = await request(app.getHttpServer()).get(`/internal/v1/user-service/user/auth-user/${USER_ID}`).set(internalHeaders());
 
         expect(res.status).toBe(404);
         expect(res.body).toEqual({message: '로그인 정보를 찾을 수 없습니다.', validation_errors: null});
@@ -73,7 +73,7 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 이용자 조�
 
     it('[FAIL:validation] 32자를 넘는 회원 ID 는 400, 조회 없음', async () => {
         const res = await request(app.getHttpServer())
-            .get(`/internal/v1/user/auth-user/${'x'.repeat(33)}`)
+            .get(`/internal/v1/user-service/user/auth-user/${'x'.repeat(33)}`)
             .set(internalHeaders());
 
         expect(res.status).toBe(400);
@@ -82,7 +82,7 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 이용자 조�
     });
 
     it('[FAIL:internal] 내부 토큰 없이 호출하면 403', async () => {
-        const res = await request(app.getHttpServer()).get(`/internal/v1/user/auth-user/${USER_ID}`);
+        const res = await request(app.getHttpServer()).get(`/internal/v1/user-service/user/auth-user/${USER_ID}`);
 
         expect(res.status).toBe(403);
         expect(repo.findLoginUser).not.toHaveBeenCalled();

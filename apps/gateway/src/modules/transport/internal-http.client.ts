@@ -35,7 +35,7 @@ export class InternalHttpClient {
      *
      * @param service 대상 서비스
      * @param method HTTP 메서드
-     * @param path 경로 (예: /internal/v1/user/login)
+     * @param path 경로 (예: /internal/v1/user-service/user/login)
      * @param options 본문 · actor · 클라이언트 IP
      * @returns 응답 본문 (204 면 undefined)
      * @throws HttpException 서비스가 실패 응답을 주면 같은 상태 코드 · 본문으로

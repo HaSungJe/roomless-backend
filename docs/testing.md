@@ -19,7 +19,7 @@ Vitest 4 + `@nestjs/testing` + `supertest`. 설정 [vitest.config.ts](../vitest.
 | 서비스 기능(큐 · 동기) | `apps/<app>/src/<domain>/test/<domain>-<feature>.spec.ts` | `user-sign.spec.ts` · `user-login.spec.ts` |
 | 서비스 repository | 같은 폴더 `<domain>.repository.spec.ts` | `user.repository.spec.ts` |
 | crontab (scheduler) | `apps/scheduler/src/<domain>/test/<domain>-<feature>.crontab.spec.ts` · repository smoke `user.repository.spec.ts` | `user-leave-cleanup.crontab.spec.ts` |
-| 게이트웨이 라우트 | `apps/gateway/src/api/v1/<domain>/test/<domain>.controller.spec.ts` · `<domain>.controller.queue.spec.ts` (`controllers/` 의 controller 파일과 짝 — spec 은 도메인 폴더 `test/` 에 둔다) | `user.controller.queue.spec.ts` |
+| 게이트웨이 라우트 | `apps/gateway/src/api/v1/<service>/<domain>/test/<domain>.controller.spec.ts` · `<domain>.controller.queue.spec.ts` (`controllers/` 의 controller 파일과 짝 — spec 은 도메인 폴더 `test/` 에 둔다) | `user.controller.queue.spec.ts` |
 | 게이트웨이 인프라 · 가드 · 설정 | `apps/gateway/src/{modules/<module>,guards,config}/test/<소스 파일명>.spec.ts` | `command-stream.service.spec.ts` · `guards.spec.ts` · `cors.config.spec.ts` |
 | 라이브러리 | `libs/<lib>/src/test/` 또는 `libs/<lib>/src/<폴더>/test/`, 이름은 소스 파일명 | `libs/messaging/src/test/command.dispatcher.spec.ts` · `libs/common/src/utils/test/retry.spec.ts` |
 

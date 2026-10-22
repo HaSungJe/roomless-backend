@@ -52,14 +52,14 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | **동기** | 즉시 결과가 필요하고 몰리지 않는 요청(조회 · 로그인 · 토큰 재발급) | `InternalHttpClient.request()` | 내부 controller (`/internal/v1/...`) | 일반 JSON 응답 |
 | **큐** | 상태를 바꾸는 쓰기, 버스트 · 경합 · 후속 알림이 있는 작업(가입 · 탈퇴 · 비밀번호 변경 · 이후 예약 · 사물 제어) | `CommandStreamService.dispatch()` | 큐 컨트롤러 `@OnCommand` | `text/event-stream`: accepted → done \| failed \| pending |
 
-공개 라우트는 로그인 그룹(`t_user.login_scope`)마다 도메인 · 서비스 · 접두가 따로다 — 이용자 `/api/v1/user`(user-service, SNS 가입 · 로그인만), 매니저 `/api/v1/manager`(admin-service, 총매니저 · 매니저), 관리자 `/api/v1/admin`(admin-service, 총관리자 · 관리자). 그룹의 기능 라우트는 `/api/v1/<group>/<domain>` 이다.
+공개 라우트는 로그인 그룹(`t_user.login_scope`)마다 도메인 · 서비스 · 접두가 따로다 — 이용자 `/api/v1/user-service/user`(user-service, SNS 가입 · 로그인만), 매니저 `/api/v1/admin-service/manager`(admin-service, 총매니저 · 매니저), 관리자 `/api/v1/admin-service/admin`(admin-service, 총관리자 · 관리자). 경로 규칙: 공개 `/api/v1/<service>/<domain>/<action>` · 내부 `/internal/v1/<service>/<domain>/<action>` — service 는 서비스 앱(`user-service` · `admin-service`), domain 은 그 앱의 도메인 폴더. 로그인 그룹은 경로가 아니라 게이트웨이 가드로 가른다.
 
 | API | 경로 |
 |---|---|
-| `POST /api/v1/{user,manager,admin}/login` · `/token-refresh` | 동기 (`/internal/v1/user/*` → user-service, `/internal/v1/{manager,admin}/*` → admin-service) |
-| `POST /api/v1/user/sign` · `DELETE · PATCH /api/v1/user/leave` · `POST /api/v1/user/phone-verification(+/confirm)` · `/find-login-id(+/confirm)` | 큐 (`user.member.*` → `q.user.cmd`) |
-| `PATCH /api/v1/manager/password` · `POST /api/v1/manager/find-login-id(+/confirm)` · `/password-reset(+/confirm)` | 큐 (`admin.manager.*` → `q.admin.cmd`) |
-| `PATCH /api/v1/admin/password` | 큐 (`admin.admin.password` → `q.admin.cmd`) |
+| `POST /api/v1/user-service/user/login` · `/api/v1/admin-service/{manager,admin}/login` · 각 `/token-refresh` | 동기 (`/internal/v1/user-service/user/*` → user-service, `/internal/v1/admin-service/{manager,admin}/*` → admin-service) |
+| `POST /api/v1/user-service/user/sign` · `DELETE · PATCH /api/v1/user-service/user/leave` · `POST /api/v1/user-service/user/phone-verification(+/confirm)` · `/find-login-id(+/confirm)` | 큐 (`user.member.*` → `q.user.cmd`) |
+| `PATCH /api/v1/admin-service/manager/password` · `POST /api/v1/admin-service/manager/find-login-id(+/confirm)` · `/password-reset(+/confirm)` | 큐 (`admin.manager.*` → `q.admin.cmd`) |
+| `PATCH /api/v1/admin-service/admin/password` | 큐 (`admin.admin.password` → `q.admin.cmd`) |
 
 그룹 표 · 그룹별 인증 가드: [api.md](api.md) "로그인 그룹(도메인) · 인증 가드".
 
@@ -102,13 +102,13 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 전역 모듈 — `TransportModule`(`@Global`) · `DatabaseModule`(`@Global`, `JobLockService` export) · `SmsModule` · `StorageModule`(`@Global`, `SMS_SENDER` · `STORAGE_GATEWAY` export) · `MessagingModule.forGateway()/forService()`(`global: true`, forService 는 `exports: []`). 그래서 도메인 모듈은 이것들을 import 하지 않고 주입받는다.
 
-**gateway** — `GatewayModule` = `MessagingModule.forGateway()`(`BROKER_ACCOUNT='gateway'` · `RabbitMqConnection` · `GATEWAY_INSTANCE_ID` · `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) + `TransportModule`(`modules/transport`: InternalHttpClient · CommandStreamService) + `PassportJwtAuthModule`(`guards/passport.jwt.auth`, 그룹별 JWT 전략 3개) + 로그인 그룹 라우트 모듈(`UserModule` · `ManagerModule` · `AdminModule` — `api/v1/<group>`). APP_GUARD 없음(인증은 핸들러의 그룹 가드).
+**gateway** — `GatewayModule` = `MessagingModule.forGateway()`(`BROKER_ACCOUNT='gateway'` · `RabbitMqConnection` · `GATEWAY_INSTANCE_ID` · `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) + `TransportModule`(`modules/transport`: InternalHttpClient · CommandStreamService) + `PassportJwtAuthModule`(`guards/passport.jwt.auth`, 그룹별 JWT 전략 3개) + 도메인 라우트 모듈(`UserModule` — `api/v1/user-service/user`, `ManagerModule` · `AdminModule` — `api/v1/admin-service/{manager,admin}`). APP_GUARD 없음(인증은 핸들러의 그룹 가드).
 
 ```
 apps/gateway/src/
-├── api/v1/user/            # 이용자 그룹 라우트 — controllers/(user.controller.ts 동기 · user.controller.queue.ts 큐) · user.module.ts · test/
-├── api/v1/manager/         # 매니저 그룹 라우트 — controllers/(manager.controller.ts · manager.controller.queue.ts) · manager.module.ts · test/
-├── api/v1/admin/           # 관리자 그룹 라우트 — controllers/(admin.controller.ts · admin.controller.queue.ts) · admin.module.ts · test/
+├── api/v1/user-service/user/      # 이용자 도메인 라우트(/api/v1/user-service/user) — controllers/(user.controller.ts 동기 · user.controller.queue.ts 큐) · user.module.ts · test/
+├── api/v1/admin-service/manager/  # 매니저 도메인 라우트(/api/v1/admin-service/manager) — controllers/(manager.controller.ts · manager.controller.queue.ts) · manager.module.ts · test/
+├── api/v1/admin-service/admin/    # 관리자 도메인 라우트(/api/v1/admin-service/admin) — controllers/(admin.controller.ts · admin.controller.queue.ts) · admin.module.ts · test/
 ├── guards/
 │   ├── passport.jwt.auth/  # 그룹별 strategy · guard(auth=이용자 · manager · admin) · util(공통 옵션 · 회원 조회 · 401) · decorator(@PassportUser · @PassportActor) · module
 │   └── roles/              # roles.guard.ts · roles.decorator.ts(@Roles — 그룹 안 권한, 사용 0)
@@ -236,9 +236,9 @@ npm run start:gateway         # :3000
 ## 새 도메인 추가 절차
 
 1. **엔티티** — `libs/database/src/entities/<domain>/<feature>.entity.ts` + `ENTITIES` 등록 → `npm run db:generate -- <Name>` → `npm run db:check`([data-layer.md](data-layer.md)).
-2. **규격** — `libs/contracts/src/<domain>/dto/*.dto.ts`(요청 · 응답 DTO), 큐 경로가 있으면 `<domain>.commands.ts`(type · 큐 이름 · 바인딩 키 · 내부 경로). 로그인 그룹의 기능이면 그 그룹 도메인(user · manager · admin)의 규격에 더하고, 라우트는 `/api/v1/<group>/<domain>`.
+2. **규격** — `libs/contracts/src/<domain>/dto/*.dto.ts`(요청 · 응답 DTO), 큐 경로가 있으면 `<domain>.commands.ts`(type · 큐 이름 · 바인딩 키 · 내부 경로). 라우트는 `/api/v1/<service>/<domain>`, 내부 경로는 `/internal/v1/<service>/<domain>` 이다(로그인 그룹은 가드로 가른다).
 3. **서비스** — 담당 앱(없으면 `apps/<x>-service` 를 nest-cli.json 프로젝트로 추가) 안에 `src/<domain>/`: `service` · `repositories/` + `interfaces/` + `<domain>.symbols.ts` · `controllers/<domain>.controller.ts`(내부, 동기 경로) · `controllers/<domain>.controller.queue.ts`(`@OnCommand`, 큐 경로) · `<domain>.constants.ts` · `test/`. crontab 은 서비스가 아니라 `apps/scheduler/src/<domain>/crontabs/`(+ scheduler 의 repository)에 둔다.
-4. **게이트웨이** — `apps/gateway/src/api/v1/<domain>/controllers/` 에 동기 라우트 `<domain>.controller.ts` · 큐 라우트 `<domain>.controller.queue.ts`(한 파일에 섞지 않는다) + `<domain>.module.ts`(두 controller 등록), Swagger.
+4. **게이트웨이** — `apps/gateway/src/api/v1/<service>/<domain>/controllers/` 에 동기 라우트 `<domain>.controller.ts` · 큐 라우트 `<domain>.controller.queue.ts`(한 파일에 섞지 않는다) + `<domain>.module.ts`(두 controller 등록), Swagger.
 5. 새 서비스 앱이면 —
    - `nest-cli.json` 프로젝트 · `apps/<x>-service/tsconfig.app.json`
    - 루트 모듈 `MessagingModule.forService({queue, binding_keys, broker_user})` + `{provide: APP_GUARD, useClass: InternalAuthGuard}`

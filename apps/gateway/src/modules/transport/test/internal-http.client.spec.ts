@@ -22,11 +22,11 @@ describe('InternalHttpClient — 게이트웨이 → 서비스 내부 HTTP', () 
     it('[SUCCESS] 내부 토큰 · actor · 클라이언트 IP 헤더와 JSON 본문을 붙여 호출하고 JSON 을 돌려준다', async () => {
         fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ok: 1}), {status: 200}));
 
-        const result = await client.request('user', 'POST', '/internal/v1/user/login', {body: {a: 1}, actor: {user_id: 'u', auth_id: 'USER'}, client_ip: '1.2.3.4'});
+        const result = await client.request('user', 'POST', '/internal/v1/user-service/user/login', {body: {a: 1}, actor: {user_id: 'u', auth_id: 'USER'}, client_ip: '1.2.3.4'});
 
         expect(result).toEqual({ok: 1});
         const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-        expect(url).toBe('http://user-service:4001/internal/v1/user/login');
+        expect(url).toBe('http://user-service:4001/internal/v1/user-service/user/login');
         expect(init.method).toBe('POST');
         expect(init.body).toBe('{"a":1}');
         expect(init.headers).toEqual({'content-type': 'application/json', 'x-internal-token': 'secret', 'x-actor-user-id': 'u', 'x-actor-auth-id': 'USER', 'x-client-ip': '1.2.3.4'});
