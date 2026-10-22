@@ -12,10 +12,10 @@ flowchart LR
   P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::done
   P2 --> P4["Phase 4 · 회원 스키마 확장 (5)"]:::done
   P4 --> P5["Phase 5 · 서버 분할 (4)"]:::done
-  P1 --> P7["Phase 7 · admin-service 기반 (4)"]:::inprog
+  P1 --> P7["Phase 7 · admin-service 기반 (4)"]:::done
   P1 --> P8["Phase 8 · store 스키마 (5)"]:::todo
   P1 --> P22["Phase 22 · api-log (1)"]:::todo
-  P3 --> P6["Phase 6 · 계정·인증 (4)"]:::inprog
+  P3 --> P6["Phase 6 · 계정·인증 (4)"]:::done
   P7 --> P6
   P4 --> P6
   P3 --> P9["Phase 9 · 업체 입점·관리 (5)"]:::todo
@@ -56,8 +56,8 @@ flowchart LR
 - Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 6, 9, 11 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · done
 - Phase 4 — 회원 스키마 확장 · 유닛 5개 · 의존: Phase 2, 3 · 푼다: Phase 5, 6, 9 · 파일 집합: libs/database(entities · migrations · seeder), libs/contracts/src/user, apps/user-service/src/user, apps/gateway/src/api/v1/user, AGENTS.md, docs/ · done
 - Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), libs/messaging(CommandDispatcher), libs/database(연결 대기 제한), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, .env.example, README.md, AGENTS.md, docs/ · done
-- Phase 6 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4, 7 · 푼다: Phase 20 · 파일 집합: apps/user-service/src/user, apps/admin-service/src/{manager,admin}, apps/gateway/src/api/v1(user · manager · admin) · guards, libs/account, libs/contracts/src/{user,manager,admin}, libs/database(entities · migrations · seeder), README.md, AGENTS.md, docs/ · in-progress
-- Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · in-progress(Phase 6 과 한 기획 — 리비전 261023-1)
+- Phase 6 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4, 7 · 푼다: Phase 20 · 파일 집합: apps/user-service/src/user, apps/admin-service/src/{manager,admin}, apps/gateway/src/api/v1(user · manager · admin) · guards, libs/account, libs/contracts/src/{user,manager,admin}, libs/database(entities · migrations · seeder), README.md, AGENTS.md, docs/ · done
+- Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · done(Phase 6 과 한 기획 — 리비전 261023-1)
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · todo
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store, libs/contracts/src/store · todo
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store · todo
@@ -74,14 +74,15 @@ flowchart LR
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/user-service/src/stats, apps/gateway/src/api/v1/stats · todo
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 
-동시 가능: Phase 6·Phase 7·Phase 8 (지금 바로) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
+동시 가능: Phase 8·Phase 22 (지금 바로 — 단, 둘 다 마이그레이션을 더해 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: Phase 6 진행 중 · Next up: Phase 6
+지금: Phase 6 · Phase 7 완료 · Next up: Phase 8
 
 ## 지금 할 일
 
-계정·인증(Phase 6) + admin-service 기반(Phase 7) build 완료 — 로그인 그룹 3개를 도메인으로 분리(이용자 user-service · 매니저 · 관리자 admin-service) · 그룹별 인증 가드 · 그룹별 UK · 성인 기준 · 일반 가입 폐지 · 업체 상세 JSON
-- 다음 — `/beaver:ship` 으로 리뷰 · 커밋 · 푸시
+store 스키마(Phase 8)부터 — 입점 신청 · 업체 상태 룩업 · `t_store` 재설계 · 사진 · 영업시간 테이블을 세운다(업체 입점·관리 Phase 9 의 토대)
+- 정하기 — 신청 상태 표현(룩업 · 문자열), 편의시설을 `store_detail`(jsonb)에 둘지 · 따로 둘지
+- 시작 — `/beaver:direct store 스키마`
 - 사용자 — 마이그레이션 `LoginScopeStoreDetail` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 회원의 `login_scope` 를 권한으로 채운다)
 - 사용자 — `.env` 에 `RABBITMQ_ADMIN_SERVICE_PASSWORD` 추가 → `npm run docker:rabbitmq`(계정 생성) → `npm run docker:admin-service`(user-service 묶음 뒤). 로컬은 `npm run start:admin-service`(:4002)
 - 사용자 — Phase 4 마이그레이션 2개 적용(`npm run db:migrate`), Phase 5 배포 때 user-service 를 새 이미지로 다시 띄우고 scheduler 묶음(`npm run docker:scheduler`)을 user-service 뒤에 띄운다
@@ -204,10 +205,10 @@ ship 완료 (2026-10-22, 커밋 00aa411) — report: `.beaver/output/report/plat
 ### Phase 6 — 계정·인증 (로그인 그룹 분리 · 가입 규칙) · depends: Phase 3, Phase 4
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 24 | 로그인 그룹 = 도메인 3개 | 이용자 `user`(user-service, `/api/v1/user`, SNS 만) · 매니저 `manager` · 관리자 `admin`(admin-service, `/api/v1/manager` · `/api/v1/admin`)을 controller · service · repository · DTO · 명령 · 내부 경로까지 분리 — 다른 그룹 계정은 404 · 401. 게이트웨이 인증도 그룹별 전략 · 가드(`jwt-user` · `jwt-manager` · `jwt-admin`). 관리자 · 매니저 비밀번호 변경, 매니저 아이디 찾기 · 비밀번호 초기화. 공통 계정 로직은 `libs/account` | 그룹별 접두(결정 2026-10-22) · 도메인 분리 · admin-service · libs/account · 명령 `admin.*` · 공유 DB 직접 · 그룹별 토큰 확인 (결정 2026-10-23) | 23, 28 | in-progress |
-| 25 | 가입 규칙 | 성인 기준(청소년보호법 — 한국 날짜의 올해 − 출생 연도 ≥ 19) · 일반 가입 폐지(이용자 일반 가입 · 로그인 · 비밀번호 변경 · 초기화 제거) | 청소년보호법 · SNS 가입만 (결정 2026-10-22) | — | in-progress |
-| 92 | 로그인 그룹 · 그룹별 UK | `t_user.login_scope`(USER · MANAGER · ADMIN) + `UK(login_id, login_scope)` · `UK(phone, login_scope)` — 기존 행은 권한으로 채움 | 3그룹 단위 (결정 2026-10-22) | 24 | in-progress |
-| 93 | 업체 상세 JSON | 기존 `t_store` 에 `store_detail`(jsonb) — 초기 항목 `room_count` · `has_shower` · `has_tv` · `has_pc`(0/1), 항목은 바뀔 수 있다 | 기존 `t_store` 에 추가 (결정 2026-10-22) | — | in-progress |
+| 24 | 로그인 그룹 = 도메인 3개 | 이용자 `user`(user-service, `/api/v1/user`, SNS 만) · 매니저 `manager` · 관리자 `admin`(admin-service, `/api/v1/manager` · `/api/v1/admin`)을 controller · service · repository · DTO · 명령 · 내부 경로까지 분리 — 다른 그룹 계정은 404 · 401. 게이트웨이 인증도 그룹별 전략 · 가드(`jwt-user` · `jwt-manager` · `jwt-admin`). 관리자 · 매니저 비밀번호 변경, 매니저 아이디 찾기 · 비밀번호 초기화. 공통 계정 로직은 `libs/account` | 그룹별 접두(결정 2026-10-22) · 도메인 분리 · admin-service · libs/account · 명령 `admin.*` · 공유 DB 직접 · 그룹별 토큰 확인 (결정 2026-10-23) | 23, 28 | done(f7c198f) |
+| 25 | 가입 규칙 | 성인 기준(청소년보호법 — 한국 날짜의 올해 − 출생 연도 ≥ 19) · 일반 가입 폐지(이용자 일반 가입 · 로그인 · 비밀번호 변경 · 초기화 제거) | 청소년보호법 · SNS 가입만 (결정 2026-10-22) | — | done(f7c198f) |
+| 92 | 로그인 그룹 · 그룹별 UK | `t_user.login_scope`(USER · MANAGER · ADMIN) + `UK(login_id, login_scope)` · `UK(phone, login_scope)` — 기존 행은 권한으로 채움 | 3그룹 단위 (결정 2026-10-22) | 24 | done(f7c198f) |
+| 93 | 업체 상세 JSON | 기존 `t_store` 에 `store_detail`(jsonb) — 초기 항목 `room_count` · `has_shower` · `has_tv` · `has_pc`(0/1), 항목은 바뀔 수 있다 | 기존 `t_store` 에 추가 (결정 2026-10-22) | — | done(f7c198f) |
 
 **APIs**:
 
@@ -218,19 +219,19 @@ ship 완료 (2026-10-22, 커밋 00aa411) — report: `.beaver/output/report/plat
 | #24 | PATCH | `/api/v1/manager/password` · `/api/v1/admin/password` | 비밀번호 변경(SSE) |
 | #24 | POST | `/api/v1/manager/find-login-id(+/confirm)` · `/password-reset(+/confirm)` | 매니저 아이디 찾기 · 비밀번호 초기화(SSE) |
 
-build 완료 — report: `.beaver/output/report/user/user-account-auth-report.md` (리비전 261023-1 — 도메인 분리 · admin-service)
+ship 완료 (2026-10-23, 커밋 f7c198f) — report: `.beaver/output/report/user/user-account-auth-report.md`(리비전 261023-1 — 도메인 분리 · admin-service) · review: `.beaver/output/review/main-review-261023.md`.
 
 ### Phase 7 — admin-service 기반 (새 서비스 앱 토대) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 28 | admin-service 앱 | nest-cli 프로젝트 · 루트 모듈(`InternalAuthGuard` · `ReturnedExceptionInterceptor` · `MessagingModule.forService` · `SmsModule`) · 매니저 · 관리자 도메인 | 공유 DB 직접 · 마이그레이션 · 시드는 user-service 묶음 (결정 2026-10-23) | — | in-progress |
-| 29 | Docker 묶음 | `compose.admin-service.yml` · nginx LB(`admin-service.conf`) · 공용 네트워크 · `.env` 의 `ADMIN_SERVICE_REPLICAS`(기본 1) | — | 28 | in-progress |
-| 30 | 브로커 계정 | `BROKER_USER.ADMIN_SERVICE` · init.sh 권한(`q.admin.cmd` · `roomless.event`) · `broker:check` 대상 추가 | — | 28 | in-progress |
-| 31 | 게이트웨이 연결 | `InternalHttpClient` 의 `InternalService 'admin'` · `ADMIN_SERVICE_URL` | — | 28 | in-progress |
+| 28 | admin-service 앱 | nest-cli 프로젝트 · 루트 모듈(`InternalAuthGuard` · `ReturnedExceptionInterceptor` · `MessagingModule.forService` · `SmsModule`) · 매니저 · 관리자 도메인 | 공유 DB 직접 · 마이그레이션 · 시드는 user-service 묶음 (결정 2026-10-23) | — | done(f7c198f) |
+| 29 | Docker 묶음 | `compose.admin-service.yml` · nginx LB(`admin-service.conf`) · 공용 네트워크 · `.env` 의 `ADMIN_SERVICE_REPLICAS`(기본 1) | — | 28 | done(f7c198f) |
+| 30 | 브로커 계정 | `BROKER_USER.ADMIN_SERVICE` · init.sh 권한(`q.admin.cmd` · `roomless.event`) · `broker:check` 대상 추가 | — | 28 | done(f7c198f) |
+| 31 | 게이트웨이 연결 | `InternalHttpClient` 의 `InternalService 'admin'` · `ADMIN_SERVICE_URL` | — | 28 | done(f7c198f) |
 
 **Entry points**: `apps/admin-service/src/main.ts`(:4002) · `admin-service.module.ts` · 큐 `q.admin.cmd`(← `admin.#`) · `http://admin-service-lb:4002`.
 
-Phase 6 리비전 261023-1 과 한 기획으로 build 했다(매니저 · 관리자 도메인을 이 서비스에 둔다).
+Phase 6 리비전 261023-1 과 한 기획으로 build · ship 했다(2026-10-23, 커밋 f7c198f — 매니저 · 관리자 도메인을 이 서비스에 둔다).
 
 ### Phase 8 — store 스키마 (업체 새 모델) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -404,10 +405,10 @@ Phase 6 리비전 261023-1 과 한 기획으로 build 했다(매니저 · 관리
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 29/93 units done (5/22 phases)
-**Next up**: Phase 6 계정·인증 + Phase 7 admin-service 기반 — build 완료(유닛 8개 #24 · #25 · #92 · #93 · #28~#31), `/beaver:ship` 대기. 관리자 계정 관리와 이후 관리자 · 매니저 API 가 이 도메인 분리를 기다린다.
+**Progress**: 37/93 units done (7/22 phases)
+**Next up**: Phase 8 store 스키마 — 의존(Phase 1)이 끝났고, 업체 입점·관리(Phase 9 — admin-service 매니저 도메인 계정 생성)와 room 스키마(Phase 12)가 이 테이블을 기다린다. `/beaver:direct store 스키마` 로 시작한다(한 기획이 유닛 5개를 모두 덮는다).
 
-함께 시작할 수 있는 것: store 스키마(Phase 8) — 계정·인증과 파일이 겹치지 않는다.
+함께 시작할 수 있는 것: api-log(Phase 22)는 의존이 끝났지만 Phase 8 과 마찬가지로 마이그레이션을 더해 동시에 돌리지 않는다.
 
 ## Cross-Cutting Rules
 
