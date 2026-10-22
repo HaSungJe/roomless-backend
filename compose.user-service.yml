@@ -7,7 +7,7 @@
 #     필수값이 비어 있으면 띄우지 않는다. 같은 서버의 postgres · rabbitmq 묶음(가상 운영)인지, RDS · Amazon MQ(실제 운영)인지는
 #     .env 의 접속정보로 고른다.
 #   - 서버 구성(컨테이너 안 포트 · 바인딩 주소 · TZ)만 아래에 고정한다 — 어느 환경이든 같다.
-#   - 쓰지 않는 비밀값(gateway 브로커 비밀번호 · 브로커 관리자 비밀번호)은 빈 값으로 덮어 전달하지 않는다(앱 동작과 무관).
+#   - 쓰지 않는 비밀값(gateway · admin-service 브로커 비밀번호 · 브로커 관리자 비밀번호)은 빈 값으로 덮어 전달하지 않는다(앱 동작과 무관).
 #
 # 부하 분산
 #   - 큐(명령): 모든 인스턴스가 같은 q.user.cmd 를 소비 → 브로커가 나눠 준다(경쟁 소비)
@@ -16,7 +16,7 @@
 #   - DB · 브로커가 아직 준비 중이어도 migrate 는 DB 연결을 최대 1분 기다리고, 앱은 TypeORM 재시도 · RabbitMQ 자동 재연결로 붙는다
 #
 # 네트워크 — "user-service 는 게이트웨이만 닿는다"
-#   roomless-service (internal) : gateway · user-service-lb · user-service 만 있다
+#   roomless-service (internal) : gateway · user-service-lb · user-service (· admin-service-lb · admin-service) 만 있다
 #   roomless-broker / roomless-data : 브로커 / DB 로 나가는 길 (외부 RDS · Amazon MQ 도 이 길로 나간다)
 name: roomless-user-service
 
@@ -67,6 +67,7 @@ services:
             TZ: Asia/Seoul
             # ── 쓰지 않는 비밀값은 전달하지 않는다 ──
             RABBITMQ_GATEWAY_PASSWORD: ''
+            RABBITMQ_ADMIN_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
         deploy:
             replicas: ${USER_SERVICE_REPLICAS:-2}

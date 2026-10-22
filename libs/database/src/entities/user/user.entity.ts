@@ -10,10 +10,10 @@ import {StateEntity} from './state.entity.js';
  * (관계 속성을 엔티티 타입으로 두지 않는다 — ESM 의 순환 import 와 데코레이터 메타데이터 문제를 피하기 위해)
  */
 @Entity({name: 't_user', comment: '사용자 정보'})
-@Unique('UK_User_LoginId', ['login_id'])
+@Unique('UK_User_LoginIdLoginScope', ['login_id', 'login_scope'])
 @Unique('UK_User_UserSearchCode', ['user_search_code'])
 @Unique('UK_User_SnsSnsUserId', ['sns_id', 'sns_user_id'])
-@Unique('UK_User_Phone', ['phone'])
+@Unique('UK_User_PhoneLoginScope', ['phone', 'login_scope'])
 export class UserEntity {
     @PrimaryColumn({name: 'user_id', length: 32, comment: '사용자 ID', primaryKeyConstraintName: 'PK_User'})
     user_id: string;
@@ -43,6 +43,9 @@ export class UserEntity {
     @Column({name: 'login_id', length: 100, nullable: false, comment: '로그인 ID'})
     login_id: string;
 
+    @Column({name: 'login_scope', length: 20, nullable: false, comment: '로그인 그룹(USER: 이용자, MANAGER: 총매니저 · 매니저, ADMIN: 총관리자 · 관리자) — 로그인 API · 아이디 · 휴대폰 번호 UK 단위'})
+    login_scope: string;
+
     @Column({name: 'login_pw', length: 100, nullable: false, comment: '비밀번호'})
     login_pw: string;
 
@@ -55,7 +58,7 @@ export class UserEntity {
     @Column({name: 'birth', length: 30, nullable: false, comment: '생년월일'})
     birth: string;
 
-    @Column({name: 'phone', type: 'varchar', length: 30, nullable: true, comment: '휴대폰 번호(숫자만, SMS 인증을 마친 번호 — 번호 1개 = 계정 1개, 미인증 NULL)'})
+    @Column({name: 'phone', type: 'varchar', length: 30, nullable: true, comment: '휴대폰 번호(숫자만, SMS 인증을 마친 번호 — 로그인 그룹 안에서 번호 1개 = 계정 1개, 미인증 NULL)'})
     phone: string | null;
 
     @Column({name: 'phone_verified_at', type: 'timestamptz', nullable: true, comment: '휴대폰 SMS 인증일(미인증 NULL)'})

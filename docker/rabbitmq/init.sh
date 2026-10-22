@@ -4,7 +4,8 @@
 # 앱마다 다른 계정을 쓰고, 명령 exchange(roomless.cmd)에 쓸 수 있는 계정은 gateway 하나뿐이다.
 #   gateway      : roomless.cmd 발행 O, roomless.event 발행 X  — 자기 결과 큐(q.gw.result.*)만 선언 · 소비
 #   user-service : roomless.event 발행 O, roomless.cmd 발행 X — q.user.cmd 만 선언 · 소비
-# 공통 토폴로지(roomless.cmd · roomless.event · roomless.dlx · q.dead)는 두 앱이 접속할 때 선언하므로 둘 다 configure 를 갖는다.
+#   admin-service: roomless.event 발행 O, roomless.cmd 발행 X — q.admin.cmd 만 선언 · 소비
+# 공통 토폴로지(roomless.cmd · roomless.event · roomless.dlx · q.dead)는 각 앱이 접속할 때 선언하므로 모두 configure 를 갖는다.
 # 서비스는 추가로 메시지 user_id 가 gateway 인 명령만 처리한다(브로커가 user_id 를 접속 계정과 대조한다).
 #
 # 권한 기준 (https://www.rabbitmq.com/docs/access-control)
@@ -25,9 +26,11 @@ put() {
 echo "[rabbitmq-init] 계정 생성"
 put "users/gateway" "{\"password\":\"${RABBITMQ_GATEWAY_PASSWORD}\",\"tags\":\"\"}"
 put "users/user-service" "{\"password\":\"${RABBITMQ_USER_SERVICE_PASSWORD}\",\"tags\":\"\"}"
+put "users/admin-service" "{\"password\":\"${RABBITMQ_ADMIN_SERVICE_PASSWORD}\",\"tags\":\"\"}"
 
 echo "[rabbitmq-init] 권한 부여 (vhost /)"
 put "permissions/%2F/gateway" '{"configure":"^(roomless\\.(cmd|event|dlx)|q\\.dead|q\\.gw\\.result\\..+)$","write":"^(roomless\\.cmd|q\\.dead|q\\.gw\\.result\\..+)$","read":"^(roomless\\.(event|dlx)|q\\.gw\\.result\\..+)$"}'
 put "permissions/%2F/user-service" '{"configure":"^(roomless\\.(cmd|event|dlx)|q\\.dead|q\\.user\\.cmd)$","write":"^(roomless\\.(event|dlx)|q\\.dead|q\\.user\\.cmd)$","read":"^(roomless\\.(cmd|dlx)|q\\.user\\.cmd)$"}'
+put "permissions/%2F/admin-service" '{"configure":"^(roomless\\.(cmd|event|dlx)|q\\.dead|q\\.admin\\.cmd)$","write":"^(roomless\\.(event|dlx)|q\\.dead|q\\.admin\\.cmd)$","read":"^(roomless\\.(cmd|dlx)|q\\.admin\\.cmd)$"}'
 
 echo "[rabbitmq-init] 완료"

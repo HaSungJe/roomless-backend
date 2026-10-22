@@ -21,7 +21,7 @@ const ONE_MINUTE_LATER = new Date(2026, 0, 1, 0, 1, 0);
 const PAYLOAD = {type: 'refresh', user_id: 'u'.repeat(32), session_id: 's'.repeat(32)};
 const INVALID = {message: '유효하지 않은 토큰입니다.', validation_errors: null};
 
-describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경로)', () => {
+describe('POST /internal/v1/user/token-refresh — 이용자 토큰 재발급 (동기 경로)', () => {
     let app: INestApplication;
     let repo: UserRepositoryMock;
     let jwt: JwtServiceMock;
@@ -31,7 +31,7 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
         jwt.verify.mockReturnValueOnce(PAYLOAD);
         repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
         repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: '10.0.0.1'});
-        repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'ACTIVE'});
+        repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'ACTIVE', login_scope: 'USER'});
     };
 
     /** 401 이후 쓰기가 없는지 */
@@ -90,11 +90,29 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
             jwt.verify.mockReturnValueOnce(PAYLOAD);
             repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
             repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: null});
-            repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'ACTIVE'});
+            repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'ACTIVE', login_scope: 'USER'});
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders('99.99.99.99')).send({refresh_token: OLD_REFRESH});
 
             expect(res.status).toBe(200);
+        });
+    });
+
+    describe('[FAIL:auth] 로그인 그룹 불일치', () => {
+        it('이용자 그룹이 아닌 회원(관리자) → 401 + 안전망으로 refresh 1분 뒤 만료, 새 refresh 없음', async () => {
+            jwt.verify.mockReturnValueOnce(PAYLOAD);
+            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
+            repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: '10.0.0.1'});
+            repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'ACTIVE', login_scope: 'ADMIN'});
+
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders('10.0.0.1')).send({refresh_token: OLD_REFRESH});
+
+            expect(res.status).toBe(401);
+            expect(res.body).toEqual(INVALID);
+            expect(repo.updateSessionRefresh).toHaveBeenCalledTimes(1);
+            expect(repo.updateSessionRefresh).toHaveBeenCalledWith({refresh_hash: OLD_HASH}, {expires_at: ONE_MINUTE_LATER});
+            expect(repo.insertSessionRefresh).not.toHaveBeenCalled();
+            expect(jwt.sign).not.toHaveBeenCalled();
         });
     });
 
@@ -167,8 +185,8 @@ describe('POST /internal/v1/user/token-refresh — 토큰 재발급 (동기 경�
 
         it.each([
             ['회원 없음', null],
-            ['탈퇴 대기 회원', {user_id: PAYLOAD.user_id, state_id: 'LEAVE_WAIT'}],
-            ['정지 회원', {user_id: PAYLOAD.user_id, state_id: 'BLOCK'}],
+            ['탈퇴 대기 회원', {user_id: PAYLOAD.user_id, state_id: 'LEAVE_WAIT', login_scope: 'USER'}],
+            ['정지 회원', {user_id: PAYLOAD.user_id, state_id: 'BLOCK', login_scope: 'USER'}],
         ])('%s — 안전망으로 refresh 를 1분 뒤 만료시키고 거부', async (_label, user) => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
             repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});

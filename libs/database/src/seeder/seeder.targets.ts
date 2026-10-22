@@ -62,6 +62,7 @@ export async function buildSuperAdminSeed(): Promise<UserEntity[]> {
     admin.user_id = randomUUID().replace(/-/g, '');
     admin.user_search_code = randomUUID().replace(/-/g, '');
     admin.auth_id = 'SUPER_ADMIN';
+    admin.login_scope = 'ADMIN'; // 로그인 그룹 — 총관리자 · 관리자 (database 는 contracts 를 import 하지 않는다)
     admin.state_id = 'ACTIVE';
     admin.sns_id = null;
     admin.sns_user_id = null;

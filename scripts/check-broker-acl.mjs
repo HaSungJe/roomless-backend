@@ -16,7 +16,7 @@ import amqp from 'amqplib';
 
 const COMMAND_EXCHANGE = 'roomless.cmd';
 const EVENT_EXCHANGE = 'roomless.event';
-/** 어느 큐에도 바인딩되지 않는 라우팅 키 (명령 큐는 `user.#`, 결과 큐는 `result.<인스턴스>.#`) */
+/** 어느 큐에도 바인딩되지 않는 라우팅 키 (명령 큐는 `user.#` · `admin.#`, 결과 큐는 `result.<인스턴스>.#`) */
 const PROBE_ROUTING_KEY = 'acl.probe';
 
 const ALLOW = 'allow';
@@ -29,6 +29,7 @@ const ADMIN_USER = process.env.RABBITMQ_USER || 'roomless';
 const ACCOUNTS = {
     gateway: {user: 'gateway', password: process.env.RABBITMQ_GATEWAY_PASSWORD ?? ''},
     'user-service': {user: 'user-service', password: process.env.RABBITMQ_USER_SERVICE_PASSWORD ?? ''},
+    'admin-service': {user: 'admin-service', password: process.env.RABBITMQ_ADMIN_SERVICE_PASSWORD ?? ''},
     admin: {user: ADMIN_USER, password: process.env.RABBITMQ_PASSWORD || 'roomless'},
 };
 
@@ -40,6 +41,9 @@ const CASES = [
     {account: 'user-service', exchange: COMMAND_EXCHANGE, user_id: 'user-service', expect: ACCESS_REFUSED, label: '명령 발행'},
     {account: 'user-service', exchange: EVENT_EXCHANGE, user_id: 'user-service', expect: ALLOW, label: '결과 회신'},
     {account: 'user-service', exchange: EVENT_EXCHANGE, user_id: 'gateway', expect: PRECONDITION_FAILED, label: 'user_id 를 gateway 로 위조'},
+    {account: 'admin-service', exchange: COMMAND_EXCHANGE, user_id: 'admin-service', expect: ACCESS_REFUSED, label: '명령 발행'},
+    {account: 'admin-service', exchange: EVENT_EXCHANGE, user_id: 'admin-service', expect: ALLOW, label: '결과 회신'},
+    {account: 'admin-service', exchange: EVENT_EXCHANGE, user_id: 'gateway', expect: PRECONDITION_FAILED, label: 'user_id 를 gateway 로 위조'},
     {account: 'admin', exchange: COMMAND_EXCHANGE, user_id: 'gateway', expect: PRECONDITION_FAILED, label: '관리자가 user_id 를 gateway 로 위조'},
 ];
 

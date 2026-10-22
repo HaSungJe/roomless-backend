@@ -28,9 +28,9 @@ export const BROKER_UNAVAILABLE_MESSAGE = '일시적으로 요청을 접수할 �
 /**
  * 브로커 계정 — 앱마다 다른 계정으로 접속한다. 권한은 docker/rabbitmq/init.sh 가 부여한다.
  * - gateway: roomless.cmd 에만 쓸 수 있다(명령 발행). roomless.event 에는 쓸 수 없다.
- * - user-service: roomless.event 에만 쓸 수 있다(결과 회신). roomless.cmd 에는 쓸 수 없다.
+ * - user-service · admin-service: roomless.event 에만 쓸 수 있다(결과 회신). roomless.cmd 에는 쓸 수 없다.
  */
-export const BROKER_USER = {GATEWAY: 'gateway', USER_SERVICE: 'user-service'} as const;
+export const BROKER_USER = {GATEWAY: 'gateway', USER_SERVICE: 'user-service', ADMIN_SERVICE: 'admin-service'} as const;
 
 /** 명령을 발행할 수 있는 유일한 계정 — 서비스는 user_id 가 이 값인 명령만 처리한다 */
 export const COMMAND_PUBLISHER_USER = BROKER_USER.GATEWAY;

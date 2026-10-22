@@ -1,7 +1,10 @@
 import {ApiProperty} from '@nestjs/swagger';
 import {IsNotEmpty, MaxLength, ValidateIf} from 'class-validator';
 
-export class UserGeneralLoginDto {
+/**
+ * 관리자(총관리자 · 관리자) 로그인 입력 (아이디 · 비밀번호)
+ */
+export class AdminLoginDto {
     @ApiProperty({description: '로그인 아이디'})
     @MaxLength(30, {message: '아이디는 30자 이하여야 합니다.'})
     @IsNotEmpty({message: '아이디를 입력해주세요.'})
@@ -27,7 +30,10 @@ export class UserGeneralLoginDto {
     device_token?: string;
 }
 
-export class UserGeneralLoginResultDto {
+/**
+ * 관리자 로그인 결과
+ */
+export class AdminLoginResultDto {
     @ApiProperty({description: 'Access Token (유효 20분)'})
     access_token: string;
 
@@ -40,9 +46,9 @@ export class UserGeneralLoginResultDto {
     @ApiProperty({description: 'Refresh Token 만료일시 (ISO 8601)'})
     refresh_token_expires_at: string;
 
-    @ApiProperty({description: '비밀번호 변경 필요 여부(0: 불필요, 1: 필요) — 임시 비밀번호로 발급된 인력 계정은 1'})
+    @ApiProperty({description: '비밀번호 변경 필요 여부(0: 불필요, 1: 필요) — 첫 총관리자(시드)는 1'})
     is_password_change_required: number;
 
-    @ApiProperty({description: '휴대폰 SMS 인증 여부(0: 미인증, 1: 인증) — 0 이면 휴대폰 인증 화면으로'})
-    is_phone_verified: number;
+    @ApiProperty({description: '권한(SUPER_ADMIN: 총관리자, ADMIN: 관리자) — 관리자 페이지 메뉴 구분'})
+    auth_id: string;
 }

@@ -51,8 +51,8 @@ POST 는 `EventSource` 로 열 수 없으므로 클라이언트는 `fetch` 응�
 
 - 라우팅 키: 명령 `<server>.<resource>.<action>`(예: `user.member.sign`), 결과 `result.<게이트웨이 인스턴스>.<명령 type>.<done|failed>`.
 - 게이트웨이 인스턴스 ID: `GATEWAY_INSTANCE_ID` 또는 `gw-<호스트>-<pid>`(영숫자 · `-` 외 문자는 `-`). 명령의 `meta.reply_to` 에 실려 결과가 그 인스턴스로만 돌아온다 — 게이트웨이를 여러 대 띄워도 sticky session 이 필요 없다. Docker 에서는 compose 가 `GATEWAY_INSTANCE_ID` 를 비워 `gw-<컨테이너 호스트명>-<pid>` 가 된다.
-- user-service 를 여러 대 띄우면 모두 같은 `q.user.cmd` 를 소비한다(경쟁 소비) — 브로커가 prefetch 범위 안에서 나눠 주고, 한 인스턴스가 죽으면 미확인(unacked) 명령은 다른 인스턴스로 다시 전달된다.
-- 연결: `RabbitMqConnection` 1개를 앱이 공유한다. 접속 정보는 `RABBITMQ_HOST` · `RABBITMQ_PORT` + 앱 계정(`BROKER_ACCOUNT`)의 비밀번호다. 연결 이름(`connection_name`)으로 계정 = 서비스 이름을 보내, 관리 화면 Connections 탭의 Name 칸에 브로커가 보는 `IP:포트` 와 그 아래 서비스 이름(gateway · user-service)이 함께 표시된다. 포트는 접속 후에야 정해지므로 앱이 이름에 넣지 않고 브로커 표시에 맡긴다. amqplib 2 의 `recovery` 로 끊기면 자동 재연결하고, 재연결마다 공통 토폴로지 → 발행 confirm 채널 → 등록된 준비 작업(결과 큐 · 명령 큐 소비)을 다시 세운다. 브로커가 내려가 있어도 앱 부팅은 막지 않는다(`waitForConnect: false`). 그동안 발행은 503 `BROKER_UNAVAILABLE_MESSAGE`.
+- 서비스 앱마다 명령 큐가 하나다 — user-service `q.user.cmd`(`user.#`), admin-service `q.admin.cmd`(`admin.#`, 매니저 · 관리자 도메인 명령을 함께 받는다). 같은 앱을 여러 대 띄우면 모두 같은 큐를 소비한다(경쟁 소비) — 브로커가 prefetch 범위 안에서 나눠 주고, 한 인스턴스가 죽으면 미확인(unacked) 명령은 다른 인스턴스로 다시 전달된다.
+- 연결: `RabbitMqConnection` 1개를 앱이 공유한다. 접속 정보는 `RABBITMQ_HOST` · `RABBITMQ_PORT` + 앱 계정(`BROKER_ACCOUNT`)의 비밀번호다. 연결 이름(`connection_name`)으로 계정 = 서비스 이름을 보내, 관리 화면 Connections 탭의 Name 칸에 브로커가 보는 `IP:포트` 와 그 아래 서비스 이름(gateway · user-service · admin-service)이 함께 표시된다. 포트는 접속 후에야 정해지므로 앱이 이름에 넣지 않고 브로커 표시에 맡긴다. amqplib 2 의 `recovery` 로 끊기면 자동 재연결하고, 재연결마다 공통 토폴로지 → 발행 confirm 채널 → 등록된 준비 작업(결과 큐 · 명령 큐 소비)을 다시 세운다. 브로커가 내려가 있어도 앱 부팅은 막지 않는다(`waitForConnect: false`). 그동안 발행은 503 `BROKER_UNAVAILABLE_MESSAGE`.
 - 준비 작업 등록 규약: 결과 수신기 · 명령 소비자 같은 provider 는 `onModuleInit` 에서 `connection.register(setup)` 만 하고, 연결은 모든 등록이 끝난 `onApplicationBootstrap` 에서 연다.
 - 명령 소비자 옵션(`CommandConsumerOptions`): `queue` · `binding_keys` · `broker_user`(필수), `prefetch`(기본 10) · `trusted_publisher`(기본 `'gateway'`, 운영 설정 0건 — 테스트에서만 바꾼다).
 - `@OnCommand(type)` 은 `SetMetadata('roomless:on-command', type)` 이다. `CommandHandlerRegistry` 가 부팅 때 앱 전체 provider 를 스캔해 등록하고, **같은 type 이 두 번 등록되면 부팅이 실패한다**.
@@ -65,8 +65,9 @@ POST 는 `EventSource` 로 열 수 없으므로 클라이언트는 `fetch` 응�
 |---|---|---|---|
 | `gateway` | 공통 exchange · `q.dead` · `q.gw.result.*` | **`roomless.cmd`** · `q.dead` · `q.gw.result.*` | `roomless.event` · `roomless.dlx` · `q.gw.result.*` |
 | `user-service` | 공통 exchange · `q.dead` · `q.user.cmd` | **`roomless.event`** · `roomless.dlx` · `q.dead` · `q.user.cmd` | `roomless.cmd` · `roomless.dlx` · `q.user.cmd` |
+| `admin-service` | 공통 exchange · `q.dead` · `q.admin.cmd` | **`roomless.event`** · `roomless.dlx` · `q.dead` · `q.admin.cmd` | `roomless.cmd` · `roomless.dlx` · `q.admin.cmd` |
 
-- user-service 는 `roomless.cmd` 에 쓸 수 없고, gateway 는 `roomless.event` 에 쓸 수 없다 — 서로 명령 · 결과를 위조할 수 없다.
+- user-service · admin-service 는 `roomless.cmd` 에 쓸 수 없고, gateway 는 `roomless.event` 에 쓸 수 없다 — 서로 명령 · 결과를 위조할 수 없다.
 - `RabbitMqConnection.publish()` 는 모든 메시지의 `user_id` 를 자기 계정으로 덮어쓴다. 브로커는 `user_id` 가 접속 계정과 다르면 거절한다([Validated User-ID](https://www.rabbitmq.com/docs/validated-user-id)).
 - 서비스 소비자는 `user_id` 가 `COMMAND_PUBLISHER_USER`(gateway)가 아닌 명령을 처리 · 회신 없이 DLQ 로 보낸다. 권한이 잘못 설정돼도 이 검사가 남는다.
 - **점검**: `npm run broker:check`([check-broker-acl.mjs](../scripts/check-broker-acl.mjs)) — 계정마다 허용 · 거부돼야 할 발행(쓰기 권한 403, user_id 위조 406)을 실제 브로커에 시도해 대조한다. 바인딩 없는 라우팅 키로 보내므로 명령이 처리되지 않는다.
@@ -109,7 +110,7 @@ AMQP 속성에도 `messageId` · `correlationId`(=request_id) · `replyTo` · `t
 
 | 중복의 원인 | 막는 곳 |
 |---|---|
-| 브로커 재전달(처리 후 ack 전에 끊김) | 비즈니스 제약 — 가입은 `UK_User_SnsSnsUserId` · `UK_User_LoginId`, 탈퇴/철회는 상태 전이 검사가 두 번째 처리를 4xx 로 막는다 |
+| 브로커 재전달(처리 후 ack 전에 끊김) | 비즈니스 제약 — 가입은 `UK_User_SnsSnsUserId` · `UK_User_LoginIdLoginScope`, 탈퇴/철회는 상태 전이 검사가 두 번째 처리를 4xx 로 막는다 |
 | 사용자 재요청(새 request_id) | 같은 비즈니스 제약 |
 
 자연 키가 없는 명령(결제 등)이 생기면 그때 `t_processed_message`(PK = message_id) 를 서비스별로 두고, 비즈니스 처리와 같은 트랜잭션에서 INSERT 해 UK 위반(23505)이면 즉시 ack 하는 방식을 추가한다. 클라이언트 `Idempotency-Key` 헤더를 message_id 로 쓰는 것도 그때 함께 정한다.

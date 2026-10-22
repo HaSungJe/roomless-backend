@@ -26,7 +26,7 @@ Vitest 4 + `@nestjs/testing` + `supertest`. 설정 [vitest.config.ts](../vitest.
 - 하위 폴더 소스의 spec 을 lib 의 `test/` 에 모으기도 한다 — `libs/database/src/test/job-lock.service.spec.ts` · `seeder.spec.ts`.
 - 한 파일에 같은 영역의 클래스를 묶은 경우가 있다 — `guards.spec.ts`(전략 · 인증 가드 · 역할 가드), `rabbitmq-adapters.spec.ts`(연결 · 발행 · 결과 구독 · 명령 소비).
 - import: 앱 spec 은 자기 앱 소스를 **상대경로**로, lib spec 은 자기 lib 도 **alias**(`@app/<lib>/...js`)로 가져온다.
-- 도우미(수집 대상 아님 — `.spec.ts` 가 아니다): [user.test-helper.ts](../apps/user-service/src/user/test/user.test-helper.ts), [fake-broker.ts](../apps/gateway/src/modules/transport/test/fake-broker.ts).
+- 도우미(수집 대상 아님 — `.spec.ts` 가 아니다): [user.test-helper.ts](../apps/user-service/src/user/test/user.test-helper.ts) · [manager.test-helper.ts](../apps/admin-service/src/manager/test/manager.test-helper.ts) · [admin.test-helper.ts](../apps/admin-service/src/admin/test/admin.test-helper.ts)(도메인마다 같은 모양 — repository mock 이름만 다르다), [fake-broker.ts](../apps/gateway/src/modules/transport/test/fake-broker.ts).
 - 최상위 `describe` 제목: 큐 `'<type> — <한글> (큐 경로)'`, 동기 `'<METHOD> <경로> — <한글> (동기 경로)'`.
 
 ## 전역 setup
@@ -73,8 +73,8 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 
 **라우트** — spec 은 controller 파일과 같이 나눈다. 둘 다 필터 + 파이프를 실제로 부팅하고, mock 은 `beforeEach` 에서 새로 만든다(`afterEach` 는 `app.close()` 만).
 - 동기 `test/<domain>.controller.spec.ts`: 실제 `UserController`, `InternalHttpClient` 는 `{request: vi.fn()}`. 호출 인자 `('user', 'POST', 내부경로, {body, client_ip})` 를 단언한다. 모듈이 두 controller 를 `[동기, 큐]` 순으로 등록하는지 `Reflect.getMetadata('controllers', XModule)` 로 단언한다.
-- 큐 `test/<domain>.controller.queue.spec.ts`: 실제 `UserQueueController` + `CommandStreamService`, **`FakeBroker`** 를 `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER` 로, `GATEWAY_INSTANCE_ID` 는 `'gw-test'`. 인증 라우트가 있으므로 `.overrideGuard(PassportJwtAuthGuard)` 로 `request.user` 를 주입하고, 플래그(`authenticated = false`)로 401 을 만든다.
-- 두 spec 모두 **다른 경로의 라우트가 404** 인지 단언한다(섞여 들어가지 않았는지).
+- 큐 `test/<domain>.controller.queue.spec.ts`: 실제 `UserQueueController` + `CommandStreamService`, **`FakeBroker`** 를 `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER` 로, `GATEWAY_INSTANCE_ID` 는 `'gw-test'`. 인증 라우트가 있으므로 `.overrideGuard(PassportJwtAuthGuard)` 로 `request.user` 를 주입하고, 플래그(`authenticated = false`)로 401 을 만든다. 그룹 라우트는 **그 그룹의 가드**(`PassportJwtAuthGuard` · `PassportJwtManagerAuthGuard` · `PassportJwtAdminAuthGuard`)를 override 한다 — 컨트롤러가 다른 그룹 가드를 쓰면 override 가 적용되지 않아 테스트가 실패한다. 다른 그룹 토큰의 401 은 가드 단위(`guards.spec.ts` 의 그룹별 전략)에서 단언한다.
+- 두 spec 모두 **다른 경로의 라우트가 404** 인지 단언한다(섞여 들어가지 않았는지). 없앤 라우트(이용자 `/general-sign` · `/password` 등)와 그 그룹에 없는 라우트(관리자 `/find-login-id`)도 404 로 고정한다.
 - SSE: 헤더(`text/event-stream` · `no-cache`) → supertest 가 받은 본문을 `parseSse()` 로 읽어 이벤트 순서(accepted → done/failed)와 data 를 단언한다. failed 의 data 는 `{status_code, ...본문}`.
 - 발행된 명령(`broker.published[0]`)의 type · actor · payload · `meta.reply_to` 를 단언한다. 검증 · 발행 실패는 스트림을 열지 않고 일반 JSON 400/503 — 발행 0건과 `pendingCount() === 0` 을 단언한다.
 - `FakeBroker`: `published` · `reply` · `replyBeforeConfirm` · `publishError`, 결과는 `setImmediate` 로 다음 tick 에 넘긴다. 결과 생성은 `replyDone` · `replyFailed`.
@@ -84,8 +84,10 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 - `InternalHttpClient`: `vi.spyOn(globalThis, 'fetch')` + `afterEach` 에서 `mockRestore()`. URL · method · body · 헤더 전체 · `AbortSignal`, 네트워크 실패 503.
 
 **가드 · 설정**
-- 가드: `new PassportJwtAuthStrategy(mock).validate()`, `new PassportJwtAuthGuard().handleRequest()`, `new RolesGuard(Reflector mock)` + 손수 만든 `ExecutionContext`. 동기 throw 는 try/catch 안에서 `expect.unreachable()` 로 확인.
+- 가드: 그룹별 전략 `new PassportJwtAuthStrategy(mock).validate()`(서비스 `'user'`) · `PassportJwtManagerAuthStrategy` · `PassportJwtAdminAuthStrategy`(서비스 `'admin'`, 그룹 경로)를 `describe.each` 로, 그룹별 가드 `handleRequest()`, `new RolesGuard(Reflector mock)` + 손수 만든 `ExecutionContext`. 동기 throw 는 try/catch 안에서 `expect.unreachable()` 로 확인.
 - 설정(CORS · trust proxy): 순수 함수는 별도 `describe` 에서 직접 호출하고, 동작은 spec 안에 둔 **프로브 controller**(`@Controller('/probe')`)를 테스트마다 `boot(값)` 으로 띄워 supertest 로 확인한다.
+
+**로그인 그룹 조건(서비스)** — 도메인마다 조회 조건의 `login_scope` 를 단언하고(`findManager({..., login_scope: 'MANAGER'})`), 다른 그룹 계정은 그룹 조건 조회가 `null` 을 돌려주는 것으로 흉내 내 404(로그인) · 401(재발급 — 회원의 `login_scope` 가 다르면 refresh 만료 단축 · 새 refresh 없음)을 단언한다(manager-login.spec.ts · manager-token-refresh.spec.ts · admin-token-refresh.spec.ts).
 
 ## 스타일 ④ — 직접 인스턴스화 (controller 없는 대상)
 
@@ -171,7 +173,7 @@ repository 를 mock 하는 spec 은 **쿼리 매핑 자체**(조인 조건, raw 
   expect(sql.replace(/\s+/g, ' ')).toBe('SELECT ...');               // SQL 전체 고정
   ```
   raw select 는 select 별칭 목록이 결과 행 타입의 키와 같은지도 비교한다.
-- 현재 적용: [user.repository.spec.ts](../apps/user-service/src/user/test/user.repository.spec.ts) `[SMOKE:data-access]` — 프로젝트의 QueryBuilder 사용처(`user.repository.ts` `buildLoginUserQuery`)를 모두 덮는다.
+- 현재 적용: [user.repository.spec.ts](../apps/user-service/src/user/test/user.repository.spec.ts) `buildLoginUserQuery` · `buildConsumeSmsVerificationAttemptQuery`, [manager.repository.spec.ts](../apps/admin-service/src/manager/test/manager.repository.spec.ts) `buildLoginManagerQuery` · `buildConsumeSmsVerificationAttemptQuery`, [admin.repository.spec.ts](../apps/admin-service/src/admin/test/admin.repository.spec.ts) `buildLoginAdminQuery` — 세 도메인의 로그인 회원 조회는 그룹 조건(`login_scope = $2`)까지 SQL 로 고정한다.
 - 스키마 자체(엔티티 ↔ 마이그레이션)는 테스트가 아니라 `npm run db:check` 로 확인한다.
 
 ## 금지

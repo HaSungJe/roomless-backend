@@ -1,12 +1,10 @@
-import {Injectable, UnauthorizedException} from '@nestjs/common';
+import {Injectable} from '@nestjs/common';
 import {AuthGuard} from '@nestjs/passport';
-
-/** 인증 실패 메시지 (토큰 없음 · 서명 오류 · 만료 · 로그인 불가 회원) */
-export const AUTH_INVALID_MESSAGE = '로그인 정보가 유효하지 않습니다.';
+import {passLoginUser} from './passport.jwt.auth.util.js';
 
 /**
- * JWT 인증 가드 — 핸들러 단위로 붙인다.
- * passport 기본 영문 401 대신 프로젝트 규약의 한국어 메시지로 응답한다.
+ * 이용자 JWT 인증 가드(`jwt-user`) — 이용자 라우트(`/api/v1/user`)에 핸들러 단위로 붙인다.
+ * 이용자 그룹 회원만 통과한다(매니저 · 관리자 토큰은 user-service auth-user 에서 걸러져 401).
  */
 @Injectable()
 export class PassportJwtAuthGuard extends AuthGuard('jwt-user') {
@@ -18,9 +16,6 @@ export class PassportJwtAuthGuard extends AuthGuard('jwt-user') {
      * @returns 회원
      */
     handleRequest<TUser>(error: unknown, user: TUser | false): TUser {
-        if (error || !user) {
-            throw new UnauthorizedException({message: AUTH_INVALID_MESSAGE});
-        }
-        return user;
+        return passLoginUser(error, user);
     }
 }

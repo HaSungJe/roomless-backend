@@ -22,6 +22,9 @@
       "node"
     ],
     "paths": {
+      "@app/account/*": [
+        "./libs/account/src/*"
+      ],
       "@app/common/*": [
         "./libs/common/src/*"
       ],

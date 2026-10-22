@@ -2,7 +2,7 @@ import {ApiProperty} from '@nestjs/swagger';
 import {IsNotEmpty, MaxLength} from 'class-validator';
 
 /**
- * 로그인 회원 조회 path param (게이트웨이 JWT 전략 → user-service 내부 HTTP)
+ * 로그인 이용자 조회 path param (게이트웨이 jwt-user 전략 → user-service 내부 HTTP)
  */
 export class UserAuthUserParamDto {
     @ApiProperty({description: '회원 ID'})
@@ -12,8 +12,8 @@ export class UserAuthUserParamDto {
 }
 
 /**
- * 로그인 회원 정보 — 게이트웨이가 `request.user` 로 쓰고, RolesGuard 가 auth_id 를 본다.
- * 로그인 불가 상태(is_login_allowed = 0)거나 회원 설정이 없으면 user-service 가 404 를 돌려준다.
+ * 로그인 이용자 정보 — 게이트웨이 jwt-user 전략이 `request.user` 로 쓴다.
+ * 이용자 그룹이 아니거나 로그인 불가 상태(is_login_allowed = 0)거나 회원 설정이 없으면 user-service 가 404 를 돌려준다.
  */
 export class UserAuthUserResultDto {
     @ApiProperty({description: '회원 ID'})

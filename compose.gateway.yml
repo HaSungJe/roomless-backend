@@ -5,8 +5,8 @@
 # 설정 원칙 — 개발 · 가상 운영 · 실제 운영이 같은 파일을 쓰고, 달라지는 것은 .env 뿐이다.
 #   - 환경 값(NODE_ENV · RABBITMQ_HOST · 비밀값 · CORS_ORIGINS · TRUST_PROXY …)은 .env 를 그대로 쓴다. compose 는 바꾸지 않고,
 #     필수값이 비어 있으면 띄우지 않는다.
-#   - 서버 구성(컨테이너 안 포트 · user-service-lb 주소 · 인스턴스 ID · TZ)만 아래에 고정한다 — 어느 환경이든 같다.
-#   - 쓰지 않는 비밀값(user-service 브로커 비밀번호 · 브로커 관리자 비밀번호 · DB · 암호화 키)은 빈 값으로 덮어 전달하지 않는다(앱 동작과 무관).
+#   - 서버 구성(컨테이너 안 포트 · user-service-lb · admin-service-lb 주소 · 인스턴스 ID · TZ)만 아래에 고정한다 — 어느 환경이든 같다.
+#   - 쓰지 않는 비밀값(user-service · admin-service 브로커 비밀번호 · 브로커 관리자 비밀번호 · DB · 암호화 키)은 빈 값으로 덮어 전달하지 않는다(앱 동작과 무관).
 #
 # 클라이언트(Next.js)는 gateway-lb(nginx, 호스트 포트 .env 의 GATEWAY_PORT)로만 들어온다. 인스턴스는 포트를 열지 않는다.
 #   - 큐 경로 SSE: 요청을 받은 인스턴스가 자기 결과 큐(q.gw.result.<인스턴스>)로 결과를 받아 그 연결에 흘려보낸다
@@ -16,7 +16,7 @@
 #
 # 네트워크
 #   roomless-edge    : gateway-lb · gateway (외부 포트는 gateway-lb 만)
-#   roomless-service : user-service-lb 로 내부 HTTP (internal)
+#   roomless-service : user-service-lb · admin-service-lb 로 내부 HTTP (internal)
 #   roomless-broker  : 브로커로 나가는 길 — 게이트웨이는 DB 에 닿지 않는다
 name: roomless-gateway
 
@@ -49,11 +49,13 @@ services:
             # 컨테이너 안 포트 — gateway-lb 의 upstream(docker/nginx/gateway.conf)과 같아야 한다. 호스트에 여는 포트는 .env 의 GATEWAY_PORT
             GATEWAY_PORT: 3000
             USER_SERVICE_URL: http://user-service-lb:4001
+            ADMIN_SERVICE_URL: http://admin-service-lb:4002
             # 인스턴스마다 달라야 한다 — 비워 두면 컨테이너 호스트명으로 정한다(.env 에 값이 있어도 덮는다)
             GATEWAY_INSTANCE_ID: ''
             TZ: Asia/Seoul
             # ── 쓰지 않는 비밀값은 전달하지 않는다 (게이트웨이는 DB · 비밀번호 해시 · 토큰 암호화 · AWS 를 쓰지 않는다) ──
             RABBITMQ_USER_SERVICE_PASSWORD: ''
+            RABBITMQ_ADMIN_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
             DATABASE_URL: ''
             POSTGRES_PASSWORD: ''

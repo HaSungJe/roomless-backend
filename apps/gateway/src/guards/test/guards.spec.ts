@@ -1,8 +1,12 @@
 import {ExecutionContext, ForbiddenException, HttpException, UnauthorizedException} from '@nestjs/common';
 import {Reflector} from '@nestjs/core';
 import type {InternalHttpClient} from '../../modules/transport/internal-http.client.js';
+import {PassportJwtAdminAuthGuard} from '../passport.jwt.auth/passport.jwt.admin.guard.js';
+import {PassportJwtAdminAuthStrategy} from '../passport.jwt.auth/passport.jwt.admin.strategy.js';
 import {PassportJwtAuthGuard} from '../passport.jwt.auth/passport.jwt.auth.guard.js';
 import {PassportJwtAuthStrategy} from '../passport.jwt.auth/passport.jwt.auth.strategy.js';
+import {PassportJwtManagerAuthGuard} from '../passport.jwt.auth/passport.jwt.manager.guard.js';
+import {PassportJwtManagerAuthStrategy} from '../passport.jwt.auth/passport.jwt.manager.strategy.js';
 import {RolesGuard} from '../roles/roles.guard.js';
 
 const LOGIN_USER = {user_id: 'u'.repeat(32), auth_id: 'MANAGER'};
@@ -17,7 +21,7 @@ function contextWith(user: unknown): ExecutionContext {
     return {getHandler: () => () => undefined, getClass: () => class {}, switchToHttp: () => ({getRequest: () => ({user})})} as unknown as ExecutionContext;
 }
 
-describe('PassportJwtAuthStrategy.validate', () => {
+describe('PassportJwtAuthStrategy.validate — 이용자(jwt-user)', () => {
     process.env.JWT_SECRET = 'test-secret';
 
     it('[SUCCESS] access 토큰이면 user-service 에 로그인 회원을 물어 request.user 로 돌려준다', async () => {
@@ -45,6 +49,53 @@ describe('PassportJwtAuthStrategy.validate', () => {
         const error = await new PassportJwtAuthStrategy(internalHttp).validate({type: 'access', user_id: 'u'}).catch((e: unknown) => e);
 
         expect((error as UnauthorizedException).getResponse()).toEqual({message: '로그인 정보가 유효하지 않습니다.'});
+    });
+});
+
+describe.each([
+    ['매니저(jwt-manager)', (http: InternalHttpClient) => new PassportJwtManagerAuthStrategy(http), '/internal/v1/manager/auth-user'],
+    ['관리자(jwt-admin)', (http: InternalHttpClient) => new PassportJwtAdminAuthStrategy(http), '/internal/v1/admin/auth-user'],
+])('그룹별 전략 validate — %s', (_label, create, path) => {
+    process.env.JWT_SECRET = 'test-secret';
+
+    it('[SUCCESS] access 토큰이면 admin-service 에 그 그룹의 로그인 회원을 물어 request.user 로 돌려준다', async () => {
+        const internalHttp = {request: vi.fn().mockResolvedValue(LOGIN_USER)} as unknown as InternalHttpClient;
+
+        const user = await create(internalHttp).validate({type: 'access', user_id: LOGIN_USER.user_id, session_id: 's'});
+
+        expect(user).toEqual(LOGIN_USER);
+        expect(internalHttp.request).toHaveBeenCalledWith('admin', 'GET', `${path}/${LOGIN_USER.user_id}`);
+    });
+
+    it('[FAIL] refresh 토큰은 조회 없이 401', async () => {
+        const internalHttp = {request: vi.fn()} as unknown as InternalHttpClient;
+
+        await expect(create(internalHttp).validate({type: 'refresh', user_id: 'u'})).rejects.toBeInstanceOf(UnauthorizedException);
+        expect(internalHttp.request).not.toHaveBeenCalled();
+    });
+
+    it('[FAIL] 다른 그룹 회원 · 로그인 불가(admin-service 404)면 401 "로그인 정보가 유효하지 않습니다."', async () => {
+        const internalHttp = {request: vi.fn().mockRejectedValue(new HttpException({message: '로그인 정보를 찾을 수 없습니다.'}, 404))} as unknown as InternalHttpClient;
+
+        const error = await create(internalHttp)
+            .validate({type: 'access', user_id: 'u'})
+            .catch((e: unknown) => e);
+
+        expect((error as UnauthorizedException).getResponse()).toEqual({message: '로그인 정보가 유효하지 않습니다.'});
+    });
+});
+
+describe.each([
+    ['이용자', new PassportJwtAuthGuard()],
+    ['매니저', new PassportJwtManagerAuthGuard()],
+    ['관리자', new PassportJwtAdminAuthGuard()],
+])('그룹별 가드 handleRequest — %s', (_label, guard) => {
+    it('회원이 있으면 그대로 돌려준다', () => {
+        expect(guard.handleRequest(null, LOGIN_USER)).toBe(LOGIN_USER);
+    });
+
+    it('회원이 없으면 한국어 401', () => {
+        expect(() => guard.handleRequest(null, false)).toThrow(UnauthorizedException);
     });
 });
 

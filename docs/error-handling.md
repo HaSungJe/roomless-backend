@@ -70,7 +70,7 @@ throw new HttpException({message: '이용이 제한된 계정입니다.', block_
 
 ## 성공 응답
 
-- 동기 핸들러는 `@HttpCode(200|204)` 명시(데이터 반환 `@Post` 도 200, void 는 204). 현재 동기 핸들러 7개 모두 200 — void 동기 핸들러 · `@HttpCode(204)` · `@ApiNoContentResponse` 는 아직 없다(미적용 규약).
+- 동기 핸들러는 `@HttpCode(200|204)` 명시(데이터 반환 `@Post` 도 200, void 는 204). 현재 동기 핸들러(게이트웨이 6 · user-service 내부 3 · admin-service 내부 6) 모두 200 — void 동기 핸들러 · `@HttpCode(204)` · `@ApiNoContentResponse` 는 아직 없다(미적용 규약).
 - 큐 핸들러는 항상 200 `text/event-stream`, 결과는 `done` 이벤트의 data(void 면 `null`).
 - **응답 필드는 생략 금지** — 값이 없으면 `null` 로 포함(`x: T | null`).
 - 성공 DTO(`XResultDto`)는 HTTP 응답 본문이자 done 이벤트 data 로 그대로 쓰인다.

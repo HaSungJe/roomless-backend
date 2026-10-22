@@ -58,7 +58,7 @@ const SERVER_ERROR = '서버에서 오류가 발생했습니다. 관리자에게
 describe('UserRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     describe('insertUser', () => {
         it.each([
-            ['23505', 'UK_User_LoginId', '이미 존재하는 로그인 ID입니다.'],
+            ['23505', 'UK_User_LoginIdLoginScope', '이미 존재하는 로그인 ID입니다.'],
             ['23505', 'UK_User_UserSearchCode', '이미 존재하는 검색 코드입니다.'],
             ['23505', 'UK_User_SnsSnsUserId', '이미 가입된 SNS 계정입니다.'],
             ['23503', 'FK_User_Auth', '존재하지 않는 권한입니다.'],
@@ -159,9 +159,9 @@ describe('UserRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     });
 
     describe('updateUser — 휴대폰 번호 경쟁', () => {
-        it('23505 UK_User_Phone → 400 "이미 가입된 번호입니다."', async () => {
+        it('23505 UK_User_PhoneLoginScope(같은 로그인 그룹) → 400 "이미 가입된 번호입니다."', async () => {
             const {repository, user} = makeRepository();
-            user.update.mockRejectedValueOnce(constraintError('23505', 'UK_User_Phone'));
+            user.update.mockRejectedValueOnce(constraintError('23505', 'UK_User_PhoneLoginScope'));
 
             const error = await repository.updateUser({user_id: 'x'}, Object.assign(new UserEntity(), {phone: '01012345678'})).catch((e: unknown) => e);
 
@@ -246,15 +246,15 @@ describe('[SMOKE:data-access] findLoginUser · consumeSmsVerificationAttempt 쿼
         repository = new UserRepository({tx: dataSource.manager} as unknown as TransactionHost<TransactionalAdapterTypeOrm>);
     });
 
-    it('회원 · 상태 · 회원설정을 조인하고 로그인 가능 조건으로 거른다', () => {
+    it('회원 · 상태 · 회원설정을 조인하고 이용자 그룹 · 로그인 가능 조건으로 거른다', () => {
         const [sql, parameters] = repository.buildLoginUserQuery('u1').getQueryAndParameters();
 
-        expect(parameters).toEqual(['u1']);
+        expect(parameters).toEqual(['u1', 'USER']);
         expect(sql.replace(/\s+/g, ' ')).toBe(
             'SELECT "u"."user_id" AS "user_id", "u"."login_id" AS "login_id", "u"."name" AS "name", "u"."gender" AS "gender", "u"."birth" AS "birth", "u"."nickname" AS "nickname", ' +
                 '"u"."auth_id" AS "auth_id", "u"."store_id" AS "store_id", "u"."state_id" AS "state_id", "u"."phone_verified_at" AS "phone_verified_at", "s"."is_login_allowed" AS "is_login_allowed" ' +
                 'FROM "t_user" "u" INNER JOIN "t_state" "s" ON "s"."state_id" = "u"."state_id" INNER JOIN "t_user_setting" "us" ON "us"."user_id" = "u"."user_id" ' +
-                'WHERE "u"."user_id" = $1 AND "s"."is_login_allowed" = 1',
+                'WHERE "u"."user_id" = $1 AND "u"."login_scope" = $2 AND "s"."is_login_allowed" = 1',
         );
     });
 

@@ -11,7 +11,7 @@ import {UserModule} from '../user.module.js';
 
 const TOKENS = {access_token: 'a', refresh_token: 'r', access_token_expires_at: '2026-01-01T00:20:00.000Z', refresh_token_expires_at: '2027-01-01T00:00:00.000Z'};
 
-describe('게이트웨이 회원 라우트 — 동기 경로(내부 HTTP, UserController)', () => {
+describe('게이트웨이 이용자 라우트 — 동기 경로(내부 HTTP, UserController)', () => {
     let app: INestApplication;
     let internalHttp: {request: ReturnType<typeof vi.fn>};
 
@@ -30,7 +30,6 @@ describe('게이트웨이 회원 라우트 — 동기 경로(내부 HTTP, UserCo
 
     it.each([
         ['/api/v1/user/login', '/internal/v1/user/login', {sns_id: 'KAKAO', sns_user_id: 'kakao_1'}],
-        ['/api/v1/user/general-login', '/internal/v1/user/general-login', {login_id: 'roomless_01', login_pw: 'abcd1234!'}],
         ['/api/v1/user/token-refresh', '/internal/v1/user/token-refresh', {refresh_token: 'r.t'}],
     ])('[SUCCESS] POST %s → user-service %s, 응답을 그대로 200 JSON 으로', async (path, internalPath, body) => {
         internalHttp.request.mockResolvedValueOnce(TOKENS);
@@ -57,6 +56,13 @@ describe('게이트웨이 회원 라우트 — 동기 경로(내부 HTTP, UserCo
         const res = await request(app.getHttpServer()).post('/api/v1/user/token-refresh').send({});
 
         expect(res.status).toBe(400);
+        expect(internalHttp.request).not.toHaveBeenCalled();
+    });
+
+    it('[FAIL:route] 이용자 일반 로그인(/general-login)은 없어졌다 → 404, 서비스 호출 없음', async () => {
+        const res = await request(app.getHttpServer()).post('/api/v1/user/general-login').send({login_id: 'roomless_01', login_pw: 'abcd1234!'});
+
+        expect(res.status).toBe(404);
         expect(internalHttp.request).not.toHaveBeenCalled();
     });
 

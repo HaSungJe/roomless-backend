@@ -3,7 +3,7 @@ import {UserController} from './controllers/user.controller.js';
 import {UserQueueController} from './controllers/user.controller.queue.js';
 
 /**
- * 게이트웨이 회원 라우트. 전달 수단(TransportModule)은 전역이라 따로 import 하지 않는다.
+ * 게이트웨이 이용자 그룹 라우트 — `/api/v1/user`. 전달 수단(TransportModule)은 전역이라 따로 import 하지 않는다.
  * - UserController(controllers/user.controller.ts): 동기 경로 — 내부 HTTP
  * - UserQueueController(controllers/user.controller.queue.ts): 큐 경로 — RabbitMQ 명령 + 요청 단위 SSE
  * 두 컨트롤러는 같은 경로 접두(`/api/v1/user`)를 쓴다.

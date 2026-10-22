@@ -25,7 +25,7 @@ const ACTOR = {user_id: LOGIN_USER.user_id, auth_id: 'USER'};
 const TOKENS = {access_token: 'a', refresh_token: 'r', access_token_expires_at: '2026-01-01T00:20:00.000Z', refresh_token_expires_at: '2027-01-01T00:00:00.000Z'};
 const SIGN_DTO = {sns_id: 'KAKAO', sns_user_id: 'kakao_1', gender: 'M', birth: '2000-01-01', nickname: '길동이'};
 
-describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, UserQueueController)', () => {
+describe('게이트웨이 이용자 라우트 — 큐 경로(요청 단위 SSE, UserQueueController)', () => {
     let app: INestApplication;
     let broker: FakeBroker;
     let authenticated: boolean;
@@ -97,7 +97,7 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
     it('[FAIL:broker] 발행이 실패하면 스트림을 열지 않고 일반 503', async () => {
         broker.publishError = new ServiceUnavailableException({message: '일시적으로 요청을 접수할 수 없습니다. 잠시 후 다시 시도해주세요.'});
 
-        const res = await request(app.getHttpServer()).post('/api/v1/user/general-sign').send({login_id: 'roomless_01', login_pw: 'abcd1234!', gender: 'F', birth: '1995-05-05', nickname: '룸리스'});
+        const res = await request(app.getHttpServer()).post('/api/v1/user/sign').send(SIGN_DTO);
 
         expect(res.status).toBe(503);
         expect(res.body).toEqual({message: '일시적으로 요청을 접수할 수 없습니다. 잠시 후 다시 시도해주세요.', validation_errors: null});
@@ -107,7 +107,6 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
     it.each([
         ['delete', '/api/v1/user/leave', {leave_comment: '사유'}, 'user.member.leave', {leave_comment: '사유'}],
         ['patch', '/api/v1/user/leave', {}, 'user.member.leave-cancel', {}],
-        ['patch', '/api/v1/user/password', {current_password: 'old1234!', new_password: 'new5678!'}, 'user.member.password', {current_password: 'old1234!', new_password: 'new5678!'}],
     ] as const)('[SUCCESS] %s %s — 로그인 회원을 actor 로 실어 %s 를 발행하고 done(null)', async (method, path, body, type, payload) => {
         broker.reply = replyDone(null);
 
@@ -129,11 +128,15 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
         expect(broker.published).toHaveLength(0);
     });
 
-    it('[FAIL:validation] 비밀번호 형식 오류는 400, 발행 없음', async () => {
-        const res = await request(app.getHttpServer()).patch('/api/v1/user/password').send({current_password: 'old', new_password: 'short'});
+    it.each([
+        ['post', '/api/v1/user/general-sign'],
+        ['patch', '/api/v1/user/password'],
+        ['post', '/api/v1/user/password-reset'],
+        ['post', '/api/v1/user/password-reset/confirm'],
+    ] as const)('[FAIL:route] %s %s — 이용자 일반 가입 · 비밀번호 변경 · 초기화는 없어졌다 → 404, 발행 없음', async (method, path) => {
+        const res = await request(app.getHttpServer())[method](path).send({});
 
-        expect(res.status).toBe(400);
-        expect(res.body.validation_errors[0].property).toBe('new_password');
+        expect(res.status).toBe(404);
         expect(broker.published).toHaveLength(0);
     });
 
@@ -147,7 +150,7 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
         expect(broker.published).toHaveLength(0);
     });
 
-    describe('SMS 인증 · 아이디 찾기 · 비밀번호 초기화', () => {
+    describe('SMS 인증 · 아이디 찾기', () => {
         const SEND_RESULT = {sms_verification_id: 'a'.repeat(32), expires_at: '2026-01-01T00:05:00.000Z'};
         const CONFIRM = {sms_verification_id: 'a'.repeat(32), code: '123456'};
 
@@ -168,9 +171,7 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
 
         it.each([
             ['/api/v1/user/find-login-id', {phone: '01012345678'}, 'user.member.find-login-id', SEND_RESULT],
-            ['/api/v1/user/find-login-id/confirm', CONFIRM, 'user.member.find-login-id-confirm', {login_id: 'roomless_01', sns_id: null, created_at: '2025-06-01T00:30:00.000Z'}],
-            ['/api/v1/user/password-reset', {login_id: 'roomless_01', phone: '01012345678'}, 'user.member.password-reset', SEND_RESULT],
-            ['/api/v1/user/password-reset/confirm', CONFIRM, 'user.member.password-reset-confirm', null],
+            ['/api/v1/user/find-login-id/confirm', CONFIRM, 'user.member.find-login-id-confirm', {login_id: null, sns_id: 'KAKAO', created_at: '2025-06-01T00:30:00.000Z'}],
         ] as const)('[SUCCESS] POST %s — 비로그인(actor null)으로 %s 를 발행하고 accepted → done', async (path, body, type, data) => {
             authenticated = false;
             broker.reply = replyDone(data);
@@ -197,7 +198,6 @@ describe('게이트웨이 회원 라우트 — 큐 경로(요청 단위 SSE, Use
             ['/api/v1/user/phone-verification', {phone: '010-1234-5678'}, 'phone'],
             ['/api/v1/user/phone-verification/confirm', {...CONFIRM, code: '12345'}, 'code'],
             ['/api/v1/user/find-login-id/confirm', {...CONFIRM, sms_verification_id: 'abc'}, 'sms_verification_id'],
-            ['/api/v1/user/password-reset', {login_id: 'roomless_01', phone: '0101234'}, 'phone'],
         ] as const)('[FAIL:validation] POST %s 형식 오류는 400(입력 오류 %s), 발행 없음', async (path, body, property) => {
             const res = await request(app.getHttpServer()).post(path).send(body);
 

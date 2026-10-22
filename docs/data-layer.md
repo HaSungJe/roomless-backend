@@ -65,11 +65,12 @@ export class UserSettingEntity {
 규칙:
 - **파일** `entities/<domain>/<feature>.entity.ts`, 클래스 `<Feature>Entity`, 새 엔티티는 [entities.ts](../libs/database/src/entities.ts) `ENTITIES` 에 한 줄 추가.
 - **테이블** `t_<feature snake>` — 엔티티 파일명과 같은 이름이다(`t_user` · `t_user_setting` · `t_session_refresh` 모두 user 도메인). `@Entity({name, comment})` — 테이블 주석도 DB COMMENT 로 들어간다.
-- **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
+- **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})` — 여러 컬럼은 이어 붙인다: 로그인 그룹 단위 `UK_User_LoginIdLoginScope(login_id, login_scope)` · `UK_User_PhoneLoginScope(phone, login_scope)`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
 - **모든 컬럼에 `comment`** — 마이그레이션 생성 시 `COMMENT ON` 으로 들어간다. FK 컬럼은 참조 대상 PK 의 주석을 따른다(TypeORM 동작).
 - **FK 는 문자열 속성 + `@ManyToOne(() => X, {nullable, onUpdate: 'CASCADE', onDelete})` + `@JoinColumn({name, referencedColumnName, foreignKeyConstraintName})`** — `nullable: false` 면 `onDelete: 'CASCADE'`, `nullable: true` 면 `onDelete: 'RESTRICT'`(user.entity.ts:23-39, 6건 모두). 조회 시 `loadRelationIds: true` 로 ID 를 채운다. 관계 속성을 엔티티 타입(`auth: AuthEntity`)으로 두지 않는다: ESM 에서 데코레이터 메타데이터가 클래스를 즉시 참조해 순환 import 가 깨진다. 역방향(`@OneToMany`)도 두지 않는다.
 - **컬럼 이름은 항상 명시** — `@Column({name: 'bio', ...})`.
 - **타입** — 문자열 `length: n`(nullable 이면 `type: 'varchar'` 명시), 긴 문자열 `text`, 시각 `timestamptz`, 플래그 `smallint`(0/1), 자동 증가 `bigint` + `@PrimaryGeneratedColumn`(값은 문자열로 온다), JSON `jsonb`.
+  - **jsonb** 는 항목이 자주 바뀌는 상세정보에 쓴다 — 컬럼 하나 + 같은 엔티티 파일의 TS 인터페이스(항목은 모두 선택), `nullable: false` + `default: () => "'{}'"`. 예: `t_store.store_detail: StoreDetail`(`room_count` · `has_shower` · `has_tv` · `has_pc`, 플래그는 0/1 — store.entity.ts). 항목을 바꿀 때는 인터페이스만 고치고 마이그레이션이 없다.
   - 예외(기존 컬럼): `t_user.leave_reserved_at` 은 `varchar(40)` 에 dayjs `'YYYY-MM-DD HH:mm:ss'` 문자열을 넣고 문자열 비교로 경과를 판단한다(user.entity.ts:78, user-leave-cleanup.crontab.ts:43-44). 새 시각 컬럼은 `timestamptz`.
 - **타임스탬프는 `@BeforeInsert`/`@BeforeUpdate` 훅**(❌ `@CreateDateColumn`/`@UpdateDateColumn`). 훅 메서드 이름은 `insertTimestamp()` · `updateTimestamp()`. 훅은 `insert`/`update` 에 **엔티티 인스턴스**를 넘길 때만 돈다 — 그래서 service 는 `new XEntity()` + 할당으로 만든다.
 - **룩업 엔티티**(auth/state/sns)는 구조 컬럼만. 기본 데이터는 seeder.
@@ -85,6 +86,7 @@ export class UserSettingEntity {
 5. 적용(사용자): Docker 로 띄우면 `migrate` 컨테이너가 자동 적용, 로컬은 `npm run db:migrate`, 되돌리기 `npm run db:revert`. 운영은 배포 절차에서 같은 실행기(`migrate.js`)를 돌린다.
 
 - 데이터 이전 · 파티셔닝처럼 엔티티로 표현할 수 없는 작업은 생성된 파일에 `queryRunner.query(...)` 를 직접 추가한다.
+- **기존 행이 있는 테이블에 NOT NULL 컬럼을 더할 때**: 생성된 `ADD ... NOT NULL` 을 `DEFAULT <임시값>` 으로 추가 → `UPDATE` 로 실제 값 채우기 → `ALTER COLUMN ... DROP DEFAULT` 로 고친다(엔티티에 기본값이 없으면 `db:check` 가 일치로 본다). 예: `t_user.login_scope` 를 권한으로 채움(`1792682222497-LoginScopeStoreDetail.ts`).
 - 마이그레이션 목록 테이블은 `t_migration`.
 
 ## Repository
@@ -104,7 +106,7 @@ export class UserRepository implements UserRepositoryInterface {
         try {
             await this.users.insert(entity);
         } catch (error) {
-            if (isUniqueViolation(error, 'UK_User_LoginId')) {
+            if (isUniqueViolation(error, 'UK_User_LoginIdLoginScope')) {
                 throw new BadRequestException({message: '이미 존재하는 로그인 ID입니다.'});
             } else if (isForeignKeyViolation(error, 'FK_User_Auth')) {
                 throw new BadRequestException({message: '존재하지 않는 권한입니다.'});
@@ -135,6 +137,9 @@ export class UserRepository implements UserRepositoryInterface {
 - `update(where, entity)` 의 `entity` 는 호출자가 `new XEntity()` + 바꿀 필드만 할당해 넘긴다(`@BeforeUpdate` 트리거). `undefined` 필드는 건드리지 않고 `null` 은 NULL 로 비운다 — 수정 API 의 선택 필드는 `?? null`.
 - **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery`)하고 Data-Access Smoke spec 으로 SQL 을 고정한다([testing.md](testing.md)).
 - 메서드명은 소유 도메인 어휘.
+
+- **로그인 그룹 조건** — 회원 조회는 자기 도메인의 로그인 그룹(`login_scope`)을 WHERE 에 넣어 다른 그룹 계정을 없는 계정처럼 다룬다(`findManager({login_id, login_scope: LOGIN_SCOPE.MANAGER, state_id: In([...])})`). 휴대폰 번호 중복 확인도 같은 그룹 안에서 한다.
+- **다른 앱의 데이터(공유 DB)** — admin-service 의 manager · admin repository 는 t_user · t_session · t_session_refresh · t_sms_verification 을 같은 엔티티로 직접 다룬다(소유 도메인 어휘: `findManager` · `updateAdmin`). 오류 변환은 user.repository.ts 와 같다. 스키마 변경(마이그레이션)은 user-service 묶음 한 곳이다.
 
 ### 컬럼 이름 규칙
 

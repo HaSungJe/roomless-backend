@@ -1,9 +1,7 @@
 import type {BadRequestException} from '@nestjs/common';
 import {Injectable} from '@nestjs/common';
 import type {MessageEnvelope} from '@app/contracts/message-envelope.js';
-import type {UserGeneralSignDto, UserGeneralSignResultDto} from '@app/contracts/user/dto/user-general-sign.dto.js';
 import type {UserLeaveDto} from '@app/contracts/user/dto/user-leave.dto.js';
-import type {UserPasswordDto} from '@app/contracts/user/dto/user-password.dto.js';
 import type {UserSignDto, UserSignResultDto} from '@app/contracts/user/dto/user-sign.dto.js';
 import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
 import {requireActor} from '@app/messaging/messaging.util.js';
@@ -11,8 +9,6 @@ import {OnCommand} from '@app/messaging/on-command.decorator.js';
 import {UserService} from '../user.service.js';
 import type {UserFindLoginIdConfirmDto, UserFindLoginIdConfirmResultDto} from '@app/contracts/user/dto/user-find-login-id-confirm.dto.js';
 import type {UserFindLoginIdDto, UserFindLoginIdResultDto} from '@app/contracts/user/dto/user-find-login-id.dto.js';
-import type {UserPasswordResetConfirmDto} from '@app/contracts/user/dto/user-password-reset-confirm.dto.js';
-import type {UserPasswordResetDto, UserPasswordResetResultDto} from '@app/contracts/user/dto/user-password-reset.dto.js';
 import type {UserPhoneVerificationConfirmDto} from '@app/contracts/user/dto/user-phone-verification-confirm.dto.js';
 import type {UserPhoneVerificationDto, UserPhoneVerificationResultDto} from '@app/contracts/user/dto/user-phone-verification.dto.js';
 
@@ -39,14 +35,6 @@ export class UserQueueController {
     }
 
     /**
-     * 일반 회원가입
-     */
-    @OnCommand(USER_COMMAND.GENERAL_SIGN)
-    async generalSign(command: MessageEnvelope<UserGeneralSignDto>): Promise<UserGeneralSignResultDto> {
-        return this.userService.generalSign(command.payload, command.meta.client_ip ?? '');
-    }
-
-    /**
      * 회원 탈퇴 신청
      */
     @OnCommand(USER_COMMAND.LEAVE)
@@ -60,14 +48,6 @@ export class UserQueueController {
     @OnCommand(USER_COMMAND.LEAVE_CANCEL)
     async cancelLeave(command: MessageEnvelope<Record<string, never>>): Promise<void> {
         return this.userService.cancelLeave(requireActor(command).user_id);
-    }
-
-    /**
-     * 비밀번호 변경
-     */
-    @OnCommand(USER_COMMAND.PASSWORD)
-    async changePassword(command: MessageEnvelope<UserPasswordDto>): Promise<void> {
-        return this.userService.changePassword(requireActor(command).user_id, command.payload);
     }
 
     /**
@@ -107,32 +87,10 @@ export class UserQueueController {
      * 아이디 찾기 — 인증번호 확인 (비로그인). 불일치는 반환된 BadRequestException.
      *
      * @param command 명령 봉투
-     * @returns 아이디 또는 가입한 SNS — 또는 반환된 실패
+     * @returns 가입한 SNS — 또는 반환된 실패
      */
     @OnCommand(USER_COMMAND.FIND_LOGIN_ID_CONFIRM)
     async confirmFindLoginId(command: MessageEnvelope<UserFindLoginIdConfirmDto>): Promise<UserFindLoginIdConfirmResultDto | BadRequestException> {
         return this.userService.confirmFindLoginId(command.payload);
-    }
-
-    /**
-     * 비밀번호 초기화 — 인증번호 발송 (비로그인)
-     *
-     * @param command 명령 봉투
-     * @returns 인증 ID · 만료 시각
-     */
-    @OnCommand(USER_COMMAND.PASSWORD_RESET)
-    async sendPasswordReset(command: MessageEnvelope<UserPasswordResetDto>): Promise<UserPasswordResetResultDto> {
-        return this.userService.sendPasswordReset(command.payload, command.meta.client_ip ?? '');
-    }
-
-    /**
-     * 비밀번호 초기화 — 인증번호 확인 → 임시 비밀번호 SMS (비로그인). 불일치는 반환된 BadRequestException.
-     *
-     * @param command 명령 봉투
-     * @returns 없음 또는 반환된 실패
-     */
-    @OnCommand(USER_COMMAND.PASSWORD_RESET_CONFIRM)
-    async confirmPasswordReset(command: MessageEnvelope<UserPasswordResetConfirmDto>): Promise<void | BadRequestException> {
-        return this.userService.confirmPasswordReset(command.payload);
     }
 }

@@ -12,10 +12,11 @@ flowchart LR
   P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::done
   P2 --> P4["Phase 4 · 회원 스키마 확장 (5)"]:::done
   P4 --> P5["Phase 5 · 서버 분할 (4)"]:::done
-  P1 --> P7["Phase 7 · admin-service 기반 (4)"]:::todo
+  P1 --> P7["Phase 7 · admin-service 기반 (4)"]:::inprog
   P1 --> P8["Phase 8 · store 스키마 (5)"]:::todo
   P1 --> P22["Phase 22 · api-log (1)"]:::todo
-  P3 --> P6["Phase 6 · 계정·인증 (2)"]:::todo
+  P3 --> P6["Phase 6 · 계정·인증 (4)"]:::inprog
+  P7 --> P6
   P4 --> P6
   P3 --> P9["Phase 9 · 업체 입점·관리 (5)"]:::todo
   P4 --> P9
@@ -55,8 +56,8 @@ flowchart LR
 - Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 6, 9, 11 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · done
 - Phase 4 — 회원 스키마 확장 · 유닛 5개 · 의존: Phase 2, 3 · 푼다: Phase 5, 6, 9 · 파일 집합: libs/database(entities · migrations · seeder), libs/contracts/src/user, apps/user-service/src/user, apps/gateway/src/api/v1/user, AGENTS.md, docs/ · done
 - Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), libs/messaging(CommandDispatcher), libs/database(연결 대기 제한), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, .env.example, README.md, AGENTS.md, docs/ · done
-- Phase 6 — 계정·인증 · 유닛 2개 · 의존: Phase 3, 4 · 푼다: Phase 20 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
-- Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · todo
+- Phase 6 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4, 7 · 푼다: Phase 20 · 파일 집합: apps/user-service/src/user, apps/admin-service/src/{manager,admin}, apps/gateway/src/api/v1(user · manager · admin) · guards, libs/account, libs/contracts/src/{user,manager,admin}, libs/database(entities · migrations · seeder), README.md, AGENTS.md, docs/ · in-progress
+- Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · in-progress(Phase 6 과 한 기획 — 리비전 261023-1)
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · todo
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store, libs/contracts/src/store · todo
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/store · todo
@@ -75,23 +76,24 @@ flowchart LR
 
 동시 가능: Phase 6·Phase 7·Phase 8 (지금 바로) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: Phase 5 완료 · Next up: Phase 6
+지금: Phase 6 진행 중 · Next up: Phase 6
 
 ## 지금 할 일
 
-계정·인증(Phase 6)부터 — 관리자 페이지 · 이용자 페이지 로그인을 가르고 가입 규칙을 세운다
-- 정하기 — 관리자 / 이용자 API 라우트 분리 방식(추천: 관리자 `/api/v1/admin/<domain>`), 성인 기준 · 일반 가입 생년월일 검증 (Open Decisions)
-- 시작 — `/beaver:direct 계정·인증` (admin-service 기반 Phase 7 · store 스키마 Phase 8 과 동시에 돌려도 된다)
+계정·인증(Phase 6) + admin-service 기반(Phase 7) build 완료 — 로그인 그룹 3개를 도메인으로 분리(이용자 user-service · 매니저 · 관리자 admin-service) · 그룹별 인증 가드 · 그룹별 UK · 성인 기준 · 일반 가입 폐지 · 업체 상세 JSON
+- 다음 — `/beaver:ship` 으로 리뷰 · 커밋 · 푸시
+- 사용자 — 마이그레이션 `LoginScopeStoreDetail` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 회원의 `login_scope` 를 권한으로 채운다)
+- 사용자 — `.env` 에 `RABBITMQ_ADMIN_SERVICE_PASSWORD` 추가 → `npm run docker:rabbitmq`(계정 생성) → `npm run docker:admin-service`(user-service 묶음 뒤). 로컬은 `npm run start:admin-service`(:4002)
 - 사용자 — Phase 4 마이그레이션 2개 적용(`npm run db:migrate`), Phase 5 배포 때 user-service 를 새 이미지로 다시 띄우고 scheduler 묶음(`npm run docker:scheduler`)을 user-service 뒤에 띄운다
 
 ## Scope & Actors
 
 | 행위자 (`t_auth`) | 페이지 | 하는 일 |
 |---|---|---|
-| 총관리자 `SUPER_ADMIN` / `ADMIN` | 관리자 | 입점 신청 승인 · 반려, 업체 등록 · 상태 관리(영업중지 등), 업체 총관리자 계정 생성, 이용자 관리, 업체 관리자 관리, 전체 통계 |
-| 업체 총관리자 `HEAD_MANAGER` | 관리자 | 업체 관리자 권한 전부 + 업체 관리자 계정 등록 · 수정 · 삭제, SMS로 아이디 찾기 · 비밀번호 초기화 |
-| 업체 관리자 `MANAGER` | 관리자 | 자기 업체 1곳 — 업체 소개 · 영업시간 · 브레이크타임 · 정비시간, 층별 호실 · 객실 그룹 · 상품 · 기간 가격 · 사물, 호실 상태 전이, 예약 현황 · 예약 취소 · 호실 이동, 자기 업체 통계 |
-| 이용자 `USER` | 이용자 | 성인만 가입(SNS · 일반) 후 휴대폰 SMS 인증, SMS로 비밀번호 초기화, 지도 검색, 호실 · 시간대 선택 예약 · 결제 · 취소, QR 입장, 사물 제어, 연장, 입점 신청 |
+| 총관리자 `SUPER_ADMIN` / `ADMIN` | 관리자 (`/api/v1/admin`) | 아이디 로그인 · 비밀번호 변경(찾기 · 초기화 없음), 입점 신청 승인 · 반려, 업체 등록 · 상태 관리(영업중지 등), 업체 총관리자 계정 생성, 이용자 관리, 업체 관리자 관리, 전체 통계 |
+| 업체 총관리자 `HEAD_MANAGER` | 매니저 (`/api/v1/manager`) | 업체 관리자 권한 전부 + 업체 관리자 계정 등록 · 수정 · 삭제 |
+| 업체 관리자 `MANAGER` | 매니저 (`/api/v1/manager`) | 아이디 로그인 · 비밀번호 변경 · 등록된 휴대폰으로 아이디 찾기 · 비밀번호 초기화(총매니저도 같다), 자기 업체 1곳 — 업체 소개 · 영업시간 · 브레이크타임 · 정비시간, 층별 호실 · 객실 그룹 · 상품 · 기간 가격 · 사물, 호실 상태 전이, 예약 현황 · 예약 취소 · 호실 이동, 자기 업체 통계 |
+| 이용자 `USER` | 이용자 (`/api/v1/user`) | 성인만(청소년보호법) SNS 가입 · 로그인(비밀번호 없음) 후 휴대폰 SMS 인증 · SMS로 아이디(가입한 SNS) 찾기, 지도 검색, 호실 · 시간대 선택 예약 · 결제 · 취소, QR 입장, 사물 제어, 연장, 입점 신청 |
 | 시스템 | — | scheduler 서버의 crontab(탈퇴 자동처리 · 입장 QR 발송 · 이용 종료 자동 완료), 서비스의 브로커 명령 처리 |
 
 업체 총관리자와 업체 관리자는 객실 관리 권한이 같다. 다른 점은 업체 관리자 계정을 관리할 수 있는지 하나다.
@@ -199,34 +201,43 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 
 ship 완료 (2026-10-22, 커밋 00aa411) — report: `.beaver/output/report/platform/server-split-report.md` · review: `.beaver/output/review/main-review-261022.md`. 리뷰 261020-3 #1(DB 연결 풀 교착, High) · #2 해소.
 
-### Phase 6 — 계정·인증 (페이지별 로그인 · 가입 규칙) · depends: Phase 3, Phase 4
+### Phase 6 — 계정·인증 (로그인 그룹 분리 · 가입 규칙) · depends: Phase 3, Phase 4
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 24 | 관리자 · 이용자 페이지 로그인 분리 | 관리자 페이지는 관리자 역할만, 이용자 페이지는 `USER` 만 — 아이디 찾기 · 비밀번호 초기화의 관리자 페이지 라우트도 | 라우트 분리 방식(Open Decisions) | 23 | todo |
-| 25 | 가입 규칙 | 미성년자 가입 거부 | 성인 기준 · 일반 가입 검증(Open Decisions) | — | todo |
+| 24 | 로그인 그룹 = 도메인 3개 | 이용자 `user`(user-service, `/api/v1/user`, SNS 만) · 매니저 `manager` · 관리자 `admin`(admin-service, `/api/v1/manager` · `/api/v1/admin`)을 controller · service · repository · DTO · 명령 · 내부 경로까지 분리 — 다른 그룹 계정은 404 · 401. 게이트웨이 인증도 그룹별 전략 · 가드(`jwt-user` · `jwt-manager` · `jwt-admin`). 관리자 · 매니저 비밀번호 변경, 매니저 아이디 찾기 · 비밀번호 초기화. 공통 계정 로직은 `libs/account` | 그룹별 접두(결정 2026-10-22) · 도메인 분리 · admin-service · libs/account · 명령 `admin.*` · 공유 DB 직접 · 그룹별 토큰 확인 (결정 2026-10-23) | 23, 28 | in-progress |
+| 25 | 가입 규칙 | 성인 기준(청소년보호법 — 한국 날짜의 올해 − 출생 연도 ≥ 19) · 일반 가입 폐지(이용자 일반 가입 · 로그인 · 비밀번호 변경 · 초기화 제거) | 청소년보호법 · SNS 가입만 (결정 2026-10-22) | — | in-progress |
+| 92 | 로그인 그룹 · 그룹별 UK | `t_user.login_scope`(USER · MANAGER · ADMIN) + `UK(login_id, login_scope)` · `UK(phone, login_scope)` — 기존 행은 권한으로 채움 | 3그룹 단위 (결정 2026-10-22) | 24 | in-progress |
+| 93 | 업체 상세 JSON | 기존 `t_store` 에 `store_detail`(jsonb) — 초기 항목 `room_count` · `has_shower` · `has_tv` · `has_pc`(0/1), 항목은 바뀔 수 있다 | 기존 `t_store` 에 추가 (결정 2026-10-22) | — | in-progress |
 
-**Expected APIs** (가칭):
+**APIs**:
 
 | Unit | Method | Path | Purpose |
 |------|--------|------|---------|
-| #24 | POST | `/api/v1/admin/auth/login` | 관리자 페이지 로그인 |
+| #24 | POST | `/api/v1/user/login`(user-service) · `/api/v1/manager/login` · `/api/v1/admin/login`(admin-service) | 그룹별 로그인 |
+| #24 | POST | `/api/v1/{user,manager,admin}/token-refresh` | 그룹별 토큰 재발급 |
+| #24 | PATCH | `/api/v1/manager/password` · `/api/v1/admin/password` | 비밀번호 변경(SSE) |
+| #24 | POST | `/api/v1/manager/find-login-id(+/confirm)` · `/password-reset(+/confirm)` | 매니저 아이디 찾기 · 비밀번호 초기화(SSE) |
+
+build 완료 — report: `.beaver/output/report/user/user-account-auth-report.md` (리비전 261023-1 — 도메인 분리 · admin-service)
 
 ### Phase 7 — admin-service 기반 (새 서비스 앱 토대) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 28 | admin-service 앱 | nest-cli 프로젝트 · 루트 모듈(`InternalAuthGuard` · `MessagingModule.forService`) | — | — | todo |
-| 29 | Docker 묶음 | `compose.admin-service.yml` · nginx LB · 공용 네트워크 · `.env` 의 `ADMIN_SERVICE_REPLICAS`(기본 1) | — | 28 | todo |
-| 30 | 브로커 계정 | `BROKER_USER` · init.sh 권한 · `broker:check` 대상 추가 | — | 28 | todo |
-| 31 | 게이트웨이 연결 | `InternalHttpClient` 의 `InternalService` · `SERVICE_URL` 에 admin | — | 28 | todo |
+| 28 | admin-service 앱 | nest-cli 프로젝트 · 루트 모듈(`InternalAuthGuard` · `ReturnedExceptionInterceptor` · `MessagingModule.forService` · `SmsModule`) · 매니저 · 관리자 도메인 | 공유 DB 직접 · 마이그레이션 · 시드는 user-service 묶음 (결정 2026-10-23) | — | in-progress |
+| 29 | Docker 묶음 | `compose.admin-service.yml` · nginx LB(`admin-service.conf`) · 공용 네트워크 · `.env` 의 `ADMIN_SERVICE_REPLICAS`(기본 1) | — | 28 | in-progress |
+| 30 | 브로커 계정 | `BROKER_USER.ADMIN_SERVICE` · init.sh 권한(`q.admin.cmd` · `roomless.event`) · `broker:check` 대상 추가 | — | 28 | in-progress |
+| 31 | 게이트웨이 연결 | `InternalHttpClient` 의 `InternalService 'admin'` · `ADMIN_SERVICE_URL` | — | 28 | in-progress |
 
-**Expected entry points**: `apps/admin-service/src/main.ts` · `admin-service.module.ts` · `q.admin.cmd`(가칭) · `http://admin-service-lb:4002`(가칭).
+**Entry points**: `apps/admin-service/src/main.ts`(:4002) · `admin-service.module.ts` · 큐 `q.admin.cmd`(← `admin.#`) · `http://admin-service-lb:4002`.
+
+Phase 6 리비전 261023-1 과 한 기획으로 build 했다(매니저 · 관리자 도메인을 이 서비스에 둔다).
 
 ### Phase 8 — store 스키마 (업체 새 모델) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 32 | `t_store_application` | 입점 신청 — 신청자 · 업체 정보 · 업체 총관리자 휴대폰 번호 · 상태 · 반려 사유 | 신청 상태 표현(룩업 · 문자열) | — | todo |
 | 33 | `t_store_state` 룩업 + 시드 | 활성 · 영업중지 · 탈퇴 | — | — | todo |
-| 34 | `t_store` 재설계 | 상태 · 위경도 · 정비시간 · 소개 · 편의시설 · 연락처 | 편의시설 저장 형태 | 33 | todo |
+| 34 | `t_store` 재설계 | 상태 · 위경도 · 정비시간 · 소개 · 편의시설 · 연락처 — 편의시설 · 방 칸수는 Phase 6 #93 의 `store_detail`(jsonb)로 먼저 자리를 잡았다 | 편의시설을 `store_detail` 에 둘지 · 따로 둘지 | 33 | todo |
 | 35 | `t_store_image` | 업체 사진(정렬 순서) | — | 34 | todo |
 | 36 | `t_store_hour` · `t_store_break` | 요일별 영업시간 · 브레이크타임 | — | 34 | todo |
 
@@ -393,22 +404,22 @@ ship 완료 (2026-10-22, 커밋 00aa411) — report: `.beaver/output/report/plat
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 29/91 units done (5/22 phases)
-**Next up**: Phase 6 계정·인증 — 의존이 모두 끝났고, 관리자 계정 관리와 이후 관리자 API 가 페이지별 로그인 분리를 기다린다. `/beaver:direct 계정·인증` 으로 시작한다(한 기획이 유닛 2개를 모두 덮는다).
+**Progress**: 29/93 units done (5/22 phases)
+**Next up**: Phase 6 계정·인증 + Phase 7 admin-service 기반 — build 완료(유닛 8개 #24 · #25 · #92 · #93 · #28~#31), `/beaver:ship` 대기. 관리자 계정 관리와 이후 관리자 · 매니저 API 가 이 도메인 분리를 기다린다.
 
-함께 시작할 수 있는 것: admin-service 기반(Phase 7) · store 스키마(Phase 8) — 계정·인증과 파일이 겹치지 않아 동시에 돌릴 수 있다(둘끼리도 겹치지 않는다).
+함께 시작할 수 있는 것: store 스키마(Phase 8) — 계정·인증과 파일이 겹치지 않는다.
 
 ## Cross-Cutting Rules
 
 - **서버 분할** — gateway · user-service(이용자 — 회원 · 예약 · 결제 · 이용, 트래픽이 몰려 로드밸런싱) · admin-service(총관리자 + 업체 관리자 — 업체 · 객실 · 상품 · 사물, 둘은 권한 `@Roles` 로 구분) · scheduler(crontab 만, 들어오는 연결 없음 · DB 직접) · notify-service(후순위). 게이트웨이가 유일한 진입점. 인스턴스 수는 고정하지 않고 모두 `.env` 로 정한다 — `GATEWAY_REPLICAS`(기본 2) · `USER_SERVICE_REPLICAS`(기본 2) · `ADMIN_SERVICE_REPLICAS`(기본 1) · `SCHEDULER_REPLICAS`(기본 1) (결정 2026-10-20)
 - **전달 경로** — 즉시 응답 · 조회는 내부 HTTP, 상태를 바꾸는 쓰기 · 몰리는 작업은 RabbitMQ 명령 + 요청 단위 SSE
-- **페이지 구분** — 관리자 페이지(총관리자 · 업체 총관리자 · 업체 관리자)와 이용자 페이지(이용자). 관리자 페이지 로그인은 관리자 역할만, 이용자 페이지는 `USER` 만
-- **관리자 API 권한** — `@UseGuards(PassportJwtAuthGuard, RolesGuard)` + `@Roles(...)` 를 한 세트로 — 첫 관리자 API 에서 처음 적용한다
+- **로그인 그룹 = 도메인** — `t_user.login_scope` 3개: 이용자 `USER` → `user` 도메인(user-service, `/api/v1/user`) · 매니저 `MANAGER` = 총매니저 · 매니저 → `manager` 도메인 · 관리자 `ADMIN` = 총관리자 · 관리자 → `admin` 도메인(둘 다 admin-service, `/api/v1/manager` · `/api/v1/admin`). 도메인마다 controller · service · repository · DTO · 명령 · 내부 경로가 따로이고, 게이트웨이 인증도 그룹별 전략 · 가드(토큰 확인은 그 그룹의 서비스)다. 다른 그룹 계정은 404 · 401. 아이디 · 휴대폰 번호 UK 도 그룹 단위. 공통 계정 로직은 `libs/account`. 그룹의 기능 라우트는 `/api/v1/<group>/<domain>` (결정 2026-10-22 · 2026-10-23)
+- **권한 가드** — 로그인이 필요한 라우트는 그 그룹의 인증 가드(`PassportJwtAuthGuard` · `PassportJwtManagerAuthGuard` · `PassportJwtAdminAuthGuard`). 그룹 안에서 권한을 더 좁힐 때만 `RolesGuard` + `@Roles(...)` 를 한 세트로 더한다(예: 총매니저 전용 — Phase 10)
 - **매니저 소속** — 매니저 1명 = 업체 1곳(`t_user.store_id`). 업체 관리자 API 인가는 "요청 대상이 내 `store_id` 와 일치하는가"
 - **업체 공개** — 등록되고 활성화된 업체만 이용자에게 보인다. 영업중지 · 탈퇴 업체는 표시하지 않는다
-- **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 직접 변경. 업체 총관리자는 휴대폰 번호 필수, 아이디 · 비밀번호 찾기는 SMS, 비밀번호는 초기화 방식(일반회원 초기화도 SMS)
-- **연령 제한** — 성인만 가입한다(SNS 로그인의 생년월일로 판정)
-- **휴대폰 인증** — 모든 회원(SNS · 일반)은 가입 후 SMS 인증(발송 → 인증 ID + 인증번호 확인)을 마쳐야 그 번호가 회원정보에 저장되고 서비스를 이용할 수 있다. 번호 1개 = 계정 1개. 인증번호 6자리 · 5분 · 3회, 같은 번호 하루(한국 날짜) 10번(`SMS_VERIFICATION_DAILY_LIMIT`). 인증 전 회원을 막는 가드는 회원 전용 기능이 생길 때
+- **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 `/api/v1/admin/password` 로 변경. 업체 총관리자는 휴대폰 번호 필수. 매니저 그룹의 아이디 찾기 · 비밀번호 초기화는 등록된 번호로 SMS(초기화는 임시 비밀번호). 관리자 그룹은 비밀번호 변경만, 이용자는 비밀번호가 없다
+- **연령 제한** — 성인만 가입한다(청소년보호법 — 만 19세가 되는 해의 1월 1일부터, SNS 가입의 생년월일로 판정). 이용자는 SNS 로만 가입한다 (결정 2026-10-22)
+- **휴대폰 인증** — 이용자는 가입 후 SMS 인증(발송 → 인증 ID + 인증번호 확인)을 마쳐야 그 번호가 회원정보에 저장되고 서비스를 이용할 수 있다. 로그인 그룹 안에서 번호 1개 = 계정 1개. 인증번호 6자리 · 5분 · 3회, 같은 번호 하루(한국 날짜) 10번(`SMS_VERIFICATION_DAILY_LIMIT`). 인증 전 회원을 막는 가드는 회원 전용 기능이 생길 때
 - **객실 모델** — 객실 그룹 단위로 상품(이름 · 이용시간 · 가격)을 정하고 그룹 안 호실은 같은 상품을 쓴다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 업체가 그룹 상품마다 기간 가격(성수기 등)을 따로 정한다
 - **이용 단위 · 사전 예약** — 항상 시간 기반(숙박도 긴 상품). 6개월 앞 예약까지 받는다
 - **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 점유 구간 겹침 없음 + 영업시간 내 · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 스탠바이도). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
@@ -423,18 +434,19 @@ ship 완료 (2026-10-22, 커밋 00aa411) — report: `.beaver/output/report/plat
 
 ## Open Decisions (roadmap-level)
 
-- [ ] **업체 계정 생성 위치** — 입점 승인(#39)과 업체 관리자 관리(#42)는 `t_user`(user-service 소유)에 계정을 만든다. admin-service 가 공유 DB 의 `t_user` 를 직접 쓸지, user-service 에 명령으로 요청할지. (Phase 9 · 10)
 - [ ] **예약 · 조회가 객실 데이터를 읽는 방법** — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
-- [ ] **관리자 / 이용자 API 라우트 분리** — 추천: 관리자 페이지 `/api/v1/admin/<domain>`, 이용자 페이지 `/api/v1/<domain>`. (Phase 6 이후 전부)
-- [ ] **성인 확인** — 성인 기준(청소년보호법은 만 19세가 되는 해의 1월 1일부터 성인), 일반 가입의 생년월일은 검증되지 않는다(본인인증을 붙일지 · 일반 가입을 막을지). (Phase 6)
 - [ ] **입장 QR 확인 수단** — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 14 · 19)
 - [ ] **취소 규정의 끝** — 시작 이후 · 노쇼 취소를 받을지. (Phase 17)
 - [ ] **영업중지 · 영업시간 변경 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지. (Phase 9 · 11)
 - [ ] **통계 정의** — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 21)
 - [ ] **결제 대기 유지 시간 · 결제 수단** — 추천: 10분, 토스페이먼츠 테스트 키로 개발. (Phase 17)
+- [x] **업체 계정 생성 위치 · admin-service 데이터 접근** — admin-service 가 공유 DB 의 `t_user` · 세션 · SMS 기록을 같은 엔티티로 직접 쓴다(scheduler 와 같은 방식). 입점 승인(#39) · 업체 관리자 관리(#42)의 계정 생성도 admin-service 매니저 도메인이 직접 한다. 마이그레이션 · 시드는 user-service 묶음 한 곳. (결정 2026-10-23 · Phase 6 리비전)
+- [x] **로그인 그룹 = 도메인 · 서버 배치** — user · manager · admin 도메인을 게이트웨이 · contracts · 서비스 전 레이어에서 나누고, 매니저 · 관리자는 admin-service(Phase 7 을 함께)에 둔다. 공통 계정 로직은 새 lib `libs/account`, 명령은 `admin.manager.*` · `admin.admin.*`(큐 `q.admin.cmd`), 게이트웨이 토큰 확인은 그룹별 서비스(전략 · 가드 3쌍). (결정 2026-10-23)
+- [x] **관리자 / 이용자 API 라우트 분리** — 로그인 그룹별 접두: 이용자 `/api/v1/user` · 매니저 `/api/v1/manager` · 관리자 `/api/v1/admin`, 그룹 기능은 `/api/v1/<group>/<domain>`. 로그인 API 3개(이용자 SNS · 매니저 · 관리자), 다른 그룹은 없는 계정처럼 404. 아이디 · 번호 UK 는 그룹 단위. (같은 기능의 그룹별 API 를 service 메서드 하나 + `login_scope` 인자로 두던 방식은 2026-10-23 도메인 분리로 바뀌었다.) (결정 2026-10-22 · Phase 6 #24 · #92)
+- [x] **성인 확인** — 청소년보호법 기준(한국 날짜의 올해 − 출생 연도 ≥ 19, 생일은 보지 않음). 일반 가입은 폐지 — 이용자는 SNS 로만 가입하고 이용자 일반 로그인 · 비밀번호 변경 · 초기화도 없앤다. (결정 2026-10-22 · Phase 6 #25)
 - [x] **인증번호 확인 교착 해결 방식** — 확인 명령은 트랜잭션 연결을 잡은 채 시도 횟수 저장용 연결(RequiresNew)을 하나 더 기다려, 동시에 풀만큼 몰리면 멈췄다. 틀린 인증번호(커밋해야 하는 실패)는 예외를 throw 하지 않고 return 한다 — `@Transactional()` 이 커밋해 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 throw 와 같은 failed 결과(400 · `validation_errors`)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개. 그 밖의 실패(SMS 503 등)는 지금처럼 throw → 롤백. 풀 연결 대기 시간은 따로 제한한다. (결정 2026-10-20 · Phase 5 #91)
-- [x] **발송 채널 · 휴대폰 번호** — SMS만(이메일 · 알림톡 · 푸시 없음). 휴대폰 번호는 가입 때 받지 않고, 가입 후 SMS 인증을 마친 번호만 저장한다(SNS · 일반 공통, Phase 4). (결정 2026-10-20)
+- [x] **발송 채널 · 휴대폰 번호** — SMS만(이메일 · 알림톡 · 푸시 없음). 이용자의 휴대폰 번호는 가입 때 받지 않고, 가입 후 SMS 인증을 마친 번호만 저장한다(Phase 4). 매니저 번호는 계정을 만들 때 등록한다(Phase 9 · 10). (결정 2026-10-20 · 2026-10-22 갱신)
 - [x] **SMS 발송 업체 = AWS(Amazon SNS)** — 서울 리전. 한국은 AWS 전용 발신번호가 없어 국제 경로로만 나간다(수신 화면 국제발신, 발신번호 지정 불가, 한글 70자 단위 과금, 단가는 사용량 보고서로 확인). 새 계정은 샌드박스 · 월 한도 USD 1 — 운영 전 해제 요청. (결정 2026-10-20)
 - [x] **휴대폰 인증 규칙 · 비밀번호 초기화 방식** — 6자리 · 5분 · 3회, 같은 번호 하루 10번(env), 확인은 인증 ID + 인증번호. 초기화는 아이디 + 번호 인증 후 영문 + 숫자 10자리 임시 비밀번호 SMS(다음 로그인 때 변경 필요). (결정 2026-10-20)
 - [x] **이미지 저장소 = AWS S3** — 업로드는 presigned URL(클라이언트가 직접 올림). (결정 2026-10-20)

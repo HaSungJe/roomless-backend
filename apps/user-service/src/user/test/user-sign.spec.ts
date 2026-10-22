@@ -92,6 +92,7 @@ describe('user.member.sign — SNS 회원가입 (큐 경로)', () => {
                 user_id: user.user_id,
                 user_search_code: user.user_search_code,
                 auth_id: 'USER',
+                login_scope: 'USER',
                 state_id: 'ACTIVE',
                 sns_id: 'KAKAO',
                 sns_user_id: 'kakao_user_123',
@@ -154,15 +155,15 @@ describe('user.member.sign — SNS 회원가입 (큐 경로)', () => {
     });
 
     describe('[FAIL:service]', () => {
-        it('만 18세 이하는 failed 400 + birth 입력 오류, 쓰기 없음', async () => {
+        it('미성년자(청소년보호법 — 2026년에 2008년생)는 failed 400 + birth 입력 오류, 쓰기 없음', async () => {
             vi.mocked(isAdult).mockReturnValue(false);
 
-            const {decision, result} = await runCommand(dispatcher, {type: USER_COMMAND.SIGN, payload: {...VALID_DTO, birth: '2010-01-01'}});
+            const {decision, result} = await runCommand(dispatcher, {type: USER_COMMAND.SIGN, payload: {...VALID_DTO, birth: '2008-01-01'}});
 
             expect(decision.action).toBe('ack');
             expect(decision.result?.type).toBe('user.member.sign.failed');
             expect(result).toEqual({result: null, error: {status_code: 400, body: {message: UNDERAGE_MESSAGE, validation_errors: [{property: 'birth', message: UNDERAGE_MESSAGE}]}}});
-            expect(isAdult).toHaveBeenCalledWith('2010-01-01');
+            expect(isAdult).toHaveBeenCalledWith('2008-01-01');
             expectNoWrites();
         });
     });

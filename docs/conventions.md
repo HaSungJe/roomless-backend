@@ -38,11 +38,13 @@
 
 **인프라 · 라이브러리 파일** — `<kebab-이름>.<role>.ts`: `internal-http.client.ts` · `command-stream.service.ts` · `command.dispatcher.ts` · `command-handler.registry.ts` · `rabbitmq-command.publisher.ts` · `on-command.decorator.ts` · `custom-error.filter.ts` · `internal-auth.guard.ts` · `job-lock/job-lock.service.ts` · `cors.config.ts`. 모듈 전용 util 은 `<module>.util.ts`(transport.util.ts · messaging.util.ts · seeder.util.ts). 전역 util 은 role 접미사 없이 `utils/<이름>.ts`. 이름에 점이 들어간 예외: `passport.jwt.auth.*` · `global.result.dto.ts`.
 
-**게이트웨이 폴더** — 공개 라우트 `api/v1/<domain>/`, 가드 `guards/<guard>/`, 인프라 `modules/<module>/`, 부트스트랩 설정 함수 `config/`(cors.config.ts · trust-proxy.config.ts).
+**게이트웨이 폴더** — 공개 라우트는 로그인 그룹(= 도메인)별 `api/v1/<group>/`(`user` · `manager` · `admin`, 그룹 기능은 `api/v1/<group>/<domain>/`), 가드 `guards/<guard>/`, 인프라 `modules/<module>/`, 부트스트랩 설정 함수 `config/`(cors.config.ts · trust-proxy.config.ts).
 
 **DTO 파일** — `libs/contracts/src/<domain>/dto/<domain>-<feature>.dto.ts` (kebab). 요청 DTO 와 응답 `ResultDto` 는 같은 파일에 함께 export. 결과가 없는(void) 기능은 ResultDto 를 두지 않는다(user-leave.dto.ts · user-password.dto.ts).
 
-**규격 상수** — `libs/contracts/src/<domain>/<domain>.commands.ts` 에 명령 type · 큐 이름 · 바인딩 키 · **내부 HTTP 경로(`USER_INTERNAL_PATH`)** 를 둔다(user.commands.ts:8-34). 게이트웨이 동기 핸들러와 JWT 전략은 경로 문자열을 직접 쓰지 않고 이 상수만 쓴다. 명령 type 은 `<server>.<resource>.<action-kebab>`(`user.member.leave-cancel`).
+**규격 상수** — `libs/contracts/src/<domain>/<domain>.commands.ts` 에 명령 type · 큐 이름 · 바인딩 키 · **내부 HTTP 경로(`USER_INTERNAL_PATH`)** 를 둔다(user.commands.ts:8-34). 게이트웨이 동기 핸들러와 JWT 전략은 경로 문자열을 직접 쓰지 않고 이 상수만 쓴다. 명령 type 은 `<server>.<resource>.<action-kebab>` — server 는 서비스 앱(`user.member.leave-cancel` → user-service, `admin.manager.find-login-id` · `admin.admin.password` → admin-service). 앱의 큐 · 바인딩 상수는 그 앱 이름의 commands 파일(`USER_COMMAND_QUEUE` · `ADMIN_COMMAND_QUEUE`)에 둔다.
+
+**권한 · 로그인 그룹 상수** — 도메인 공통이라 `libs/contracts/src/roles.ts` 의 `AUTH_ID`(t_auth PK) · `LOGIN_SCOPE`(USER · MANAGER · ADMIN) · `type LoginScope`. 서비스(`userEntity.auth_id = AUTH_ID.USER`, `findManager({login_scope: LOGIN_SCOPE.MANAGER})`)와 게이트웨이 `@Roles(AUTH_ID.HEAD_MANAGER)`(미적용)가 같은 상수를 쓴다. libs/database 는 contracts 를 import 하지 않으므로 시드는 문자열 리터럴이다.
 
 **엔티티 파일** — `libs/database/src/entities/<domain>/<feature>.entity.ts` (1엔티티 1파일, kebab), 클래스 `<Feature>Entity`. 테이블 이름은 [data-layer.md](data-layer.md).
 
@@ -63,7 +65,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 ## 라우트
 
-- 공개(게이트웨이): `@Controller('/api/v1/<domain>')`. 내부(서비스): `@Controller('/internal/v1/<domain>')`.
+- 공개(게이트웨이): 로그인 그룹 접두 `@Controller('/api/v1/<group>')`(`user` · `manager` · `admin`), 그룹의 기능은 `/api/v1/<group>/<domain>`. 내부(서비스): `@Controller('/internal/v1/<domain>')`(`/internal/v1/manager/login` — 도메인마다 따로).
 - 앞 `/` 필수, 다단어 kebab(`/token-refresh`), path param 은 snake_case(`/auth-user/:user_id`).
 - 같은 경로 다른 verb 가능(`DELETE /leave` · `PATCH /leave`).
 
@@ -135,27 +137,30 @@ return this.storeService.list(user_id, dto);
 ## 서비스(비즈니스) 계층
 
 - **public 메서드 1개 = API(또는 명령) 1개.** private 메서드 0건 — **service 내부 private 헬퍼 금지**, util 로 추출.
+- **로그인 그룹 = 도메인** — 이용자 · 매니저 · 관리자는 각자 service(`UserService` · `ManagerService` · `AdminService`)에 자기 메서드를 둔다(로그인 · 재발급 · 비밀번호 변경이 도메인마다 있다). 조회 조건에 자기 그룹(`login_scope: LOGIN_SCOPE.MANAGER`)을 넣어 다른 그룹 계정은 없는 계정처럼 다룬다. 겹치는 순수 로직은 `libs/account` util 로 빼고, service 끼리 · 앱끼리 부르지 않는다.
 - **엔티티는 `new XEntity()` + 필드 할당으로 생성**(insert · update 모두) — 객체 리터럴 ❌. 엔티티 인스턴스라야 `@BeforeInsert`/`@BeforeUpdate` 훅이 돌아 타임스탬프가 채워진다. 타임스탬프는 직접 넣지 않는다.
 - **WHERE 는 service 가 `FindOptionsWhere<XEntity>` 로**(`In` · `LessThanOrEqual` 등 연산자 포함) 호출 인자 자리에서 만들고 repository 는 실행만.
 - 규칙 위반은 HTTP 예외 throw, body `{message: '<한국어 문자열>'}`.
-- **쓰기가 있는 메서드에 `@Transactional()`** — 세션을 insert 하는 login · generalLogin · tokenRefresh 도 포함. 읽기만 하는 메서드(`getLoginUser`)에는 없다.
+- **쓰기가 있는 메서드에 `@Transactional()`** — 세션을 insert 하는 login · tokenRefresh(세 도메인 모두)도 포함. 읽기만 하는 메서드(`getLoginUser` · `getLoginManager` · `getLoginAdmin`)에는 없다.
 - service 는 `Request` · `Response` · AMQP 채널 같은 전송 계층 객체를 받지 않고 값만 받는다.
-- **JSDoc 에 전송 경로를 표시한다** — `(RabbitMQ: user.member.sign)` / `(내부 HTTP: POST /internal/v1/user/login)` (user.service.ts 9/9).
+- **JSDoc 에 전송 경로를 표시한다** — `(RabbitMQ: user.member.sign)` / `(내부 HTTP: POST /internal/v1/user/login)` (user.service.ts 전 메서드 — 그룹별 API 가 함께 쓰는 메서드는 그 경로를 모두 적는다).
 - 성공 결과는 현재 두 방식이 섞여 있다 — service 는 `XResultDto` 모양의 객체 리터럴을 반환하고(user.service.ts:114), util 은 `new XResultDto()` + 할당(user.util.ts:65). <!-- TODO: 결과 DTO 생성 방식 통일 여부 -->
 - **crontab 은 service 가 아니다.** 시간이 트리거인 인바운드 어댑터로, API 가 아니므로 service 에 public 메서드를 만들지 않고 **repository 포트를 직접 주입**해 처리한다(apps/scheduler/src/user/crontabs/user-leave-cleanup.crontab.ts). 서비스 앱에는 두지 않는다. 본문은 `JobLockService.runExclusive` 로 감싼다([architecture.md](architecture.md)).
 
+- **성인 기준(이용자 SNS 가입)** — 청소년보호법: 만 19세가 되는 해의 1월 1일부터 성인. `isAdult(birth, now)`(user.util.ts)는 한국 날짜의 올해 − 출생 연도 ≥ `ADULT_AGE`(19)로 판단하고 생일은 보지 않는다. 미성년자는 400 `UNDERAGE_MESSAGE` + `validation_errors.birth`.
+
 ## 공통 로직 분리
 
-- **순수 함수 → util** (named `function`, `@Injectable` 없음): 전역 `libs/common/src/utils/`(bcrypt · hash · cipher · jwt · validation · fail-result · retry · pagination), 도메인 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. 예외 — `Pagination` 은 계산 결과(`limit` · `offset` · `getPagination()`)를 들고 다니는 값 객체라 class 다.
+- **순수 함수 → util** (named `function`, `@Injectable` 없음): 전역 `libs/common/src/utils/`(bcrypt · hash · cipher · jwt · validation · fail-result · retry · pagination · env · id · kst), 서비스 앱 여러 개가 쓰는 계정 로직 `libs/account/src/utils/`(token · sms-verification · password — 엔티티를 만드는 `buildSmsVerification` 도 여기라 `account` 는 `database` 를 import 한다), 도메인 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. 예외 — `Pagination` 은 계산 결과(`limit` · `offset` · `getPagination()`)를 들고 다니는 값 객체라 class 다.
 - **DI · lifecycle · 외부연동 → `@Injectable`/`@Module`**: 여러 앱이 쓰면 libs, 한 앱만 쓰면 그 앱 안.
 - 파일 안에서만 쓰는 헬퍼 함수는 export 하지 않고 둘 수 있다 — 인프라 · util 파일에 한한다(cipher.ts `getKey`, internal-auth.guard.ts `safeEqual`, typeorm-error.ts `driverErrorOf`). service 에는 두지 않는다.
-- ID 는 하이픈 없는 UUID v4 32자 — 도메인은 `generateId()`(apps/user-service/src/user/user.util.ts:21), 메시지는 `newMessageId()`(libs/messaging/src/messaging.util.ts:16). 구현이 같은 두 벌이다. <!-- TODO: libs/common 으로 합칠지 -->
+- ID 는 하이픈 없는 UUID v4 32자 — 도메인은 `generateId()`(libs/common/src/utils/id.ts), 메시지는 `newMessageId()`(libs/messaging/src/messaging.util.ts:16). 구현이 같은 두 벌이다. <!-- TODO: newMessageId 를 generateId 로 합칠지 -->
 
 ## 메시지 상수
 
 - 인프라 · 공통 실패 메시지는 export 되는 `UPPER_SNAKE_MESSAGE` 상수다 — `AUTH_INVALID_MESSAGE` · `FORBIDDEN_MESSAGE` · `INTERNAL_ONLY_MESSAGE` · `ACTOR_REQUIRED_MESSAGE` · `SERVICE_UNAVAILABLE_MESSAGE` · `COMMAND_PENDING_MESSAGE` · `BROKER_UNAVAILABLE_MESSAGE` · `UNHANDLED_FAIL_MESSAGE` · `PAYLOAD_TOO_LARGE_MESSAGE` · `VALIDATION_FALLBACK_MESSAGE`.
 - repository 의 통일 500 문구는 파일 상수 `SERVER_ERROR_MESSAGE`(user.repository.ts:14).
-- 비즈니스 메시지는 한 곳에서만 쓰면 throw 옆 인라인 한국어 리터럴. 반복되거나 여러 파일(service · repository)이 쓰면 도메인 `<domain>.constants.ts` 의 export `*_MESSAGE`(user.constants.ts — `UNDERAGE_MESSAGE` · `PHONE_TAKEN_MESSAGE` 등). 도메인 값 상수(`SMS_PURPOSE` · 한도 · `ACCOUNT_RECOVERY_STATES`)도 같은 파일이다.
+- 비즈니스 메시지는 한 곳에서만 쓰면 throw 옆 인라인 한국어 리터럴. 반복되거나 여러 파일(service · repository)이 쓰면 도메인 `<domain>.constants.ts` 의 export `*_MESSAGE`(user.constants.ts — `UNDERAGE_MESSAGE` · `PHONE_TAKEN_MESSAGE` 등). 여러 도메인 · 앱이 함께 쓰는 계정 메시지 · 값 상수(`INVALID_LOGIN_MESSAGE` · `SMS_PURPOSE` · 한도 · `ACCOUNT_RECOVERY_STATES`)는 `libs/account/src/account.constants.ts` 다.
 
 ## 로깅
 

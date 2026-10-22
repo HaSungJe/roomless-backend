@@ -5,10 +5,10 @@ import {sha256Hex} from '@app/common/utils/hash.js';
 import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
 import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
-import {kstDayStart} from '../user.util.js';
+import {kstDayStart} from '@app/common/utils/kst.js';
 import {bootCommandPath, createJwtServiceMock, createSmsSenderMock, createUserRepositoryMock, FIXED_TIME, ID_PATTERN, runCommand, SmsSenderMock, UserRepositoryMock} from './user.test-helper.js';
 
-vi.mock(import('../user.util.js'), async (importOriginal) => ({...(await importOriginal()), generateVerificationCode: vi.fn(() => '123456')}));
+vi.mock(import('@app/account/utils/sms-verification.js'), async (importOriginal) => ({...(await importOriginal()), generateVerificationCode: vi.fn(() => '123456')}));
 
 const ACTOR = {user_id: 'u'.repeat(32), auth_id: 'USER'};
 const PHONE = '01012345678';
@@ -63,14 +63,14 @@ describe('휴대폰 SMS 인증 (큐 경로)', () => {
 
     describe('user.member.phone-verification — 인증번호 발송', () => {
         it('[SUCCESS] 기록을 남기고 SMS 를 마지막에 보낸 뒤 인증 ID · 만료 시각을 돌려준다', async () => {
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null}).mockResolvedValueOnce(null);
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null, login_scope: 'USER'}).mockResolvedValueOnce(null);
             repo.countSmsVerifications.mockResolvedValueOnce(9);
 
             const {decision, result} = await runCommand(dispatcher, {type: USER_COMMAND.PHONE_VERIFICATION, payload: {phone: PHONE}, actor: ACTOR});
 
             expect(decision.action).toBe('ack');
             expect(repo.findUser).toHaveBeenNthCalledWith(1, {user_id: ACTOR.user_id});
-            expect(repo.findUser).toHaveBeenNthCalledWith(2, {phone: PHONE});
+            expect(repo.findUser).toHaveBeenNthCalledWith(2, {phone: PHONE, login_scope: 'USER'});
             expect(repo.countSmsVerifications).toHaveBeenCalledWith({phone: PHONE, created_at: MoreThanOrEqual(kstDayStart(FIXED_TIME))});
             expect(repo.insertSmsVerification).toHaveBeenCalledTimes(1);
             const inserted = repo.insertSmsVerification.mock.calls[0][0];
@@ -104,7 +104,7 @@ describe('휴대폰 SMS 인증 (큐 경로)', () => {
         });
 
         it('[FAIL:duplicate] 다른 계정이 인증한 번호는 400 + phone 입력 오류, 발송 없음', async () => {
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null}).mockResolvedValueOnce({user_id: 'o'.repeat(32)});
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null, login_scope: 'USER'}).mockResolvedValueOnce({user_id: 'o'.repeat(32)});
 
             const {result} = await runCommand(dispatcher, {type: USER_COMMAND.PHONE_VERIFICATION, payload: {phone: PHONE}, actor: ACTOR});
 
@@ -118,7 +118,7 @@ describe('휴대폰 SMS 인증 (큐 경로)', () => {
             ['3', 3],
         ])('[FAIL:business] 한도 env %s — 오늘 %i건 보냈으면 429, 기록 · 발송 없음', async (limit, sent) => {
             if (limit !== undefined) process.env.SMS_VERIFICATION_DAILY_LIMIT = limit;
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null}).mockResolvedValueOnce(null);
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null, login_scope: 'USER'}).mockResolvedValueOnce(null);
             repo.countSmsVerifications.mockResolvedValueOnce(sent);
 
             const {result} = await runCommand(dispatcher, {type: USER_COMMAND.PHONE_VERIFICATION, payload: {phone: PHONE}, actor: ACTOR});
@@ -138,12 +138,12 @@ describe('휴대폰 SMS 인증 (큐 경로)', () => {
         });
 
         it('[FAIL:infra] SMS 발송이 503 이면 재시도(requeue), 마지막 시도면 failed 503 + dead', async () => {
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null}).mockResolvedValueOnce(null);
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null, login_scope: 'USER'}).mockResolvedValueOnce(null);
             repo.countSmsVerifications.mockResolvedValue(0);
             sms.send.mockRejectedValue(new ServiceUnavailableException({message: SMS_UNAVAILABLE}));
 
             const first = await runCommand(dispatcher, {type: USER_COMMAND.PHONE_VERIFICATION, payload: {phone: PHONE}, actor: ACTOR});
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null}).mockResolvedValueOnce(null);
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null, login_scope: 'USER'}).mockResolvedValueOnce(null);
             const last = await runCommand(dispatcher, {type: USER_COMMAND.PHONE_VERIFICATION, payload: {phone: PHONE}, actor: ACTOR, delivery_count: 3});
 
             expect(first.decision.action).toBe('requeue');
@@ -164,7 +164,7 @@ describe('휴대폰 SMS 인증 (큐 경로)', () => {
 
         /** 확인 전 회원 · 인증 기록을 준비한다 */
         function arrange(record: Partial<SmsVerificationEntity> | null = verification(), consumed = true): void {
-            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null});
+            repo.findUser.mockResolvedValueOnce({user_id: ACTOR.user_id, phone_verified_at: null, login_scope: 'USER'});
             repo.findSmsVerification.mockResolvedValueOnce(record);
             repo.consumeSmsVerificationAttempt.mockResolvedValueOnce(consumed);
         }

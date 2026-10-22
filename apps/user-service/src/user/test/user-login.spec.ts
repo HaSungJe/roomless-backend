@@ -18,7 +18,7 @@ const MOCK_ACCESS_EXPIRES_AT = new Date(2026, 0, 1, 0, 20, 0);
 const MOCK_REFRESH_EXPIRES_AT = new Date(2027, 0, 1);
 const ACTIVE_USER = {user_id: 'u'.repeat(32), state_id: 'ACTIVE', block_comment: null};
 
-describe('POST /internal/v1/user/login — SNS 로그인 (동기 경로)', () => {
+describe('POST /internal/v1/user/login — 이용자 SNS 로그인 (동기 경로)', () => {
     let app: INestApplication;
     let repo: UserRepositoryMock;
     let jwt: JwtServiceMock;
@@ -54,7 +54,7 @@ describe('POST /internal/v1/user/login — SNS 로그인 (동기 경로)', () =>
                 refresh_token_expires_at: MOCK_REFRESH_EXPIRES_AT.toISOString(),
                 is_phone_verified: 0,
             });
-            expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'kakao_1', state_id: In(['ACTIVE', 'BLOCK'])});
+            expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'kakao_1', login_scope: 'USER', state_id: In(['ACTIVE', 'BLOCK'])});
             expect(repo.updateUser).not.toHaveBeenCalled();
             expect(repo.insertSession).toHaveBeenCalledWith({
                 session_id: expect.stringMatching(ID_PATTERN),

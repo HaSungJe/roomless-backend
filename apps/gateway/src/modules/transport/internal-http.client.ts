@@ -4,11 +4,14 @@ import {INTERNAL_HEADER} from '@app/contracts/actor.js';
 import {readPositiveInt} from '@app/common/utils/env.js';
 import {DEFAULT_INTERNAL_HTTP_TIMEOUT_MS, SERVICE_UNAVAILABLE_MESSAGE} from './transport.util.js';
 
-/** 게이트웨이가 동기 호출하는 내부 서비스 */
-export type InternalService = 'user';
+/** 게이트웨이가 동기 호출하는 내부 서비스 — user: user-service(이용자), admin: admin-service(매니저 · 관리자) */
+export type InternalService = 'user' | 'admin';
 
 /** 서비스별 주소 환경변수와 기본값 */
-const SERVICE_URL: Record<InternalService, {env: string; fallback: string}> = {user: {env: 'USER_SERVICE_URL', fallback: 'http://localhost:4001'}};
+const SERVICE_URL: Record<InternalService, {env: string; fallback: string}> = {
+    user: {env: 'USER_SERVICE_URL', fallback: 'http://localhost:4001'},
+    admin: {env: 'ADMIN_SERVICE_URL', fallback: 'http://localhost:4002'},
+};
 
 /** 내부 HTTP 요청 옵션 */
 export interface InternalRequestOptions {

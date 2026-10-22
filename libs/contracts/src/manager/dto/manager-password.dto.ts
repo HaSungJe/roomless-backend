@@ -2,9 +2,9 @@ import {ApiProperty} from '@nestjs/swagger';
 import {IsNotEmpty, Matches, MaxLength} from 'class-validator';
 
 /**
- * 비밀번호 변경 입력 (로그인 회원 공용)
+ * 매니저 비밀번호 변경 입력
  */
-export class UserPasswordDto {
+export class ManagerPasswordDto {
     @ApiProperty({description: '현재 비밀번호'})
     @MaxLength(20, {message: '비밀번호는 20자 이하여야 합니다.'})
     @IsNotEmpty({message: '현재 비밀번호를 입력해주세요.'})

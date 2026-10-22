@@ -10,14 +10,14 @@ const ROW = {
     gender: 'M',
     birth: '1990-01-01',
     nickname: '길동',
-    auth_id: 'MANAGER',
-    store_id: 's'.repeat(32),
+    auth_id: 'USER',
+    store_id: null,
     state_id: 'ACTIVE',
     phone_verified_at: null,
     is_login_allowed: 1,
 };
 
-describe('GET /internal/v1/user/auth-user/:user_id — 로그인 회원 조회 (게이트웨이 JWT 전략용)', () => {
+describe('GET /internal/v1/user/auth-user/:user_id — 로그인 이용자 조회 (게이트웨이 jwt-user 전략용)', () => {
     let app: INestApplication;
     let repo: UserRepositoryMock;
 
@@ -44,8 +44,8 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 회원 조회 (
             gender: 'M',
             birth: '1990-01-01',
             nickname: '길동',
-            auth_id: 'MANAGER',
-            store_id: 's'.repeat(32),
+            auth_id: 'USER',
+            store_id: null,
             state_id: 'ACTIVE',
             is_login_allowed: 1,
             is_phone_verified: 0,
@@ -62,7 +62,7 @@ describe('GET /internal/v1/user/auth-user/:user_id — 로그인 회원 조회 (
         expect(res.body.is_phone_verified).toBe(1);
     });
 
-    it('[FAIL:service] 로그인 불가 · 미존재면 404', async () => {
+    it('[FAIL:service] 로그인 불가 · 미존재 · 이용자 그룹이 아니면(조회 null) 404', async () => {
         repo.findLoginUser.mockResolvedValueOnce(null);
 
         const res = await request(app.getHttpServer()).get(`/internal/v1/user/auth-user/${USER_ID}`).set(internalHeaders());

@@ -24,6 +24,13 @@
       "sourceRoot": "apps/user-service/src",
       "compilerOptions": {"tsConfigPath": "apps/user-service/tsconfig.app.json"}
     },
+    "admin-service": {
+      "type": "application",
+      "root": "apps/admin-service",
+      "entryFile": "apps/admin-service/src/main",
+      "sourceRoot": "apps/admin-service/src",
+      "compilerOptions": {"tsConfigPath": "apps/admin-service/tsconfig.app.json"}
+    },
     "scheduler": {
       "type": "application",
       "root": "apps/scheduler",

@@ -89,7 +89,7 @@ describe('SeederService', () => {
             const [admin] = repos.get(UserEntity)!.insert.mock.calls[0][0];
             expect(admin).toBeInstanceOf(UserEntity);
             expect(admin.user_id).toMatch(ID_PATTERN);
-            expect(admin).toMatchObject({login_id: 'admin', login_pw: '$2b$12$admin', auth_id: 'SUPER_ADMIN', state_id: 'ACTIVE', is_password_change_required: 1, phone: null});
+            expect(admin).toMatchObject({login_id: 'admin', login_pw: '$2b$12$admin', auth_id: 'SUPER_ADMIN', login_scope: 'ADMIN', state_id: 'ACTIVE', is_password_change_required: 1, phone: null});
             expect(getBcrypt).toHaveBeenCalledWith('1234');
 
             expect(repos.get(UserEntity)!.findOne).toHaveBeenCalledWith({where: {login_id: 'admin'}});

@@ -12,14 +12,13 @@ import {
     ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
-import {UserGeneralLoginDto, UserGeneralLoginResultDto} from '@app/contracts/user/dto/user-general-login.dto.js';
 import {UserLoginDto, UserLoginResultDto} from '@app/contracts/user/dto/user-login.dto.js';
 import {UserTokenRefreshDto, UserTokenRefreshResultDto} from '@app/contracts/user/dto/user-token-refresh.dto.js';
 import {USER_INTERNAL_PATH} from '@app/contracts/user/user.commands.js';
 import {InternalHttpClient} from '../../../../modules/transport/internal-http.client.js';
 
 /**
- * 회원 공개 API — 동기 경로(내부 HTTP). 게이트웨이 인바운드 어댑터.
+ * 이용자 공개 API — 동기 경로(내부 HTTP). 게이트웨이 인바운드 어댑터. 이용자는 SNS 로만 로그인한다.
  * 입력 검증 · 인증을 여기서 끝내고 InternalHttpClient 로 user-service 를 불러 결과를 일반 JSON 으로 돌려준다. 로직 0.
  *
  * 큐 경로(RabbitMQ + 요청 단위 SSE) 라우트는 같은 경로 접두의 user.controller.queue.ts(UserQueueController)에 둔다.
@@ -33,7 +32,7 @@ export class UserController {
     constructor(private readonly internalHttp: InternalHttpClient) {}
 
     /**
-     * SNS 로그인
+     * 이용자 SNS 로그인 — 이용자 계정만(다른 그룹은 없는 계정과 같은 404)
      */
     @Post('/login')
     @HttpCode(200)
@@ -50,24 +49,7 @@ export class UserController {
     }
 
     /**
-     * 일반 로그인
-     */
-    @Post('/general-login')
-    @HttpCode(200)
-    @ApiOperation({summary: '일반 로그인'})
-    @ApiBody({type: UserGeneralLoginDto})
-    @ApiOkResponse({type: UserGeneralLoginResultDto})
-    @ApiBadRequestResponse({type: ApiFailResultDto})
-    @ApiForbiddenResponse({type: ApiFailResultDto})
-    @ApiNotFoundResponse({type: ApiFailResultDto})
-    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
-    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
-    async generalLogin(@Body() dto: UserGeneralLoginDto, @Ip() ip: string): Promise<UserGeneralLoginResultDto> {
-        return this.internalHttp.request<UserGeneralLoginResultDto>('user', 'POST', USER_INTERNAL_PATH.GENERAL_LOGIN, {body: dto, client_ip: ip});
-    }
-
-    /**
-     * 로그인 토큰 재발급
+     * 이용자 토큰 재발급
      */
     @Post('/token-refresh')
     @HttpCode(200)

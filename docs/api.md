@@ -32,7 +32,7 @@ async login(@Body() dto: UserLoginDto, @Ip() ip: string): Promise<UserLoginResul
 }
 ```
 
-- 실측 순서(인증 없는 핸들러 3개): **HTTP verb → `@HttpCode(200)` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse` 또는 `@ApiForbiddenResponse` → `@ApiNotFoundResponse` → `@ApiServiceUnavailableResponse` → `@ApiInternalServerErrorResponse`**.
+- 실측 순서(인증 없는 핸들러 — 그룹별 로그인 · 재발급 6개): **HTTP verb → `@HttpCode(200)` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse` 또는 `@ApiForbiddenResponse` → `@ApiNotFoundResponse` → `@ApiServiceUnavailableResponse` → `@ApiInternalServerErrorResponse`**.
 - 인증 · 권한이 붙는 동기 핸들러는 아직 없다. 붙일 때의 자리(규약): HTTP verb → `@UseGuards` → `@Roles` → `@HttpCode` → `@ApiBearerAuth()` → `@ApiOperation` → … (큐 핸들러와 같이 `@ApiBearerAuth` 는 `@ApiOperation` 앞).
 
 ## 큐 핸들러 (`controllers/<domain>.controller.queue.ts`, 요청 단위 SSE)
@@ -54,23 +54,33 @@ async leave(@PassportActor() actor: Actor, @Body() dto: UserLeaveDto, @Ip() ip: 
 }
 ```
 
-- 순서: HTTP verb → `@UseGuards`(인증 시) → `@ApiBearerAuth()`(인증 시) → `@ApiOperation` → `@ApiBody`(입력 있을 때) → `@ApiProduces('text/event-stream')` → `@ApiOkResponse` → 에러 응답들.
+- 순서: HTTP verb → `@UseGuards`(인증 시, 그 그룹의 가드) → `@Roles`(그룹 안 권한 시 — 사례 없음) → `@ApiBearerAuth()`(인증 시) → `@ApiOperation` → `@ApiBody`(입력 있을 때) → `@ApiProduces('text/event-stream')` → `@ApiOkResponse` → 에러 응답들(`@ApiForbiddenResponse` 는 `@ApiUnauthorizedResponse` 뒤).
 - `@HttpCode` 없음(스트림이 200 을 직접 연다). `@ApiProduces('text/event-stream')` 필수.
 - `@ApiOkResponse({type: X})` 는 **done 이벤트의 data** 를 뜻한다. 결과가 void 면 생략.
 - 에러 응답 데코레이터는 스트림이 열리기 전의 실패(400 검증 · 401 · 503)와 failed 이벤트의 `status_code` 를 함께 나타낸다.
 - 시그니처 세 형태(인증 + 입력 / 비인증 `actor: null` / 입력 없음 `payload: {}`) — [conventions.md](conventions.md). 본문은 `dispatch` 한 줄.
 
-## 권한 제한 핸들러 (미적용 규약)
+## 로그인 그룹(도메인) · 인증 가드
 
-`RolesGuard` · `@Roles` 는 정의와 단위 테스트만 있고 핸들러 적용 0건이다. 관리자 API 를 만들 때 다음 형태로 붙인다.
+로그인 그룹마다 도메인 · 서비스 · 경로 접두가 따로다. 그룹의 기능 라우트는 `/api/v1/<group>/<domain>`(게이트웨이 폴더 `api/v1/<group>/<domain>/`)에 둔다.
+
+| 그룹 · 서비스 | 접두 · 폴더 | 동기(내부 HTTP) | 큐(SSE) |
+|---|---|---|---|
+| 이용자 `USER` · user-service | `/api/v1/user` · `api/v1/user/` | `POST /login`(SNS) · `/token-refresh` → `/internal/v1/user/*` | `POST /sign` · `DELETE /leave` · `PATCH /leave` · `POST /phone-verification(+/confirm)` · `/find-login-id(+/confirm)` — `user.member.*` |
+| 매니저 `MANAGER` · admin-service | `/api/v1/manager` · `api/v1/manager/` | `POST /login` · `/token-refresh` → `/internal/v1/manager/*` | `PATCH /password` · `POST /find-login-id(+/confirm)` · `/password-reset(+/confirm)` — `admin.manager.*` |
+| 관리자 `ADMIN` · admin-service | `/api/v1/admin` · `api/v1/admin/` | `POST /login` · `/token-refresh` → `/internal/v1/admin/*` | `PATCH /password` — `admin.admin.*` |
+
+로그인이 필요한 라우트는 **그 그룹의 인증 가드**를 붙인다(apps/gateway/src/api/v1/admin/controllers/admin.controller.queue.ts).
 
 ```ts
-@Post('/register')
-@UseGuards(PassportJwtAuthGuard, RolesGuard)   // 인증 → 권한 순
-@Roles('SUPER_ADMIN', 'ADMIN')                 // t_auth PK 문자열
+@Patch('/password')
+@UseGuards(PassportJwtAdminAuthGuard)   // 관리자 그룹 토큰만 — 다른 그룹 토큰은 401
+@ApiBearerAuth()
 ```
 
-권한 불일치는 `RolesGuard` 가 403 `{message: '접근 권한이 없습니다.'}`(`FORBIDDEN_MESSAGE`) — `@ApiForbiddenResponse({type: ApiFailResultDto})` 를 함께 명시. 메타데이터가 없으면 통과한다.
+- 그룹 가드는 그 그룹의 서비스 auth-user 가 돌려준 회원을 `request.user` 로 둔다. 다른 그룹 토큰은 그 auth-user 가 404 를 돌려줘 401 이 된다 — 그래서 그룹 전체에 열린 라우트에는 `RolesGuard` · `@Roles` 를 붙이지 않는다.
+- **그룹 안에서 권한을 더 좁힐 때(미적용 규약)**: `@UseGuards(PassportJwtManagerAuthGuard, RolesGuard)` + `@Roles(AUTH_ID.HEAD_MANAGER)`(`libs/contracts/src/roles.ts`) — 불일치는 `RolesGuard` 가 403 `{message: '접근 권한이 없습니다.'}`(`FORBIDDEN_MESSAGE`), `@ApiForbiddenResponse({type: ApiFailResultDto})` 를 함께 명시. 메타데이터가 없으면 통과한다.
+- 같은 일이라도 도메인마다 DTO · 명령 · 내부 경로를 따로 둔다(`ManagerPasswordDto` + `admin.manager.password` / `AdminPasswordDto` + `admin.admin.password`).
 
 ## 공통 규칙
 

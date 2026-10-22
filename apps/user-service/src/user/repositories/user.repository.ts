@@ -2,6 +2,8 @@ import {BadRequestException, Injectable, InternalServerErrorException} from '@ne
 import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
 import type {FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
+import {USER_NOT_EXIST_MESSAGE} from '@app/account/account.constants.js';
+import {LOGIN_SCOPE} from '@app/contracts/roles.js';
 import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
 import {SessionEntity} from '@app/database/entities/user/session.entity.js';
 import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
@@ -10,13 +12,13 @@ import {UserSettingEntity} from '@app/database/entities/user/user-setting.entity
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginUserRow, UserRepositoryInterface} from '../interfaces/user.repository.interface.js';
-import {PHONE_TAKEN_MESSAGE, USER_NOT_EXIST_MESSAGE} from '../user.constants.js';
+import {PHONE_TAKEN_MESSAGE} from '../user.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
 
 /**
- * 회원 repository (아웃바운드 어댑터).
+ * 이용자 repository (아웃바운드 어댑터).
  * `txHost.tx` 는 `@Transactional()` 범위 안에서는 트랜잭션 EntityManager, 밖에서는 기본 EntityManager 다.
  */
 @Injectable()
@@ -60,7 +62,7 @@ export class UserRepository implements UserRepositoryInterface {
         try {
             await this.users.insert(entity);
         } catch (error) {
-            if (isUniqueViolation(error, 'UK_User_LoginId')) {
+            if (isUniqueViolation(error, 'UK_User_LoginIdLoginScope')) {
                 throw new BadRequestException({message: '이미 존재하는 로그인 ID입니다.'});
             } else if (isUniqueViolation(error, 'UK_User_UserSearchCode')) {
                 throw new BadRequestException({message: '이미 존재하는 검색 코드입니다.'});
@@ -148,7 +150,7 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * 로그인 회원 조회 — 로그인 가능 상태(is_login_allowed = 1)이고 회원 설정이 있는 회원만.
+     * 로그인 이용자 조회 — 이용자 그룹이고 로그인 가능 상태(is_login_allowed = 1)이며 회원 설정이 있는 회원만.
      *
      * @param user_id 회원 ID
      * @returns 로그인 회원 또는 null
@@ -162,7 +164,7 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * 로그인 회원 조회 쿼리 — 매핑 민감(조인 · raw select)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 로그인 이용자 조회 쿼리 — 매핑 민감(조인 · raw select)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param user_id 회원 ID
      * @returns 쿼리 빌더
@@ -184,6 +186,7 @@ export class UserRepository implements UserRepositoryInterface {
             .innerJoin(StateEntity, 's', 's.state_id = u.state_id')
             .innerJoin(UserSettingEntity, 'us', 'us.user_id = u.user_id')
             .where('u.user_id = :user_id', {user_id})
+            .andWhere('u.login_scope = :login_scope', {login_scope: LOGIN_SCOPE.USER})
             .andWhere('s.is_login_allowed = 1');
     }
 
@@ -231,7 +234,7 @@ export class UserRepository implements UserRepositoryInterface {
 
     /**
      * 회원 정보 수정 — new UserEntity() + 할당으로 호출(@BeforeUpdate updated_at 트리거).
-     * 휴대폰 번호를 저장할 때 다른 계정이 먼저 인증했으면(UK_User_Phone) 400.
+     * 휴대폰 번호를 저장할 때 같은 로그인 그룹의 다른 계정이 먼저 인증했으면(UK_User_PhoneLoginScope) 400.
      *
      * @param where 수정 조건
      * @param entity 바꿀 필드만 할당한 엔티티 (undefined 필드는 건드리지 않고, null 은 NULL 로 비운다)
@@ -240,7 +243,7 @@ export class UserRepository implements UserRepositoryInterface {
         try {
             await this.users.update(where, entity);
         } catch (error) {
-            if (isUniqueViolation(error, 'UK_User_Phone')) {
+            if (isUniqueViolation(error, 'UK_User_PhoneLoginScope')) {
                 throw new BadRequestException({message: PHONE_TAKEN_MESSAGE});
             } else {
                 throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});

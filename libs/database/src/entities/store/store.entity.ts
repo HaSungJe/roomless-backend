@@ -1,5 +1,17 @@
 import {BeforeInsert, BeforeUpdate, Column, Entity, PrimaryColumn, Unique} from 'typeorm';
 
+/** 업체 상세정보(t_store.store_detail) — 항목은 언제든 바뀔 수 있다. 플래그는 0/1 */
+export interface StoreDetail {
+    /** 방 칸수 */
+    room_count?: number;
+    /** 샤워실 유무 */
+    has_shower?: number;
+    /** TV 유무 */
+    has_tv?: number;
+    /** PC 유무 */
+    has_pc?: number;
+}
+
 /**
  * 가맹점
  */
@@ -26,6 +38,9 @@ export class StoreEntity {
 
     @Column({name: 'address_detail', type: 'varchar', length: 255, nullable: true, comment: '상세주소'})
     address_detail: string | null;
+
+    @Column({name: 'store_detail', type: 'jsonb', nullable: false, default: () => "'{}'", comment: '업체 상세정보(JSON — room_count · has_shower · has_tv · has_pc, 항목은 바뀔 수 있다)'})
+    store_detail: StoreDetail;
 
     @Column({name: 'is_deleted', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제)'})
     is_deleted: number;

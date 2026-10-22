@@ -1,0 +1,86 @@
+# admin-service — 매니저(총매니저 · 매니저) · 관리자(총관리자 · 관리자) 도메인. 인스턴스 N대 + 로드밸런서. 단독 실행
+#   npm run docker:admin-service   (docker compose -f compose.admin-service.yml up -d --build)
+#   인스턴스 수: .env 의 ADMIN_SERVICE_REPLICAS(기본 1), 실행 중 바꾸기: docker compose -f compose.admin-service.yml up -d --scale admin-service=2
+#   마이그레이션 · 기본 데이터는 user-service 묶음의 migrate · 시드가 맡는다 — user-service 묶음을 먼저 띄운다(docker:up 순서)
+#
+# 설정 원칙 — compose.user-service.yml 과 같다
+#   - 환경 값(NODE_ENV · DATABASE_URL · RABBITMQ_HOST · 비밀값 …)은 .env 를 그대로 쓴다. compose 는 바꾸지 않고, 필수값이 비어 있으면 띄우지 않는다.
+#   - 서버 구성(컨테이너 안 포트 · 바인딩 주소 · TZ)만 아래에 고정한다 — 어느 환경이든 같다.
+#   - 쓰지 않는 비밀값(gateway · user-service 브로커 비밀번호 · 브로커 관리자 비밀번호)은 빈 값으로 덮어 전달하지 않는다.
+#
+# 부하 분산
+#   - 큐(명령): 모든 인스턴스가 같은 q.admin.cmd(admin.#)를 소비 → 브로커가 나눠 준다(경쟁 소비)
+#   - 내부 HTTP: admin-service-lb(nginx)가 인스턴스들에 라운드로빈 — 게이트웨이는 http://admin-service-lb:4002 로 부른다
+#
+# 네트워크 — "admin-service 는 게이트웨이만 닿는다"
+#   roomless-service (internal) : gateway · admin-service-lb · admin-service (user-service 와 같은 내부망)
+#   roomless-broker / roomless-data : 브로커 / DB 로 나가는 길 (DB 는 user-service 와 같은 공유 DB)
+name: roomless-admin-service
+
+x-logging: &logging
+    driver: json-file
+    options:
+        max-size: '10m'
+        max-file: '5'
+
+services:
+    admin-service:
+        image: roomless/admin-service
+        build:
+            context: .
+            args:
+                APP: admin-service
+        env_file:
+            - path: .env
+              required: true
+        environment:
+            # ── 환경 값: .env 그대로 (비어 있으면 띄우지 않는다) ──
+            NODE_ENV: '${NODE_ENV:?.env 에 NODE_ENV 가 필요합니다}'
+            DATABASE_URL: '${DATABASE_URL:?.env 에 DATABASE_URL 이 필요합니다}'
+            RABBITMQ_HOST: '${RABBITMQ_HOST:?.env 에 RABBITMQ_HOST 가 필요합니다}'
+            RABBITMQ_ADMIN_SERVICE_PASSWORD: '${RABBITMQ_ADMIN_SERVICE_PASSWORD:?.env 에 RABBITMQ_ADMIN_SERVICE_PASSWORD 가 필요합니다}'
+            JWT_SECRET: '${JWT_SECRET:?.env 에 JWT_SECRET 이 필요합니다}'
+            TOKEN_CIPHER_KEY: '${TOKEN_CIPHER_KEY:?.env 에 TOKEN_CIPHER_KEY 가 필요합니다}'
+            INTERNAL_API_TOKEN: '${INTERNAL_API_TOKEN:?.env 에 INTERNAL_API_TOKEN 이 필요합니다}'
+            # ── 서버 구성: 어느 환경이든 같다 ──
+            # admin-service-lb 의 upstream 포트(docker/nginx/admin-service.conf)와 같아야 한다
+            ADMIN_SERVICE_PORT: 4002
+            # 컨테이너 안에서는 0.0.0.0 — 닿을 수 있는 상대는 roomless-service 의 admin-service-lb · gateway 뿐이다
+            ADMIN_SERVICE_HOST: 0.0.0.0
+            TZ: Asia/Seoul
+            # ── 쓰지 않는 비밀값은 전달하지 않는다 ──
+            RABBITMQ_GATEWAY_PASSWORD: ''
+            RABBITMQ_USER_SERVICE_PASSWORD: ''
+            RABBITMQ_PASSWORD: ''
+        deploy:
+            replicas: ${ADMIN_SERVICE_REPLICAS:-1}
+        expose:
+            - '4002'
+        networks: [service, broker, data]
+        logging: *logging
+        restart: unless-stopped
+
+    # 내부 HTTP 로드밸런서 — 인스턴스를 Docker DNS 로 계속 다시 찾으므로 --scale 로 늘리거나 줄여도 재시작이 필요 없다
+    admin-service-lb:
+        image: nginx:1.28-alpine
+        container_name: roomless-admin-service-lb
+        volumes:
+            - ./docker/nginx/admin-service.conf:/etc/nginx/conf.d/default.conf:ro
+        expose:
+            - '4002'
+        networks: [service]
+        depends_on:
+            - admin-service
+        logging: *logging
+        restart: unless-stopped
+
+networks:
+    service:
+        name: roomless-service
+        external: true
+    broker:
+        name: roomless-broker
+        external: true
+    data:
+        name: roomless-data
+        external: true

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# 앱 하나를 이미지 하나로 — APP 인자로 고른다 (gateway | user-service | scheduler)
+# 앱 하나를 이미지 하나로 — APP 인자로 고른다 (gateway | user-service | admin-service | scheduler)
 #   docker build --build-arg APP=gateway -t roomless/gateway .
 # 베이스는 Debian slim: bcrypt 가 glibc 용 prebuild 만 제공한다(Alpine/musl 이면 소스 빌드가 필요).
 
@@ -17,7 +17,7 @@ ARG APP
 COPY tsconfig.json nest-cli.json ./
 COPY apps ./apps
 COPY libs ./libs
-RUN test -n "$APP" || (echo "APP build-arg 가 필요합니다 (gateway | user-service | scheduler)" && exit 1)
+RUN test -n "$APP" || (echo "APP build-arg 가 필요합니다 (gateway | user-service | admin-service | scheduler)" && exit 1)
 RUN npx nest build "$APP"
 
 # ── 3. 운영 의존성만 ──

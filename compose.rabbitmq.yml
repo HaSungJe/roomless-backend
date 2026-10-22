@@ -39,7 +39,7 @@ services:
         logging: *logging
         restart: unless-stopped
 
-    # 브로커 계정(gateway · user-service)과 권한을 만든다 (1회 실행 후 종료, 다시 돌려도 같은 결과) — docker/rabbitmq/init.sh
+    # 브로커 계정(gateway · user-service · admin-service)과 권한을 만든다 (1회 실행 후 종료, 다시 돌려도 같은 결과) — docker/rabbitmq/init.sh
     rabbitmq-init:
         image: curlimages/curl:8.11.1
         entrypoint: ['/bin/sh', '/init.sh']
@@ -51,6 +51,7 @@ services:
             RABBITMQ_ADMIN_PASSWORD: '${RABBITMQ_PASSWORD:?.env 에 RABBITMQ_PASSWORD 가 필요합니다}'
             RABBITMQ_GATEWAY_PASSWORD: '${RABBITMQ_GATEWAY_PASSWORD:?.env 에 RABBITMQ_GATEWAY_PASSWORD 가 필요합니다}'
             RABBITMQ_USER_SERVICE_PASSWORD: '${RABBITMQ_USER_SERVICE_PASSWORD:?.env 에 RABBITMQ_USER_SERVICE_PASSWORD 가 필요합니다}'
+            RABBITMQ_ADMIN_SERVICE_PASSWORD: '${RABBITMQ_ADMIN_SERVICE_PASSWORD:?.env 에 RABBITMQ_ADMIN_SERVICE_PASSWORD 가 필요합니다}'
         networks: [broker]
         depends_on:
             rabbitmq:
