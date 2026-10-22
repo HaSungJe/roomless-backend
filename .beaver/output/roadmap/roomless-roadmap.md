@@ -11,7 +11,7 @@ flowchart LR
   P1["Phase 1 · MSA 기반 (9)"]:::done --> P2["Phase 2 · 회원 기반 (7)"]:::done
   P1 --> P3["Phase 3 · 공통 인프라 포트 (4)"]:::done
   P2 --> P4["Phase 4 · 회원 스키마 확장 (5)"]:::done
-  P4 --> P5["Phase 5 · 서버 분할 (4)"]:::inprog
+  P4 --> P5["Phase 5 · 서버 분할 (4)"]:::done
   P1 --> P7["Phase 7 · admin-service 기반 (4)"]:::todo
   P1 --> P8["Phase 8 · store 스키마 (5)"]:::todo
   P1 --> P22["Phase 22 · api-log (1)"]:::todo
@@ -40,7 +40,7 @@ flowchart LR
   P10 --> P20
   P17 --> P21["Phase 21 · 통계 (1)"]:::todo
   P19 --> P21
-  P5 -. 동시 가능 .- P6
+  P6 -. 동시 가능 .- P7
   P6 -. 동시 가능 .- P8
   P13 -. 동시 가능 .- P14
   P15 -. 동시 가능 .- P16
@@ -54,7 +54,7 @@ flowchart LR
 - Phase 2 — 회원 기반 · 유닛 7개 · 의존: Phase 1 · 푼다: Phase 4 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1/user, apps/gateway/src/guards · done
 - Phase 3 — 공통 인프라 포트 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 6, 9, 11 · 파일 집합: libs/integration, libs/common/src/dto, libs/common/src/utils, tsconfig.json, package.json, .env.example, compose.gateway.yml, AGENTS.md, docs/ · done
 - Phase 4 — 회원 스키마 확장 · 유닛 5개 · 의존: Phase 2, 3 · 푼다: Phase 5, 6, 9 · 파일 집합: libs/database(entities · migrations · seeder), libs/contracts/src/user, apps/user-service/src/user, apps/gateway/src/api/v1/user, AGENTS.md, docs/ · done
-- Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), libs/messaging(CommandDispatcher), libs/database(연결 대기 제한), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, .env.example, README.md, AGENTS.md, docs/ · in-progress
+- Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), libs/messaging(CommandDispatcher), libs/database(연결 대기 제한), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 6 — 계정·인증 · 유닛 2개 · 의존: Phase 3, 4 · 푼다: Phase 20 · 파일 집합: apps/user-service/src/user, apps/gateway/src/api/v1 · todo
 - Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · todo
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · todo
@@ -73,16 +73,16 @@ flowchart LR
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/user-service/src/stats, apps/gateway/src/api/v1/stats · todo
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 
-동시 가능: Phase 5·Phase 6·Phase 8 (지금 바로) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
+동시 가능: Phase 6·Phase 7·Phase 8 (지금 바로) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: Phase 5 진행 중 · Next up: Phase 5
+지금: Phase 5 완료 · Next up: Phase 6
 
 ## 지금 할 일
 
-서버 분할(Phase 5)부터 — 운영 배포 전에 끝낸다
-- 시작 — `/beaver:direct 서버 분할`
-- 담는 것 — scheduler 서버(crontab 이전) · 인스턴스 수 · 인증번호 확인 교착 수정(#91 — 틀린 번호는 throw 대신 return, 방식은 정해짐)
-- 사용자 — Phase 4 마이그레이션 2개 적용(`npm run db:migrate` 또는 Docker migrate), 실제 SMS 발송 전에 `docs/guides/aws-setup.md` 대로 AWS 세팅
+계정·인증(Phase 6)부터 — 관리자 페이지 · 이용자 페이지 로그인을 가르고 가입 규칙을 세운다
+- 정하기 — 관리자 / 이용자 API 라우트 분리 방식(추천: 관리자 `/api/v1/admin/<domain>`), 성인 기준 · 일반 가입 생년월일 검증 (Open Decisions)
+- 시작 — `/beaver:direct 계정·인증` (admin-service 기반 Phase 7 · store 스키마 Phase 8 과 동시에 돌려도 된다)
+- 사용자 — Phase 4 마이그레이션 2개 적용(`npm run db:migrate`), Phase 5 배포 때 user-service 를 새 이미지로 다시 띄우고 scheduler 묶음(`npm run docker:scheduler`)을 user-service 뒤에 띄운다
 
 ## Scope & Actors
 
@@ -190,14 +190,14 @@ ship 완료 (2026-10-20, 커밋 57a6fdd) — report: `.beaver/output/report/user
 ### Phase 5 — 서버 분할 (scheduler 서버 · 인스턴스 수 · 인증번호 확인 교착) · depends: Phase 1, Phase 4
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 88 | scheduler 앱 | crontab 만 도는 서버 — 컨트롤러 · HTTP 리스너 · 큐 소비 없음(들어오는 연결 0), DB 에 직접 붙어 작업(자체 repository), `ScheduleModule` · `DatabaseModule` · `JobLockService` | — | — | in-progress |
-| 89 | 탈퇴 자동처리 crontab 이전 | user-service → scheduler. user-service 에서 `ScheduleModule` · crontabs 를 뺀다 | — | 15, 88 | in-progress |
-| 90 | scheduler Docker 묶음 · 인스턴스 수 | `compose.scheduler.yml`(data 네트워크만) · `.env` 의 `SCHEDULER_REPLICAS`(기본 1 — 여러 대여도 `JobLockService` 로 회차마다 1대만 실행). 인스턴스 수는 서버마다 `.env` 의 `*_REPLICAS` 로 정한다 | — | 88 | in-progress |
-| 91 | 인증번호 확인 교착 수정 (리뷰 261020-3 #1) | 틀린 인증번호 · 횟수 초과는 예외를 throw 하지 않고 return — 트랜잭션은 커밋돼 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 failed(400)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개로 끝낸다. 풀 연결 대기 시간도 제한한다 | — | 26, 27 | in-progress |
+| 88 | scheduler 앱 | crontab 만 도는 서버 — 컨트롤러 · HTTP 리스너 · 큐 소비 없음(들어오는 연결 0), DB 에 직접 붙어 작업(자체 repository), `ScheduleModule` · `DatabaseModule` · `JobLockService` | — | — | done(00aa411) |
+| 89 | 탈퇴 자동처리 crontab 이전 | user-service → scheduler. user-service 에서 `ScheduleModule` · crontabs 를 뺀다 | — | 15, 88 | done(00aa411) |
+| 90 | scheduler Docker 묶음 · 인스턴스 수 | `compose.scheduler.yml`(data 네트워크만) · `.env` 의 `SCHEDULER_REPLICAS`(기본 1 — 여러 대여도 `JobLockService` 로 회차마다 1대만 실행). 인스턴스 수는 서버마다 `.env` 의 `*_REPLICAS` 로 정한다 | — | 88 | done(00aa411) |
+| 91 | 인증번호 확인 교착 수정 (리뷰 261020-3 #1) | 틀린 인증번호 · 횟수 초과는 예외를 throw 하지 않고 return — 트랜잭션은 커밋돼 시도 횟수가 남고, `CommandDispatcher` 가 반환된 HttpException 을 failed(400)로 회신한다. RequiresNew 를 없애 트랜잭션 1개 · 연결 1개로 끝낸다. 풀 연결 대기 시간도 제한한다 | — | 26, 27 | done(00aa411) |
 
 **Expected entry points**: `apps/scheduler/src/main.ts`(`NestFactory.createApplicationContext` — listen 없음) · `scheduler.module.ts` · `compose.scheduler.yml`.
 
-build 완료 (2026-10-22) — report: `.beaver/output/report/platform/server-split-report.md`. done 표시는 ship 때.
+ship 완료 (2026-10-22, 커밋 00aa411) — report: `.beaver/output/report/platform/server-split-report.md` · review: `.beaver/output/review/main-review-261022.md`. 리뷰 261020-3 #1(DB 연결 풀 교착, High) · #2 해소.
 
 ### Phase 6 — 계정·인증 (페이지별 로그인 · 가입 규칙) · depends: Phase 3, Phase 4
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -393,10 +393,10 @@ build 완료 (2026-10-22) — report: `.beaver/output/report/platform/server-spl
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 25/91 units done (4/22 phases)
-**Next up**: Phase 5 서버 분할 — 리뷰 #1(인증번호 확인의 DB 연결 풀 교착)은 운영 전에 고쳐야 하고, 앞으로 생길 crontab(입장 QR · 이용 종료)이 scheduler 서버를 기다린다. `/beaver:direct 서버 분할` 로 시작한다(한 기획이 유닛 4개를 모두 덮는다).
+**Progress**: 29/91 units done (5/22 phases)
+**Next up**: Phase 6 계정·인증 — 의존이 모두 끝났고, 관리자 계정 관리와 이후 관리자 API 가 페이지별 로그인 분리를 기다린다. `/beaver:direct 계정·인증` 으로 시작한다(한 기획이 유닛 2개를 모두 덮는다).
 
-함께 시작할 수 있는 것: 계정·인증(Phase 6) · store 스키마(Phase 8) — 서버 분할과 파일이 겹치지 않는다. admin-service 기반(Phase 7)은 앱 등록 파일(nest-cli.json · Dockerfile · docker/)이 겹쳐 서버 분할 뒤에 돌린다.
+함께 시작할 수 있는 것: admin-service 기반(Phase 7) · store 스키마(Phase 8) — 계정·인증과 파일이 겹치지 않아 동시에 돌릴 수 있다(둘끼리도 겹치지 않는다).
 
 ## Cross-Cutting Rules
 
@@ -441,7 +441,6 @@ build 완료 (2026-10-22) — report: `.beaver/output/report/platform/server-spl
 
 ## Notes / Risks
 
-- **운영 전 필수** — Phase 5 #91(인증번호 확인의 DB 연결 풀 교착)을 고치기 전에는 운영에 올리지 않는다. 비로그인 라우트로도 일으킬 수 있다.
 - **마이그레이션 Phase 는 동시에 돌리지 않는다** — `libs/database/src/migrations.ts`(MIGRATIONS) · `entities.ts`(ENTITIES) 를 같이 고친다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 - **배타 제약과 오프라인 검사** — `t_reservation` 의 (room_id, 점유 구간) 배타 제약은 PostgreSQL `btree_gist` 확장이 필요하다. `db:check` 가 쓰는 PGlite 에서 이 확장을 불러올 수 있는지 Phase 16 기획 때 먼저 확인한다.
 - **서비스별 DB 분리 전 단계** — 지금은 공유 DB 다. Open Decisions 의 "계정 생성 위치" · "객실 데이터 읽는 방법" 은 나중 DB 분리 비용을 정한다.
