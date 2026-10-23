@@ -7,8 +7,8 @@ TypeORM 1.x · PostgreSQL 17 · `pg` 드라이버. 접속은 `DATABASE_URL` 하�
 ```
 libs/database/src/
 ├── entities/
-│   ├── user/        auth · state · sns(룩업) · user · user-setting · session · session-refresh
-│   ├── store/       store
+│   ├── user/        auth · state · sns · sms-purpose(룩업) · user · user-setting · session · session-refresh · sms-verification
+│   ├── store/       store-state · store-application-state(룩업) · store · store-application · store-image · store-hour · store-break
 │   └── api-log/     api-log
 ├── entities.ts      # ENTITIES — DataSource 에 등록할 엔티티 목록 (ESM 이라 glob 대신 명시)
 ├── migrations/      # <timestamp>-<Name>.ts
@@ -28,7 +28,7 @@ apps/user-service/src/migrate.ts   # 마이그레이션 실행기 (db:migrate ·
 MSA 정석은 서비스별 DB(database per service)와 앱 안의 엔티티다. 이 구조는 그 전 단계이며, DB 를 나눌 때 `entities/<domain>/` 폴더를 담당 앱으로 옮기면 되도록 경계를 미리 그어 둔 것이다. 그때까지 지킬 규칙:
 
 - 한 서비스의 repository 는 **자기 소유 도메인의 엔티티만** 다룬다(같은 서비스 안의 도메인 간 접근은 [architecture.md](architecture.md) 규칙대로).
-- **다른 서비스 소유 테이블로 가는 FK 를 새로 만들지 않는다.** 필요하면 ID 컬럼만 두고 정합성은 내부 HTTP · 이벤트로 맞춘다. (기존 `t_user.store_id` FK 는 서비스 분리 때 끊을 대상이다)
+- **다른 서비스 소유 테이블로 가는 FK 를 새로 만들지 않는다.** 필요하면 ID 컬럼만 두고 정합성은 내부 HTTP · 이벤트로 맞춘다. 예: `t_store_application.user_id`(신청한 이용자 — ID + 인덱스만, store-application.entity.ts). (기존 `t_user.store_id` FK 는 서비스 분리 때 끊을 대상이다)
 
 ## 엔티티
 
@@ -65,15 +65,17 @@ export class UserSettingEntity {
 규칙:
 - **파일** `entities/<domain>/<feature>.entity.ts`, 클래스 `<Feature>Entity`, 새 엔티티는 [entities.ts](../libs/database/src/entities.ts) `ENTITIES` 에 한 줄 추가.
 - **테이블** `t_<feature snake>` — 엔티티 파일명과 같은 이름이다(`t_user` · `t_user_setting` · `t_session_refresh` 모두 user 도메인). `@Entity({name, comment})` — 테이블 주석도 DB COMMENT 로 들어간다.
-- **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})` — 여러 컬럼은 이어 붙인다: 로그인 그룹 단위 `UK_User_LoginIdLoginScope(login_id, login_scope)` · `UK_User_PhoneLoginScope(phone, login_scope)`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
+- **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})` — 여러 컬럼은 이어 붙인다: 로그인 그룹 단위 `UK_User_LoginIdLoginScope(login_id, login_scope)` · `UK_User_PhoneLoginScope(phone, login_scope)`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`) · `CHK_<Model>_<내용>`(`@Check('CHK_…', '<SQL 식>')` — 컬럼 조합 규칙을 DB 가 막을 때. 예: `CHK_StoreHour_OpenCloseTime` 휴무가 아니면 open_time · close_time 둘 다, 휴무면 둘 다 NULL — store-hour.entity.ts. 스키마 비교(`db:check`)는 CHECK 를 이름으로 맞추므로 식을 바꾸면 이름도 바꾼다). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
 - **모든 컬럼에 `comment`** — 마이그레이션 생성 시 `COMMENT ON` 으로 들어간다. FK 컬럼은 참조 대상 PK 의 주석을 따른다(TypeORM 동작).
 - **FK 는 문자열 속성 + `@ManyToOne(() => X, {nullable, onUpdate: 'CASCADE', onDelete})` + `@JoinColumn({name, referencedColumnName, foreignKeyConstraintName})`** — `nullable: false` 면 `onDelete: 'CASCADE'`, `nullable: true` 면 `onDelete: 'RESTRICT'`(user.entity.ts:23-39, 6건 모두). 조회 시 `loadRelationIds: true` 로 ID 를 채운다. 관계 속성을 엔티티 타입(`auth: AuthEntity`)으로 두지 않는다: ESM 에서 데코레이터 메타데이터가 클래스를 즉시 참조해 순환 import 가 깨진다. 역방향(`@OneToMany`)도 두지 않는다.
 - **컬럼 이름은 항상 명시** — `@Column({name: 'bio', ...})`.
-- **타입** — 문자열 `length: n`(nullable 이면 `type: 'varchar'` 명시), 긴 문자열 `text`, 시각 `timestamptz`, 플래그 `smallint`(0/1), 자동 증가 `bigint` + `@PrimaryGeneratedColumn`(값은 문자열로 온다), JSON `jsonb`.
+- **타입** — 문자열 `length: n`(nullable 이면 `type: 'varchar'` 명시), 긴 문자열 `text`, 시각 `timestamptz`, 하루 안 시각 `time`, 좌표 `double precision`, 플래그 `smallint`(0/1), 자동 증가 `bigint` + `@PrimaryGeneratedColumn`(값은 문자열로 온다), JSON `jsonb`.
+  - **하루 안 시각 `time`** 은 영업시간 · 브레이크타임처럼 날짜 없이 반복되는 시각이다. 한국 시각, 분 단위(`HH:mm`, 초는 0)이고 값은 문자열(`'18:00:00'`)로 온다. **마감이 시작보다 이르면 다음 날**이다(18:00 ~ 06:00 · 23:00 ~ 02:00). 24시간 · 휴무는 시각이 아니라 플래그로 둔다(`t_store.is_always_open` · `t_store_hour.is_closed`) — store-hour.entity.ts · store-break.entity.ts.
+  - **좌표 `double precision`** — 위도 · 경도(WGS84). JS number 로 온다(`numeric` 은 문자열로 온다). 지도 범위 조회용 `IDX_Store_LatitudeLongitude` — store.entity.ts.
   - **jsonb** 는 항목이 자주 바뀌는 상세정보에 쓴다 — 컬럼 하나 + 같은 엔티티 파일의 TS 인터페이스(항목은 모두 선택), `nullable: false` + `default: () => "'{}'"`. 예: `t_store.store_detail: StoreDetail`(`room_count` · `has_shower` · `has_tv` · `has_pc`, 플래그는 0/1 — store.entity.ts). 항목을 바꿀 때는 인터페이스만 고치고 마이그레이션이 없다.
   - 예외(기존 컬럼): `t_user.leave_reserved_at` 은 `varchar(40)` 에 dayjs `'YYYY-MM-DD HH:mm:ss'` 문자열을 넣고 문자열 비교로 경과를 판단한다(user.entity.ts:78, user-leave-cleanup.crontab.ts:43-44). 새 시각 컬럼은 `timestamptz`.
 - **타임스탬프는 `@BeforeInsert`/`@BeforeUpdate` 훅**(❌ `@CreateDateColumn`/`@UpdateDateColumn`). 훅 메서드 이름은 `insertTimestamp()` · `updateTimestamp()`. 훅은 `insert`/`update` 에 **엔티티 인스턴스**를 넘길 때만 돈다 — 그래서 service 는 `new XEntity()` + 할당으로 만든다.
-- **룩업 엔티티**(auth/state/sns)는 구조 컬럼만. 기본 데이터는 seeder.
+- **룩업 엔티티**(auth · state · sns · sms-purpose · store-state · store-application-state)는 구조 컬럼만. 기본 데이터는 seeder.
 
 ## 마이그레이션
 

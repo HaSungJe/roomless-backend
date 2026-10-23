@@ -1,6 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import type {DataSource, EntityTarget, ObjectLiteral} from 'typeorm';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
+import {StoreApplicationStateEntity} from '../entities/store/store-application-state.entity.js';
+import {StoreStateEntity} from '../entities/store/store-state.entity.js';
 import {AuthEntity} from '../entities/user/auth.entity.js';
 import {SmsPurposeEntity} from '../entities/user/sms-purpose.entity.js';
 import {SnsEntity} from '../entities/user/sns.entity.js';
@@ -49,6 +51,20 @@ export const SMS_PURPOSE_SEED_DATA: SmsPurposeEntity[] = [
     {sms_purpose_id: 'PHONE_VERIFY', sms_purpose_name: '휴대폰 인증'},
     {sms_purpose_id: 'FIND_LOGIN_ID', sms_purpose_name: '아이디 찾기'},
     {sms_purpose_id: 'PASSWORD_RESET', sms_purpose_name: '비밀번호 초기화'},
+];
+
+/** 업체 상태(t_store_state) 기본 데이터 — 이용자에게는 ACTIVE 업체만 보인다 */
+export const STORE_STATE_SEED_DATA: StoreStateEntity[] = [
+    {store_state_id: 'ACTIVE', store_state_name: '활성'},
+    {store_state_id: 'SUSPEND', store_state_name: '영업중지'},
+    {store_state_id: 'LEAVE', store_state_name: '탈퇴'},
+];
+
+/** 입점 신청 상태(t_store_application_state) 기본 데이터 */
+export const STORE_APPLICATION_STATE_SEED_DATA: StoreApplicationStateEntity[] = [
+    {store_application_state_id: 'WAIT', store_application_state_name: '대기'},
+    {store_application_state_id: 'APPROVED', store_application_state_name: '승인'},
+    {store_application_state_id: 'REJECTED', store_application_state_name: '반려'},
 ];
 
 /**
@@ -114,6 +130,8 @@ export const SEED_TARGETS: SeedTarget[] = [
     {entity: StateEntity, data: STATE_SEED_DATA},
     {entity: SnsEntity, data: SNS_SEED_DATA},
     {entity: SmsPurposeEntity, data: SMS_PURPOSE_SEED_DATA},
+    {entity: StoreStateEntity, data: STORE_STATE_SEED_DATA},
+    {entity: StoreApplicationStateEntity, data: STORE_APPLICATION_STATE_SEED_DATA},
     {entity: UserEntity, data: buildSuperAdminSeed, key: 'login_id'},
     {entity: UserSettingEntity, data: buildSuperAdminSettingSeed, key: 'user_id'},
 ];

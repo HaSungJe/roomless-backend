@@ -83,9 +83,10 @@ flowchart LR
 
 ## 지금 할 일
 
-store 스키마(Phase 8)부터 — 입점 신청 · 업체 상태 룩업 · `t_store` 재설계 · 사진 · 영업시간 테이블을 세운다(업체 입점·관리 Phase 9 의 토대)
-- 정하기 — 신청 상태 표현(룩업 · 문자열), 편의시설을 `store_detail`(jsonb)에 둘지 · 따로 둘지
-- 시작 — `/beaver:direct store 스키마`
+store 스키마(Phase 8) build 완료 — 입점 신청 · 상태 룩업 · `t_store` 재설계 · 사진 · 영업시간(CHECK) · 브레이크타임 테이블이 생겼다
+- 확인 — report `.beaver/output/report/store/store-schema-report.md`(결정 · PGlite 확인 결과)
+- 다음 — `/beaver:ship` 으로 커밋 · 푸시하면 Phase 9 업체 입점·관리 · Phase 12 room 스키마가 열린다
+- 사용자 — 마이그레이션 `StoreSchema` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 `t_store` 행이 있으면 영업중지 · 좌표 0 으로 채워진다)
 - 사용자 — 마이그레이션 `LoginScopeStoreDetail` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 회원의 `login_scope` 를 권한으로 채운다)
 - 사용자 — `.env` 에 `RABBITMQ_ADMIN_SERVICE_PASSWORD` 추가 → `npm run docker:rabbitmq`(계정 생성) → `npm run docker:admin-service`(user-service 묶음 뒤). 로컬은 `npm run start:admin-service`(:4002)
 - 사용자 — Phase 4 마이그레이션 2개 적용(`npm run db:migrate`), Phase 5 배포 때 user-service 를 새 이미지로 다시 띄우고 scheduler 묶음(`npm run docker:scheduler`)을 user-service 뒤에 띄운다
@@ -412,6 +413,8 @@ Phase 6 리비전 261023-1 과 한 기획으로 build · ship 했다(2026-10-23,
 | 97 | discovery 캐시 (필요 시) | 지도 · 주변 · 업체 상세 조회 결과 — 업체 정보 · 영업 설정이 바뀌면 삭제. `t_api_log.duration_ms` 로 느린 경로를 확인한 뒤 대상 결정 | 캐시 대상 · 무효화 | 95, 74, 75, 76 | todo |
 
 **Expected entry points**: `CACHE_STORE`(`libs/integration/src/cache/`) · `CacheModule`(전역) · `compose.redis.yml` · `docs/guides/redis-setup.md`. 룩업 테이블은 캐싱하지 않는다(Cross-Cutting "캐시").
+
+무효화 원칙은 `.beaver/memory/cache.md` 에 있다 — 캐시한 데이터를 바꾸는 쓰기(정지 · 탈퇴 · 수정 …)는 그 키도 함께 고친다. 캐싱 전략 초안(어떻게 캐시하나 · 무효화 문제 8가지 · 무효화 지점 표 · 열린 결정 7개)은 `.beaver/output/spec/platform/cache-spec.md` — Phase 23 기획은 이 spec 에서 출발한다.
 
 ### 후순위 (별도 기획 — 이 트랙 밖)
 | # | Unit | Goal | Key decision | Depends | Status |
