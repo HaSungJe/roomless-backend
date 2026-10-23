@@ -1,4 +1,4 @@
-# Roadmap — roomless (무인 객실 대여 플랫폼 — 입점 업체가 객실을 운영하고 이용자가 지도에서 찾아 예약 · QR 입장 · 이용)
+| done(2ef929a) || done(2ef929a) || done(2ef929a) || done(2ef929a) || done(2ef929a) |# Roadmap — roomless (무인 객실 대여 플랫폼 — 입점 업체가 객실을 운영하고 이용자가 지도에서 찾아 예약 · QR 입장 · 이용)
 
 ## Direction
 
@@ -13,7 +13,7 @@ flowchart LR
   P2 --> P4["Phase 4 · 회원 스키마 확장 (5)"]:::done
   P4 --> P5["Phase 5 · 서버 분할 (4)"]:::done
   P1 --> P7["Phase 7 · admin-service 기반 (4)"]:::done
-  P1 --> P8["Phase 8 · store 스키마 (5)"]:::inprog
+  P1 --> P8["Phase 8 · store 스키마 (5)"]:::done
   P1 --> P22["Phase 22 · api-log (1)"]:::todo
   P3 --> P6["Phase 6 · 계정·인증 (4)"]:::done
   P7 --> P6
@@ -60,7 +60,7 @@ flowchart LR
 - Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), libs/messaging(CommandDispatcher), libs/database(연결 대기 제한), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 6 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4, 7 · 푼다: Phase 20, 23 · 파일 집합: apps/user-service/src/user, apps/admin-service/src/{manager,admin}, apps/gateway/src/api/v1/{user-service/user, admin-service/manager, admin-service/admin} · guards, libs/account, libs/contracts/src/{user,manager,admin}, libs/database(entities · migrations · seeder), README.md, AGENTS.md, docs/ · done
 - Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · done(Phase 6 과 한 기획 — 리비전 261023-1)
-- Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · in-progress(build 완료 — report: .beaver/output/report/store/store-schema-report.md)
+- Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done(2ef929a)
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · todo
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · todo
 - Phase 11 — 업체 운영 설정 · 유닛 5개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · todo
@@ -77,15 +77,16 @@ flowchart LR
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 - Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, compose.redis.yml, docker/, .env.example, docs/guides, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
 
-동시 가능: Phase 8·Phase 22 (지금 바로 — 단, 둘 다 마이그레이션을 더해 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
+동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: Phase 8 진행중(build 완료 · ship 대기) · Next up: Phase 8
+지금: Phase 8 완료 · Next up: Phase 9
 
 ## 지금 할 일
 
-store 스키마(Phase 8) build 완료 — 입점 신청 · 상태 룩업 · `t_store` 재설계 · 사진 · 영업시간(CHECK) · 브레이크타임 테이블이 생겼다
-- 확인 — report `.beaver/output/report/store/store-schema-report.md`(결정 · PGlite 확인 결과)
-- 다음 — `/beaver:ship` 으로 커밋 · 푸시하면 Phase 9 업체 입점·관리 · Phase 12 room 스키마가 열린다
+업체 입점·관리(Phase 9) — 입점 신청 → 승인(업체 등록 + 업체 총관리자 계정 + 안내 SMS) · 반려, 업체 목록 · 상세 · 수정 · 삭제 · 상태 변경(admin-service store 도메인)
+- 정하기 — 승인 때 매니저 계정을 store 도메인에서 만들지 · manager 도메인 repository 로 만들지(#39), 업체 삭제 방식(`LEAVE` 상태와 `is_deleted` — #40), 영업중지 때 미래 예약 처리(#41 · Open Decisions)
+- 정하기 — 같은 사업자번호의 대기 중 신청 중복 막기, 업체 총관리자 계정의 아이디 · 성별 · 생년월일을 어디서 채울지
+- 시작 — `/beaver:direct 업체 입점·관리`
 - 사용자 — 마이그레이션 `StoreSchema` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 `t_store` 행이 있으면 영업중지 · 좌표 0 으로 채워진다)
 - 사용자 — 마이그레이션 `LoginScopeStoreDetail` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 회원의 `login_scope` 를 권한으로 채운다)
 - 사용자 — `.env` 에 `RABBITMQ_ADMIN_SERVICE_PASSWORD` 추가 → `npm run docker:rabbitmq`(계정 생성) → `npm run docker:admin-service`(user-service 묶음 뒤). 로컬은 `npm run start:admin-service`(:4002)
@@ -250,7 +251,9 @@ Phase 6 리비전 261023-1 과 한 기획으로 build · ship 했다(2026-10-23,
 | 35 | `t_store_image` | 업체 사진(정렬 순서) | — | 34 | in-progress |
 | 36 | `t_store_hour` · `t_store_break` | 요일별 영업시간 · 브레이크타임 | — | 34 | in-progress |
 
-**Expected data contract**: `t_store_application` · `t_store_state` · `t_store` · `t_store_image` · `t_store_hour` · `t_store_break`.
+**Data contract**: `t_store_application_state` · `t_store_application` · `t_store_state` · `t_store`(+ `is_always_open` · `is_open`) · `t_store_image` · `t_store_hour`(`CHK_StoreHour_OpenCloseTime`) · `t_store_break`.
+
+ship 완료 (2026-10-24, 커밋 2ef929a) — report: `.beaver/output/report/store/store-schema-report.md` · review: `.beaver/output/review/main-review-261024.md`. 신청 상태는 룩업, 편의시설은 `store_detail` 유지로 정했다.
 
 ### Phase 9 — 업체 입점·관리 (신청 → 승인 → 업체 등록) · depends: Phase 3, Phase 4, Phase 7, Phase 8
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -425,10 +428,10 @@ Phase 6 리비전 261023-1 과 한 기획으로 build · ship 했다(2026-10-23,
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 37/97 units done (7/23 phases)
-**Next up**: Phase 8 store 스키마 — 의존(Phase 1)이 끝났고, 업체 입점·관리(Phase 9 — admin-service 매니저 도메인 계정 생성)와 room 스키마(Phase 12)가 이 테이블을 기다린다. `/beaver:direct store 스키마` 로 시작한다(한 기획이 유닛 5개를 모두 덮는다).
+**Progress**: 42/97 units done (8/23 phases)
+**Next up**: Phase 9 업체 입점·관리 — 의존(Phase 3 · 4 · 7 · 8)이 모두 끝났고, 가장 긴 의존 사슬(9 → 10 → 11 → 13 → 17)의 시작이다. `/beaver:direct 업체 입점·관리` 로 시작한다(한 기획이 유닛 5개를 모두 덮는다).
 
-함께 시작할 수 있는 것: api-log(Phase 22)는 의존이 끝났지만 Phase 8 과 마찬가지로 마이그레이션을 더해 동시에 돌리지 않는다.
+함께 시작할 수 있는 것: room 스키마(Phase 12)와 api-log(Phase 22)도 의존이 끝났다. 둘 다 Phase 9 와 파일이 겹치지 않아 함께 돌릴 수 있지만, 서로는 마이그레이션 등록 파일이 겹쳐 동시에 돌리지 않는다.
 
 ## Cross-Cutting Rules
 
