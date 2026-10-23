@@ -1,4 +1,4 @@
-| done(2ef929a) || done(2ef929a) || done(2ef929a) || done(2ef929a) || done(2ef929a) |# Roadmap — roomless (무인 객실 대여 플랫폼 — 입점 업체가 객실을 운영하고 이용자가 지도에서 찾아 예약 · QR 입장 · 이용)
+# Roadmap — roomless (무인 객실 대여 플랫폼 — 입점 업체가 객실을 운영하고 이용자가 지도에서 찾아 예약 · QR 입장 · 이용)
 
 ## Direction
 
@@ -245,11 +245,11 @@ Phase 6 리비전 261023-1 과 한 기획으로 build · ship 했다(2026-10-23,
 ### Phase 8 — store 스키마 (업체 새 모델) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 32 | `t_store_application` | 입점 신청 — 신청자 · 업체 정보 · 업체 총관리자 휴대폰 번호 · 상태 · 반려 사유 | 신청 상태 표현(룩업 · 문자열) | — | in-progress |
-| 33 | `t_store_state` 룩업 + 시드 | 활성 · 영업중지 · 탈퇴 | — | — | in-progress |
-| 34 | `t_store` 재설계 | 상태 · 위경도 · 정비시간 · 소개 · 편의시설 · 연락처 — 편의시설 · 방 칸수는 Phase 6 #93 의 `store_detail`(jsonb)로 먼저 자리를 잡았다 | 편의시설을 `store_detail` 에 둘지 · 따로 둘지 | 33 | in-progress |
-| 35 | `t_store_image` | 업체 사진(정렬 순서) | — | 34 | in-progress |
-| 36 | `t_store_hour` · `t_store_break` | 요일별 영업시간 · 브레이크타임 | — | 34 | in-progress |
+| 32 | `t_store_application` | 입점 신청 — 신청자 · 업체 정보 · 업체 총관리자 휴대폰 번호 · 상태 · 반려 사유 | 신청 상태 표현(룩업 · 문자열) | — | done(2ef929a) |
+| 33 | `t_store_state` 룩업 + 시드 | 활성 · 영업중지 · 탈퇴 | — | — | done(2ef929a) |
+| 34 | `t_store` 재설계 | 상태 · 위경도 · 정비시간 · 소개 · 편의시설 · 연락처 — 편의시설 · 방 칸수는 Phase 6 #93 의 `store_detail`(jsonb)로 먼저 자리를 잡았다 | 편의시설을 `store_detail` 에 둘지 · 따로 둘지 | 33 | done(2ef929a) |
+| 35 | `t_store_image` | 업체 사진(정렬 순서) | — | 34 | done(2ef929a) |
+| 36 | `t_store_hour` · `t_store_break` | 요일별 영업시간 · 브레이크타임 | — | 34 | done(2ef929a) |
 
 **Data contract**: `t_store_application_state` · `t_store_application` · `t_store_state` · `t_store`(+ `is_always_open` · `is_open`) · `t_store_image` · `t_store_hour`(`CHK_StoreHour_OpenCloseTime`) · `t_store_break`.
 
