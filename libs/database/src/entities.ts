@@ -2,8 +2,9 @@ import {ApiLogEntity} from './entities/api-log/api-log.entity.js';
 import {StoreApplicationStateEntity} from './entities/store/store-application-state.entity.js';
 import {StoreApplicationEntity} from './entities/store/store-application.entity.js';
 import {StoreBreakEntity} from './entities/store/store-break.entity.js';
+import {StoreFilePurposeEntity} from './entities/store/store-file-purpose.entity.js';
+import {StoreFileEntity} from './entities/store/store-file.entity.js';
 import {StoreHourEntity} from './entities/store/store-hour.entity.js';
-import {StoreImageEntity} from './entities/store/store-image.entity.js';
 import {StoreStateEntity} from './entities/store/store-state.entity.js';
 import {StoreEntity} from './entities/store/store.entity.js';
 import {AuthEntity} from './entities/user/auth.entity.js';
@@ -27,9 +28,10 @@ export const ENTITIES = [
     SmsPurposeEntity,
     StoreStateEntity,
     StoreApplicationStateEntity,
+    StoreFilePurposeEntity,
     StoreEntity,
     StoreApplicationEntity,
-    StoreImageEntity,
+    StoreFileEntity,
     StoreHourEntity,
     StoreBreakEntity,
     UserEntity,

@@ -21,6 +21,8 @@ export interface InternalRequestOptions {
     actor?: Actor | null;
     /** 클라이언트 IP (헤더로 전달) */
     client_ip?: string | null;
+    /** 쿼리 문자열 — 값이 undefined · null 인 키는 뺀다(목록 Query DTO) */
+    query?: object;
 }
 
 /**
@@ -36,7 +38,7 @@ export class InternalHttpClient {
      * @param service 대상 서비스
      * @param method HTTP 메서드
      * @param path 경로 (예: /internal/v1/user-service/user/login)
-     * @param options 본문 · actor · 클라이언트 IP
+     * @param options 본문 · actor · 클라이언트 IP · 쿼리 문자열
      * @returns 응답 본문 (204 면 undefined)
      * @throws HttpException 서비스가 실패 응답을 주면 같은 상태 코드 · 본문으로
      * @throws ServiceUnavailableException 접속 실패 · 타임아웃
@@ -59,7 +61,7 @@ export class InternalHttpClient {
 
         let response: Response;
         try {
-            response = await fetch(`${base}${path}`, init);
+            response = await fetch(`${base}${path}${toQueryString(options.query)}`, init);
         } catch {
             throw new ServiceUnavailableException({message: SERVICE_UNAVAILABLE_MESSAGE});
         }
@@ -86,4 +88,24 @@ function parseJson(text: string): unknown {
     } catch {
         return undefined;
     }
+}
+
+/**
+ * 쿼리 객체를 `?a=1&b=2` 로 바꾼다 — undefined · null 인 값은 뺀다. 없으면 빈 문자열.
+ *
+ * @param query 쿼리 객체
+ * @returns 쿼리 문자열
+ */
+function toQueryString(query: object | undefined): string {
+    if (!query) {
+        return '';
+    }
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== null) {
+            params.append(key, String(value));
+        }
+    }
+    const text = params.toString();
+    return text ? `?${text}` : '';
 }

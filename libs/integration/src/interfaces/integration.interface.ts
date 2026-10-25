@@ -35,8 +35,16 @@ export interface StorageUploadResult {
     expires_at: Date;
 }
 
+/** 열람 주소 */
+export interface StorageDownloadResult {
+    /** 비공개 파일을 GET 으로 볼 주소 (STORAGE_DOWNLOAD_URL_TTL_SECONDS 동안 유효) */
+    download_url: string;
+    /** download_url 이 만료되는 시각 */
+    expires_at: Date;
+}
+
 /**
- * 파일 저장소 포트 — 업체 · 객실 그룹 사진.
+ * 파일 저장소 포트 — 공개 파일(업체 · 객실 그룹 사진 — CDN 공개 주소)과 비공개 파일(사업자등록증 — private/, 서명된 열람 주소).
  * 파일 본문은 서버를 거치지 않는다. 클라이언트가 createUploadUrl 의 주소로 직접 올리고, 등록 명령에는 키만 보낸다.
  */
 export interface StorageGatewayInterface {
@@ -60,6 +68,13 @@ export interface StorageGatewayInterface {
      * @throws InternalServerErrorException `{message: STORAGE_PUBLIC_URL_MISSING_MESSAGE}` — 설정된 공개 주소가 없을 때
      */
     getPublicUrl(key: string): string;
+
+    /**
+     * 비공개 파일(private/ 접두 — CDN · 공개 읽기 밖)을 잠깐 볼 수 있는 열람 주소를 발급한다(presigned GET).
+     *
+     * @throws ServiceUnavailableException `{message: STORAGE_UNAVAILABLE_MESSAGE}` — 서명하지 못했을 때
+     */
+    createDownloadUrl(key: string): Promise<StorageDownloadResult>;
 
     /**
      * 파일을 지운다. 없는 키여도 실패하지 않는다.

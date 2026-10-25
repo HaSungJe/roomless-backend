@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import type {DataSource, EntityTarget, ObjectLiteral} from 'typeorm';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
 import {StoreApplicationStateEntity} from '../entities/store/store-application-state.entity.js';
+import {StoreFilePurposeEntity} from '../entities/store/store-file-purpose.entity.js';
 import {StoreStateEntity} from '../entities/store/store-state.entity.js';
 import {AuthEntity} from '../entities/user/auth.entity.js';
 import {SmsPurposeEntity} from '../entities/user/sms-purpose.entity.js';
@@ -65,6 +66,12 @@ export const STORE_APPLICATION_STATE_SEED_DATA: StoreApplicationStateEntity[] = 
     {store_application_state_id: 'WAIT', store_application_state_name: '대기'},
     {store_application_state_id: 'APPROVED', store_application_state_name: '승인'},
     {store_application_state_id: 'REJECTED', store_application_state_name: '반려'},
+];
+
+/** 업체 정보 파일 용도(t_store_file_purpose) 기본 데이터 — admin-service store.constants.ts 의 STORE_FILE_PURPOSE 와 같다. 사업자등록증만 비공개 */
+export const STORE_FILE_PURPOSE_SEED_DATA: StoreFilePurposeEntity[] = [
+    {store_file_purpose_id: 'BUSINESS_LICENSE', store_file_purpose_name: '사업자등록증', is_private: 1},
+    {store_file_purpose_id: 'STORE_IMAGE', store_file_purpose_name: '업체 사진', is_private: 0},
 ];
 
 /**
@@ -132,6 +139,7 @@ export const SEED_TARGETS: SeedTarget[] = [
     {entity: SmsPurposeEntity, data: SMS_PURPOSE_SEED_DATA},
     {entity: StoreStateEntity, data: STORE_STATE_SEED_DATA},
     {entity: StoreApplicationStateEntity, data: STORE_APPLICATION_STATE_SEED_DATA},
+    {entity: StoreFilePurposeEntity, data: STORE_FILE_PURPOSE_SEED_DATA},
     {entity: UserEntity, data: buildSuperAdminSeed, key: 'login_id'},
     {entity: UserSettingEntity, data: buildSuperAdminSettingSeed, key: 'user_id'},
 ];

@@ -1,8 +1,8 @@
-import {DeleteObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3';
+import {DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3';
 import {getSignedUrl} from '@aws-sdk/s3-request-presigner';
 import {Injectable, InternalServerErrorException, Logger, OnApplicationBootstrap, ServiceUnavailableException} from '@nestjs/common';
-import {STORAGE_PUBLIC_URL_MISSING_MESSAGE, STORAGE_UNAVAILABLE_MESSAGE, STORAGE_UPLOAD_URL_TTL_SECONDS} from '../integration.constants.js';
-import type {StorageGatewayInterface, StorageUploadInput, StorageUploadResult} from '../interfaces/integration.interface.js';
+import {STORAGE_DOWNLOAD_URL_TTL_SECONDS, STORAGE_PUBLIC_URL_MISSING_MESSAGE, STORAGE_UNAVAILABLE_MESSAGE, STORAGE_UPLOAD_URL_TTL_SECONDS} from '../integration.constants.js';
+import type {StorageDownloadResult, StorageGatewayInterface, StorageUploadInput, StorageUploadResult} from '../interfaces/integration.interface.js';
 
 /**
  * 파일 저장소 어댑터 — Amazon S3. 업로드는 presigned URL(PutObject, Content-Type 서명)로 클라이언트가 직접 한다.
@@ -77,6 +77,22 @@ export class S3StorageGateway implements StorageGatewayInterface, OnApplicationB
             throw new InternalServerErrorException({message: STORAGE_PUBLIC_URL_MISSING_MESSAGE});
         }
         return `${base}/${key}`;
+    }
+
+    /**
+     * 비공개 파일 열람 주소를 서명한다(네트워크 호출 없음) — CDN · 공개 읽기 밖(private/)의 파일용.
+     *
+     * @param key 저장 키
+     * @returns 열람 주소 · 만료 시각
+     * @throws ServiceUnavailableException 서명하지 못했을 때(자격증명 · 버킷 설정 없음)
+     */
+    async createDownloadUrl(key: string): Promise<StorageDownloadResult> {
+        try {
+            const downloadUrl = await getSignedUrl(this.client, new GetObjectCommand({Bucket: process.env.AWS_S3_BUCKET, Key: key}), {expiresIn: STORAGE_DOWNLOAD_URL_TTL_SECONDS});
+            return {download_url: downloadUrl, expires_at: new Date(Date.now() + STORAGE_DOWNLOAD_URL_TTL_SECONDS * 1000)};
+        } catch (error) {
+            throw toUnavailable(this.logger, '열람 주소 발급', error);
+        }
     }
 
     /**

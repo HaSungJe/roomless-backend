@@ -9,3 +9,6 @@ export const STORAGE_PUBLIC_URL_MISSING_MESSAGE = '설정된 파일 공개 주�
 
 /** 업로드 주소(presigned URL)의 유효 시간(초) */
 export const STORAGE_UPLOAD_URL_TTL_SECONDS = 600;
+
+/** 비공개 파일 열람 주소(presigned GET)의 유효 시간(초) */
+export const STORAGE_DOWNLOAD_URL_TTL_SECONDS = 600;

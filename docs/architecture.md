@@ -22,7 +22,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 |---|---|---|
 | `apps/gateway` | 유일한 진입점. JWT · DTO 검증, 경로 선택(동기 / 큐), 요청 단위 SSE, Swagger | O (GATEWAY_PORT) |
 | `apps/user-service` | 이용자 도메인(`user`). DB(PostgreSQL) 소유, 룩업 시드 · 마이그레이션 | X (내부망, INTERNAL_API_TOKEN) |
-| `apps/admin-service` | 매니저(`manager`) · 관리자(`admin`) 도메인. 공유 DB 를 직접 쓴다(마이그레이션 · 시드는 user-service 묶음) | X (내부망, INTERNAL_API_TOKEN) |
+| `apps/admin-service` | 매니저(`manager`) · 관리자(`admin`) · 업체(`store` — 입점 신청 · 승인 · 업체 관리) 도메인. 공유 DB 를 직접 쓴다(마이그레이션 · 시드는 user-service 묶음) | X (내부망, INTERNAL_API_TOKEN) |
 | `apps/scheduler` | crontab 전용(탈퇴 자동처리). 들어오는 연결 없음 — listen · 큐 소비 · 컨트롤러가 없고 DB 에만 붙는다 | X (연결을 받지 않음) |
 
 - **모노레포 ≠ 모놀리스** — `nest build gateway` · `nest build user-service` · `nest build admin-service` · `nest build scheduler` 로 따로 빌드되고 독립 프로세스로 뜬다. 트래픽이 몰리는 앱만 인스턴스를 늘린다. 산출물: `dist/apps/<app>/apps/<app>/src/main.js`.
@@ -37,7 +37,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | `libs/common` | `ApiFailResultDto` · `toFailResult` · `CustomErrorFilter` · `validationExceptionFactory` · `PaginationDto`/`PaginationResultDto` · 순수 util(bcrypt/hash/cipher/jwt/validation/fail-result/retry/pagination/env/id/kst) · `InternalAuthGuard` · `@ClientIp` · `@InternalActor`(정의만, 사용 0) | 모든 앱 |
 | `libs/contracts` | 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type · 큐 이름 · 내부 경로 상수, 메시지 봉투, `Actor`, 내부 헤더, SSE 이벤트 이름 | 모든 앱 |
 | `libs/database` | `entities/<domain>/` · `entities.ts`(ENTITIES) · `migrations/` · `migrations.ts`(MIGRATIONS) · `typeorm.config.ts` · `DatabaseModule`(TypeORM + 트랜잭션, 전역) · `JobLockService`(`job-lock/`) · `isUniqueViolation`/`isForeignKeyViolation` · seeder · `data-source`(마이그레이션 실행용) | DB 소유 서비스 |
-| `libs/integration` | 외부 연동 포트 `SMS_SENDER`(Amazon SNS) · `STORAGE_GATEWAY`(Amazon S3, presigned URL) · `SmsModule` · `StorageModule`(전역) — [integration.md](integration.md) · [guides/aws-setup.md](guides/aws-setup.md) | 포트를 쓰는 서비스(SMS: user-service 휴대폰 인증 · 아이디 찾기, admin-service 매니저 아이디 찾기 · 비밀번호 초기화) |
+| `libs/integration` | 외부 연동 포트 `SMS_SENDER`(Amazon SNS) · `STORAGE_GATEWAY`(Amazon S3, presigned URL) · `SmsModule` · `StorageModule`(전역) — [integration.md](integration.md) · [guides/aws-setup.md](guides/aws-setup.md) | 포트를 쓰는 서비스(SMS: user-service 휴대폰 인증 · 아이디 찾기, admin-service 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내 / 파일: admin-service 업체 정보 파일) |
 | `libs/messaging` | `RabbitMqConnection` · 명령 발행 · 결과 구독 · 명령 소비 · `@OnCommand` · `CommandDispatcher` · `MessagingModule.forGateway()/forService()`(둘 다 전역) | 게이트웨이 · 서비스 |
 
 - import 는 `@app/<lib>/<경로>.js` (barrel 없음). 앱 · 도메인 내부는 상대경로. 라이브러리 안의 import 방식은 [conventions.md](conventions.md).
@@ -60,6 +60,8 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | `POST /api/v1/user-service/user/sign` · `DELETE · PATCH /api/v1/user-service/user/leave` · `POST /api/v1/user-service/user/phone-verification(+/confirm)` · `/find-login-id(+/confirm)` | 큐 (`user.member.*` → `q.user.cmd`) |
 | `PATCH /api/v1/admin-service/manager/password` · `POST /api/v1/admin-service/manager/find-login-id(+/confirm)` · `/password-reset(+/confirm)` | 큐 (`admin.manager.*` → `q.admin.cmd`) |
 | `PATCH /api/v1/admin-service/admin/password` | 큐 (`admin.admin.password` → `q.admin.cmd`) |
+| `GET /api/v1/admin-service/store/application/mine(/:id)` · `/application(/:id)` · `/` · `/:store_id` · `POST …/application/mine/:id/file/upload-url` | 동기 (`/internal/v1/admin-service/store/*` → admin-service) |
+| `POST /api/v1/admin-service/store/application` · `DELETE …/application/mine/:id` · `POST · DELETE …/application/mine/:id/file(/:file_id)` · `PATCH …/application/:id/{approve,reject}` · `PATCH /:store_id(/state)` | 큐 (`admin.store.*` → `q.admin.cmd`) |
 
 그룹 표 · 그룹별 인증 가드: [api.md](api.md) "로그인 그룹(도메인) · 인증 가드".
 
@@ -94,21 +96,22 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 다른 도메인의 테이블이 필요하면 **소유 도메인의 repository 가 그 엔티티를 직접 다룬다**(service→service 호출 ❌).
 
-- 소유 도메인은 API 경로가 정한다(`/api/v1/store/...` 면 store 도메인).
-- 메서드명은 소유 도메인 어휘 — 예: `t_user` 를 다뤄도 store 에서는 `insertStaff`(예시 — 아직 코드 없음).
+- 소유 도메인은 API 경로가 정한다(`/api/v1/admin-service/store/...` 면 store 도메인).
+- 메서드명은 소유 도메인 어휘 — 예: `t_user` 를 다뤄도 store 에서는 `findApplicant` · `insertHeadManager` · `updateStoreManagers`(apps/admin-service/src/store/repositories/store.repository.ts).
 - 앱 간에는 서로의 DB 에 기대지 않는 방향으로 간다: 다른 서비스의 데이터가 필요하면 내부 HTTP 또는 이벤트로 받는다(공유 DB 단계에서도 다른 앱의 repository 를 import 하지 않는다).
 
 ## 모듈 · 부트스트랩
 
 전역 모듈 — `TransportModule`(`@Global`) · `DatabaseModule`(`@Global`, `JobLockService` export) · `SmsModule` · `StorageModule`(`@Global`, `SMS_SENDER` · `STORAGE_GATEWAY` export) · `MessagingModule.forGateway()/forService()`(`global: true`, forService 는 `exports: []`). 그래서 도메인 모듈은 이것들을 import 하지 않고 주입받는다.
 
-**gateway** — `GatewayModule` = `MessagingModule.forGateway()`(`BROKER_ACCOUNT='gateway'` · `RabbitMqConnection` · `GATEWAY_INSTANCE_ID` · `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) + `TransportModule`(`modules/transport`: InternalHttpClient · CommandStreamService) + `PassportJwtAuthModule`(`guards/passport.jwt.auth`, 그룹별 JWT 전략 3개) + 도메인 라우트 모듈(`UserModule` — `api/v1/user-service/user`, `ManagerModule` · `AdminModule` — `api/v1/admin-service/{manager,admin}`). APP_GUARD 없음(인증은 핸들러의 그룹 가드).
+**gateway** — `GatewayModule` = `MessagingModule.forGateway()`(`BROKER_ACCOUNT='gateway'` · `RabbitMqConnection` · `GATEWAY_INSTANCE_ID` · `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) + `TransportModule`(`modules/transport`: InternalHttpClient · CommandStreamService) + `PassportJwtAuthModule`(`guards/passport.jwt.auth`, 그룹별 JWT 전략 3개) + 도메인 라우트 모듈(`UserModule` — `api/v1/user-service/user`, `ManagerModule` · `AdminModule` · `StoreModule` — `api/v1/admin-service/{manager,admin,store}`). APP_GUARD 없음(인증은 핸들러의 그룹 가드).
 
 ```
 apps/gateway/src/
 ├── api/v1/user-service/user/      # 이용자 도메인 라우트(/api/v1/user-service/user) — controllers/(user.controller.ts 동기 · user.controller.queue.ts 큐) · user.module.ts
 ├── api/v1/admin-service/manager/  # 매니저 도메인 라우트(/api/v1/admin-service/manager) — controllers/(manager.controller.ts · manager.controller.queue.ts) · manager.module.ts
 ├── api/v1/admin-service/admin/    # 관리자 도메인 라우트(/api/v1/admin-service/admin) — controllers/(admin.controller.ts · admin.controller.queue.ts) · admin.module.ts
+├── api/v1/admin-service/store/    # 업체 도메인 라우트(/api/v1/admin-service/store — 신청자는 이용자 가드, 나머지는 관리자 가드) — controllers/(store.controller.ts · store.controller.queue.ts) · store.module.ts
 ├── guards/
 │   ├── passport.jwt.auth/  # 그룹별 strategy · guard(auth=이용자 · manager · admin) · util(공통 옵션 · 회원 조회 · 401) · decorator(@PassportUser · @PassportActor) · module
 │   └── roles/              # roles.guard.ts · roles.decorator.ts(@Roles — 그룹 안 권한, 사용 0)
@@ -121,7 +124,7 @@ apps/gateway/src/
 
 **user-service** — `UserServiceModule` = `DatabaseModule`(TypeORM + ClsModule `TransactionalAdapterTypeOrm`) + `MessagingModule.forService({queue: USER_COMMAND_QUEUE, binding_keys: [USER_COMMAND_BINDING], broker_user: BROKER_USER.USER_SERVICE})`(`broker_user` 필수, 큐 · 바인딩은 contracts 상수) + `UserModule` + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`(반환된 예외 → 실패 응답) · `SeederService`. crontab 이 없다(scheduler).
 
-**admin-service** — `AdminServiceModule` = `DatabaseModule`(user-service 와 같은 DB · 엔티티) + `MessagingModule.forService({queue: ADMIN_COMMAND_QUEUE, binding_keys: [ADMIN_COMMAND_BINDING], broker_user: BROKER_USER.ADMIN_SERVICE})`(`q.admin.cmd` ← `admin.#`) + `SmsModule` + `ManagerModule` · `AdminModule` + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`. migrate · `SeederService` 가 없다(user-service 몫). `main.ts` 는 user-service 와 같은 모양 — `listen(ADMIN_SERVICE_PORT ?? 4002, ADMIN_SERVICE_HOST || '127.0.0.1')`.
+**admin-service** — `AdminServiceModule` = `DatabaseModule`(user-service 와 같은 DB · 엔티티) + `MessagingModule.forService({queue: ADMIN_COMMAND_QUEUE, binding_keys: [ADMIN_COMMAND_BINDING], broker_user: BROKER_USER.ADMIN_SERVICE})`(`q.admin.cmd` ← `admin.#`) + `SmsModule` · `StorageModule` + `ManagerModule` · `AdminModule` · `StoreModule` + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`. migrate · `SeederService` 가 없다(user-service 몫). `main.ts` 는 user-service 와 같은 모양 — `listen(ADMIN_SERVICE_PORT ?? 4002, ADMIN_SERVICE_HOST || '127.0.0.1')`.
 
 **scheduler** — `SchedulerModule` = `DatabaseModule` + `ScheduleModule.forRoot()` + `UserModule`(crontab + scheduler 의 회원 repository). APP_GUARD · MessagingModule · 컨트롤러 · 시드가 없다.
 `main.ts`: `dotenv/config` → `NestFactory.createApplicationContext(SchedulerModule)`(listen 하지 않는다) → 종료 훅. 등록된 `@Cron` 타이머가 프로세스를 살려 둔다.

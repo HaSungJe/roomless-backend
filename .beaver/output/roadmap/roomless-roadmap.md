@@ -18,7 +18,7 @@ flowchart LR
   P3 --> P6["Phase 6 · 계정·인증 (4)"]:::done
   P7 --> P6
   P4 --> P6
-  P3 --> P9["Phase 9 · 업체 입점·관리 (5)"]:::todo
+  P3 --> P9["Phase 9 · 업체 입점·관리 (5)"]:::inprog
   P4 --> P9
   P7 --> P9
   P8 --> P9
@@ -59,9 +59,9 @@ flowchart LR
 - Phase 4 — 회원 스키마 확장 · 유닛 5개 · 의존: Phase 2, 3 · 푼다: Phase 5, 6, 9 · 파일 집합: libs/database(entities · migrations · seeder), libs/contracts/src/user, apps/user-service/src/user, apps/gateway/src/api/v1/user, AGENTS.md, docs/ · done
 - Phase 5 — 서버 분할 · 유닛 4개 · 의존: Phase 1, 4 · 푼다: Phase 19 · 파일 집합: apps/scheduler, apps/user-service(crontabs · 루트 모듈 · 인증번호 확인), libs/messaging(CommandDispatcher), libs/database(연결 대기 제한), compose.scheduler.yml, nest-cli.json, Dockerfile, docker/, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 6 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4, 7 · 푼다: Phase 20, 23 · 파일 집합: apps/user-service/src/user, apps/admin-service/src/{manager,admin}, apps/gateway/src/api/v1/{user-service/user, admin-service/manager, admin-service/admin} · guards, libs/account, libs/contracts/src/{user,manager,admin}, libs/database(entities · migrations · seeder), README.md, AGENTS.md, docs/ · done
-- Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · done(Phase 6 과 한 기획 — 리비전 261023-1)
-- Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done(2ef929a)
-- Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · todo
+- Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · done
+- Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done
+- Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · in-progress
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · todo
 - Phase 11 — 업체 운영 설정 · 유닛 5개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · todo
 - Phase 12 — room 스키마 · 유닛 5개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
@@ -79,7 +79,7 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: Phase 8 완료 · Next up: Phase 9
+지금: Phase 9 진행 중 · Next up: Phase 9
 
 ## 지금 할 일
 
@@ -258,11 +258,11 @@ ship 완료 (2026-10-24, 커밋 2ef929a) — report: `.beaver/output/report/stor
 ### Phase 9 — 업체 입점·관리 (신청 → 승인 → 업체 등록) · depends: Phase 3, Phase 4, Phase 7, Phase 8
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 37 | 입점 신청 · 내 신청 상태 | 이용자 페이지 하단, 로그인 필요 | — | 32 | todo |
-| 38 | 입점 신청 목록 · 상세 | 총관리자 | — | 32 | todo |
-| 39 | 입점 승인 · 반려 | 승인 = 업체 등록 + 업체 총관리자 계정 생성 + 안내 SMS, 반려 = 사유 (큐) | 계정 생성은 admin-service 가 공유 DB 에 직접(결정 2026-10-23) — store 도메인에서 할지 manager 도메인 repository 로 할지 | 17, 37 | todo |
-| 40 | 업체 목록 · 상세 · 수정 · 삭제 | 총관리자 — 새로 만든다 | 삭제 방식(soft delete) | 34 | todo |
-| 41 | 업체 상태 변경 | 활성 · 영업중지 | 영업중지 시 미래 예약 처리(Open Decisions) | 33 | todo |
+| 37 | 입점 신청 · 내 신청 상태 | 이용자 페이지 하단, 로그인 필요 | — | 32 | in-progress |
+| 38 | 입점 신청 목록 · 상세 | 총관리자 | — | 32 | in-progress |
+| 39 | 입점 승인 · 반려 | 승인 = 업체 등록 + 업체 총관리자 계정 생성 + 안내 SMS, 반려 = 사유 (큐) | 계정 생성은 admin-service 가 공유 DB 에 직접(결정 2026-10-23) — store 도메인에서 할지 manager 도메인 repository 로 할지 | 17, 37 | in-progress |
+| 40 | 업체 목록 · 상세 · 수정 · 삭제 | 총관리자 — 새로 만든다 | 삭제 방식(soft delete) | 34 | in-progress |
+| 41 | 업체 상태 변경 | 활성 · 영업중지 | 영업중지 시 미래 예약 처리(Open Decisions) | 33 | in-progress |
 
 **Expected APIs** (가칭):
 

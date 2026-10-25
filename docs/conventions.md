@@ -42,7 +42,7 @@
 
 **DTO 파일** — `libs/contracts/src/<domain>/dto/<domain>-<feature>.dto.ts` (kebab). 요청 DTO 와 응답 `ResultDto` 는 같은 파일에 함께 export. 결과가 없는(void) 기능은 ResultDto 를 두지 않는다(user-leave.dto.ts · user-password.dto.ts).
 
-**규격 상수** — `libs/contracts/src/<domain>/<domain>.commands.ts` 에 명령 type · 큐 이름 · 바인딩 키 · **내부 HTTP 경로(`USER_INTERNAL_PATH`)** 를 둔다(user.commands.ts:8-34). 게이트웨이 동기 핸들러와 JWT 전략은 경로 문자열을 직접 쓰지 않고 이 상수만 쓴다. 명령 type 은 `<server>.<resource>.<action-kebab>` — server 는 서비스 앱(`user.member.leave-cancel` → user-service, `admin.manager.find-login-id` · `admin.admin.password` → admin-service). 앱의 큐 · 바인딩 상수는 그 앱 이름의 commands 파일(`USER_COMMAND_QUEUE` · `ADMIN_COMMAND_QUEUE`)에 둔다.
+**규격 상수** — `libs/contracts/src/<domain>/<domain>.commands.ts` 에 명령 type · 큐 이름 · 바인딩 키 · **내부 HTTP 경로(`USER_INTERNAL_PATH`)** 를 둔다(user.commands.ts:8-34). 게이트웨이 동기 핸들러와 JWT 전략은 경로 문자열을 직접 쓰지 않고 이 상수만 쓴다. **파라미터가 있는 경로는 경로 함수**로 둔다 — `STORE_INTERNAL_PATH.myApplication(store_application_id)`(store.commands.ts, 값은 `encodeURIComponent`). 게이트웨이가 경로를 문자열로 이어 붙이지 않게 한다. 명령 type 은 `<server>.<resource>.<action-kebab>` — server 는 서비스 앱(`user.member.leave-cancel` → user-service, `admin.manager.find-login-id` · `admin.admin.password` → admin-service). 앱의 큐 · 바인딩 상수는 그 앱 이름의 commands 파일(`USER_COMMAND_QUEUE` · `ADMIN_COMMAND_QUEUE`)에 둔다.
 
 **권한 · 로그인 그룹 상수** — 도메인 공통이라 `libs/contracts/src/roles.ts` 의 `AUTH_ID`(t_auth PK) · `LOGIN_SCOPE`(USER · MANAGER · ADMIN) · `type LoginScope`. 서비스(`userEntity.auth_id = AUTH_ID.USER`, `findManager({login_scope: LOGIN_SCOPE.MANAGER})`)와 게이트웨이 `@Roles(AUTH_ID.HEAD_MANAGER)`(미적용)가 같은 상수를 쓴다. libs/database 는 contracts 를 import 하지 않으므로 시드는 문자열 리터럴이다.
 
@@ -51,7 +51,7 @@
 **DI 토큰** — `<domain>.symbols.ts` 에 `Symbol('<Interface 이름>')`: `USER_REPOSITORY = Symbol('UserRepositoryInterface')`(user.symbols.ts:2), `COMMAND_PUBLISHER = Symbol('CommandPublisherInterface')`.
 
 **클래스명** — `<Domain><Feature><Role>`:
-- 요청 `UserSignDto` · path param `UserAuthUserParamDto` · 목록 query `XListDto`(PaginationDto 상속 — 미적용 규약)
+- 요청 `UserSignDto` · path param `UserAuthUserParamDto` · 목록 query `XListDto`(PaginationDto 상속 — `StoreListDto`)
 - 응답은 항상 `ResultDto`: `UserSignResultDto` (❌ `ResponseDto`)
 - 게이트웨이 controller `UserController`(동기) · `UserQueueController`(큐), 서비스 큐 컨트롤러 `UserQueueController`(내부 HTTP 는 `UserController`), crontab `UserLeaveCleanupCrontab`
 
@@ -88,13 +88,13 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 **게이트웨이 인증 값** — 서비스로 넘기면 `@PassportActor() actor: Actor`(첫 파라미터). 게이트웨이 안에서만 쓰는 `@PassportUser('user_id')` 는 정의만 있고 사용처 0(미적용 규약).
 
-**서비스 내부 HTTP 핸들러** — `@Ip()` 대신 `@ClientIp() ip`(게이트웨이가 넘긴 원래 클라이언트 IP). service 에는 DTO 또는 원시값(`param.user_id`)을 넘긴다. 로그인 회원용 `@InternalActor('user_id')` 는 정의만 있고 사용처 0(미적용 규약).
+**서비스 내부 HTTP 핸들러** — `@Ip()` 대신 `@ClientIp() ip`(게이트웨이가 넘긴 원래 클라이언트 IP). service 에는 DTO 또는 원시값(`param.user_id`)을 넘긴다. 로그인 회원은 `@InternalActor('user_id') user_id: string` — 게이트웨이가 넘긴 actor 헤더에서 꺼낸다(store.controller.ts 내 신청 라우트).
 
 **서비스 RabbitMQ 핸들러** — `(command: MessageEnvelope<XDto>)` 하나만 받는다. IP 는 `command.meta.client_ip ?? ''`, 로그인 필요 명령은 `requireActor(command).user_id`.
 
 ## Validation (class-validator)
 
-- **사용**: `@IsNotEmpty` · `@IsOptional` · `@IsIn` · `@Matches` · `@MaxLength` (+ 짝 필드 조건부 `@ValidateIf`).
+- **사용**: `@IsNotEmpty` · `@IsOptional` · `@IsIn` · `@Matches` · `@MaxLength` (+ 짝 필드 조건부 `@ValidateIf`) · 위경도 `@IsLatitude` · `@IsLongitude`(숫자 좌표는 위 데코레이터로 검증할 수 없다 — store-application.dto.ts · store-update.dto.ts, 문자열 · 숫자 모두 받으므로 service 가 `Number()` 로 바꾼다).
 - **미사용**(grep 0건): `@IsString` · `@IsNumber` · `@IsInt` · `@IsBoolean` · `@IsEnum` · `@MinLength` · `@Length` · `@Min` · `@Max` · `@Type` · `@Transform` — 존재 + 형식/길이 + enum 만 검증.
 - **모든 제약에 `message: '<한국어 문자열>'` 리터럴 필수**. message 를 받지 않는 것은 `@IsOptional()` 과 `@ValidateIf(...)` 뿐.
 - **순서**:
@@ -107,9 +107,9 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 - **검증 위치**: 공개 입력은 게이트웨이 ValidationPipe 에서. 서비스 큐 컨트롤러는 재검증하지 않는다. 내부 HTTP 는 서비스 전역 파이프가 같은 DTO 로 한 번 더 검증한다(방어).
 - 근거: [user-sign.dto.ts](../libs/contracts/src/user/dto/user-sign.dto.ts), [user-login.dto.ts](../libs/contracts/src/user/dto/user-login.dto.ts).
 
-## Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다 (미적용 규약)
+## Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다
 
-> 현재 `@Query()` 사용처 0건. `PaginationDto` 는 `libs/common/src/dto/pagination.dto.ts` 에 있다(기본값 상수 `PAGINATION_DEFAULTS`). 첫 목록 API 에서 이대로 적용한다. 출처: 사용자 결정(2026-07-27).
+> 적용: store 목록 3종 `StoreMyApplicationListDto` · `StoreApplicationListDto` · `StoreListDto`(libs/contracts/src/store/dto/), 컨트롤러는 게이트웨이 · admin-service 의 store.controller.ts. `PaginationDto` 는 `libs/common/src/dto/pagination.dto.ts`(기본값 상수 `PAGINATION_DEFAULTS`). 출처: 사용자 결정(2026-07-27).
 
 1. `@Query()` 로 받는 DTO 는 **생성자를 세트로** 갖는다 — 쿼리는 키가 통째로 빠질 수 있고 그 누락은 정상 요청이라 잡아줄 검증기가 없다.
 2. **컨트롤러가 `const dto = new XListDto(query);` 로 지역변수를 만든 뒤 service 에 넘긴다** — 받은 쿼리 객체를 그대로 흘리지 않고, 생성자를 한 번 태워 기본값이 확정된 인스턴스를 만든다. 호출부 `new` 인라인 ❌, 필드 하나씩 대입 ❌. 앞선 인자가 있으면 dto 를 마지막에 둔다 — `this.xService.list(user_id, dto)`.
@@ -120,13 +120,14 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 export class StoreListDto extends PaginationDto {
     constructor(data?: Partial<StoreListDto>) {
         super(data);
-        this.search_type = data?.search_type ?? null;
+        this.store_state_id = data?.store_state_id ?? null;
+        this.keyword = data?.keyword ?? null;
     }
 }
 
 // controller
 const dto = new StoreListDto(query);
-return this.storeService.list(user_id, dto);
+return this.storeService.getStoreList(dto);
 ```
 
 - **⚠️ 생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — `ValidationPipe({transform: true})` → class-transformer `plainToInstance` → `new targetType()` 을 **인자 없이** 호출한다. 파라미터를 필수로 두면 `data` 가 undefined 라 `data.page` 접근에서 **매 요청 500**. TypeScript 는 파이프의 리플렉션 호출을 못 보므로 컴파일에서 잡히지 않는다. 그래서 `data?.x ?? 기본값` 형태여야 파이프 경로와 컨트롤러 `new` 경로가 모두 산다.

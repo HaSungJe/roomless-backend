@@ -15,7 +15,7 @@
   1. 업로드 주소 요청(동기)
   2. 클라이언트가 `upload_url` 로 PUT — 요청 때 보낸 `content_type` 과 같은 `Content-Type` 헤더로(서명에 들어간다)
   3. 등록 명령에 키만 보낸다 → service 가 `exists(key)` 확인 후 저장
-  4. 화면은 `getPublicUrl(key)`
+  4. 열람 주소는 파일 용도 룩업의 `is_private` 로 고른다 — 0 이면 `getPublicUrl(key)`(CDN 공개 주소), 1 이면 `createDownloadUrl(key)`(서명된 열람 주소, `STORAGE_DOWNLOAD_URL_TTL_SECONDS` 600초)
 - service 는 포트(Symbol 토큰 + 인터페이스)만 안다. AWS SDK · 자격증명은 어댑터 안에만 둔다.
 
 ## 구성
@@ -23,11 +23,11 @@
 | 파일 | 내용 |
 |---|---|
 | `integration.symbols.ts` | `SMS_SENDER` · `STORAGE_GATEWAY` |
-| `interfaces/integration.interface.ts` | `SmsSenderInterface` · `SmsMessage` · `StorageGatewayInterface` · `StorageUploadInput` · `StorageUploadResult` |
-| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` |
+| `interfaces/integration.interface.ts` | `SmsSenderInterface` · `SmsMessage` · `StorageGatewayInterface` · `StorageUploadInput` · `StorageUploadResult` · `StorageDownloadResult` |
+| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` · `STORAGE_DOWNLOAD_URL_TTL_SECONDS` |
 | `integration.util.ts` | `toE164KrPhone` — 국내 번호 → `+82…` |
 | `sms/sns-sms.sender.ts` · `sms/sms.module.ts` | `SnsSmsSender`(SNS `Publish`, Transactional) · `SmsModule`(`@Global`) |
-| `storage/s3-storage.gateway.ts` · `storage/storage.module.ts` | `S3StorageGateway`(presigned PutObject — Content-Type 서명 · HeadObject · DeleteObject) · `StorageModule`(`@Global`) |
+| `storage/s3-storage.gateway.ts` · `storage/storage.module.ts` | `S3StorageGateway`(presigned PutObject — Content-Type 서명 · presigned GetObject · HeadObject · DeleteObject) · `StorageModule`(`@Global`) |
 
 설정은 `.env` 의 `AWS_REGION` · `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_S3_BUCKET` · `AWS_S3_PUBLIC_URL` 이다. 자격증명은 SDK 기본 체인이 읽는다(IAM 역할이면 키를 비운다).
 
@@ -35,7 +35,14 @@
 
 - `new S3Client({region, requestChecksumCalculation: 'WHEN_REQUIRED'})` — SDK 기본값(`WHEN_SUPPORTED`)이면 presigned PutObject 주소에 빈 본문의 CRC32(`x-amz-checksum-crc32`)가 박힌다. 그러면 실제 파일을 올릴 때 체크섬이 맞지 않아 S3 가 거부한다.
 - `getSignedUrl(..., {expiresIn, signableHeaders: new Set(['content-type'])})` — 기본값이면 서명 헤더가 `host` 뿐이라 아무 타입이나 올릴 수 있다. Content-Type 을 서명에 넣어 요청한 타입으로만 올리게 한다.
-- 공개 주소는 `AWS_S3_PUBLIC_URL` 로만 만든다. 비어 있으면 주소를 지어내지 않고 실패한다.
+- 공개 주소는 `AWS_S3_PUBLIC_URL` 로만 만든다. 비어 있으면 주소를 지어내지 않고 실패한다. 기본 구성은 CloudFront 배포 주소다([guides/aws-setup.md](guides/aws-setup.md)).
+
+## 저장 키 · CDN
+
+- **키는 서버가 만든다**(업로드 주소 요청 때) — `<접두>/<리소스 ID>/<uuid 32자>.<jpg|png>`. 업로드마다 새 키이고 같은 키를 덮어쓰지 않는다. 그래서 CDN · 브라우저 캐시를 길게 두고 무효화하지 않는다.
+- **접두가 공개 여부를 가른다** — 공개 `store/…`(CloudFront 가 OAC 로 읽는다), 비공개 `private/…`(버킷 정책이 CloudFront 에 열지 않는다 → 서명된 열람 주소로만). 접두는 파일 용도 룩업의 `is_private` 로 정한다(store.util.ts `buildApplicationFileKey`).
+- **등록 명령은 키 모양을 다시 확인한다** — 그 리소스 · 공개 여부 · 형식으로 발급한 키인지(`isApplicationFileKey`) 본 뒤 `exists(key)`. 남의 리소스 키나 다른 접두를 막는다.
+- 파일 삭제는 행을 지운 뒤 저장소 파일을 지운다(마지막 단계 — 503 이면 재시도). S3 삭제는 없는 키에도 성공하므로 재시도해도 안전하다.
 
 ## 쓰는 법
 

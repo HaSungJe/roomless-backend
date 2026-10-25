@@ -95,11 +95,11 @@ repository 를 mock 하는 service spec 은 **쿼리 매핑 자체**(조인 조�
   expect(sql.replace(/\s+/g, ' ')).toBe('SELECT ...');               // SQL 전체 고정
   ```
   raw select 는 select 별칭 목록이 결과 행 타입의 키와 같은지도 비교한다.
-- 현재 적용: [user.repository.spec.ts](../apps/user-service/src/user/test/user.repository.spec.ts) `buildLoginUserQuery` · `buildConsumeSmsVerificationAttemptQuery`, [manager.repository.spec.ts](../apps/admin-service/src/manager/test/manager.repository.spec.ts) `buildLoginManagerQuery` · `buildConsumeSmsVerificationAttemptQuery`, [admin.repository.spec.ts](../apps/admin-service/src/admin/test/admin.repository.spec.ts) `buildLoginAdminQuery`, [scheduler user.repository.spec.ts](../apps/scheduler/src/user/test/user.repository.spec.ts) `buildUsersQuery`.
+- 현재 적용: [user.repository.spec.ts](../apps/user-service/src/user/test/user.repository.spec.ts) `buildLoginUserQuery` · `buildConsumeSmsVerificationAttemptQuery`, [manager.repository.spec.ts](../apps/admin-service/src/manager/test/manager.repository.spec.ts) `buildLoginManagerQuery` · `buildConsumeSmsVerificationAttemptQuery`, [admin.repository.spec.ts](../apps/admin-service/src/admin/test/admin.repository.spec.ts) `buildLoginAdminQuery`, [store.repository.spec.ts](../apps/admin-service/src/store/test/store.repository.spec.ts) `buildApplicationListQuery` · `buildStoreListQuery`(ILike · 배열 OR) · `buildStoreFileRowsQuery`(용도 조인 · raw 별칭) · `buildAssignStoreFilesQuery` · `buildDeleteApplicationFilesQuery` · `buildUpdateStoreManagersQuery`, [scheduler user.repository.spec.ts](../apps/scheduler/src/user/test/user.repository.spec.ts) `buildUsersQuery`.
 
 ## mock 규칙
 
-- **mock 경계**: repository(Symbol 토큰 `USER_REPOSITORY` · `MANAGER_REPOSITORY` · `ADMIN_REPOSITORY`) · 외부 연동 포트(Symbol 토큰 `SMS_SENDER` · `STORAGE_GATEWAY` — [integration.md](integration.md))와 `JwtService`(class 토큰)를 mock 하고, crypto · jwt util(`bcrypt` · `hash` · `cipher` · `jwt`)은 `vi.mock` 으로 막는다. service · controller(내부 HTTP · 큐) · 파이프 · 필터 · 가드 · 그 밖의 util(`libs/account` · 도메인 util)은 실제 코드다.
+- **mock 경계**: repository(Symbol 토큰 `USER_REPOSITORY` · `MANAGER_REPOSITORY` · `ADMIN_REPOSITORY` · `STORE_REPOSITORY`) · 외부 연동 포트(Symbol 토큰 `SMS_SENDER` · `STORAGE_GATEWAY` — [integration.md](integration.md))와 `JwtService`(class 토큰)를 mock 하고, crypto · jwt util(`bcrypt` · `hash` · `cipher` · `jwt`)은 `vi.mock` 으로 막는다. service · controller(내부 HTTP · 큐) · 파이프 · 필터 · 가드 · 그 밖의 util(`libs/account` · 도메인 util)은 실제 코드다.
 - **ESM 이라 `vi.spyOn(모듈, 'fn')` 은 쓸 수 없다.** 외부 util 은 spec 상단에서 모듈째 mock 한다.
   ```ts
   vi.mock('@app/common/utils/bcrypt.js', () => ({getBcrypt: vi.fn(), matchBcrypt: vi.fn()}));

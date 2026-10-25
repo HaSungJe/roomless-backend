@@ -8,7 +8,7 @@ TypeORM 1.x · PostgreSQL 17 · `pg` 드라이버. 접속은 `DATABASE_URL` 하�
 libs/database/src/
 ├── entities/
 │   ├── user/        auth · state · sns · sms-purpose(룩업) · user · user-setting · session · session-refresh · sms-verification
-│   ├── store/       store-state · store-application-state(룩업) · store · store-application · store-image · store-hour · store-break
+│   ├── store/       store-state · store-application-state · store-file-purpose(룩업) · store · store-application · store-file · store-hour · store-break
 │   └── api-log/     api-log
 ├── entities.ts      # ENTITIES — DataSource 에 등록할 엔티티 목록 (ESM 이라 glob 대신 명시)
 ├── migrations/      # <timestamp>-<Name>.ts
@@ -75,7 +75,7 @@ export class UserSettingEntity {
   - **jsonb** 는 항목이 자주 바뀌는 상세정보에 쓴다 — 컬럼 하나 + 같은 엔티티 파일의 TS 인터페이스(항목은 모두 선택), `nullable: false` + `default: () => "'{}'"`. 예: `t_store.store_detail: StoreDetail`(`room_count` · `has_shower` · `has_tv` · `has_pc`, 플래그는 0/1 — store.entity.ts). 항목을 바꿀 때는 인터페이스만 고치고 마이그레이션이 없다.
   - 예외(기존 컬럼): `t_user.leave_reserved_at` 은 `varchar(40)` 에 dayjs `'YYYY-MM-DD HH:mm:ss'` 문자열을 넣고 문자열 비교로 경과를 판단한다(user.entity.ts:78, user-leave-cleanup.crontab.ts:43-44). 새 시각 컬럼은 `timestamptz`.
 - **타임스탬프는 `@BeforeInsert`/`@BeforeUpdate` 훅**(❌ `@CreateDateColumn`/`@UpdateDateColumn`). 훅 메서드 이름은 `insertTimestamp()` · `updateTimestamp()`. 훅은 `insert`/`update` 에 **엔티티 인스턴스**를 넘길 때만 돈다 — 그래서 service 는 `new XEntity()` + 할당으로 만든다.
-- **룩업 엔티티**(auth · state · sns · sms-purpose · store-state · store-application-state)는 구조 컬럼만. 기본 데이터는 seeder.
+- **룩업 엔티티**(auth · state · sns · sms-purpose · store-state · store-application-state · store-file-purpose)는 구조 컬럼 + 그 값으로 동작이 갈리는 플래그만 둔다 — `t_state.is_login_allowed`(로그인 가능), `t_store_file_purpose.is_private`(1 이면 서명된 열람 주소 · `private/` 키, 0 이면 CDN 공개 주소 · `store/` 키). 동작을 코드의 값 목록이 아니라 룩업 행이 정하므로, 조회는 룩업을 조인해 플래그를 읽는다(`buildLoginUserQuery` · `buildStoreFileRowsQuery`). 기본 데이터는 seeder.
 
 ## 마이그레이션
 
@@ -137,7 +137,7 @@ export class UserRepository implements UserRepositoryInterface {
 - **범용 메서드 우선**(`insertX`/`findX`/`findXs`/`updateX`). WHERE 는 service 가 `FindOptionsWhere<XEntity>`(❌ `Partial`)로 만들고 repository 는 실행만.
 - 조회 시 `loadRelationIds: true`.
 - `update(where, entity)` 의 `entity` 는 호출자가 `new XEntity()` + 바꿀 필드만 할당해 넘긴다(`@BeforeUpdate` 트리거). `undefined` 필드는 건드리지 않고 `null` 은 NULL 로 비운다 — 수정 API 의 선택 필드는 `?? null`.
-- **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery`)하고 repository spec 의 Data-Access Smoke 로 SQL 을 고정한다 — service spec 은 repository 를 mock 하므로 쿼리를 실행하지 않는다([testing.md](testing.md)).
+- **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery` · `buildStoreFileRowsQuery` — 용도 조인 + raw 별칭이 결과 행 타입 `StoreFileRow` 의 키와 같다)하고 repository spec 의 Data-Access Smoke 로 SQL 을 고정한다 — service spec 은 repository 를 mock 하므로 쿼리를 실행하지 않는다([testing.md](testing.md)).
 - 메서드명은 소유 도메인 어휘.
 
 - **로그인 그룹 조건** — 회원 조회는 자기 도메인의 로그인 그룹(`login_scope`)을 WHERE 에 넣어 다른 그룹 계정을 없는 계정처럼 다룬다(`findManager({login_id, login_scope: LOGIN_SCOPE.MANAGER, state_id: In([...])})`). 휴대폰 번호 중복 확인도 같은 그룹 안에서 한다.
@@ -168,13 +168,13 @@ export class UserRepository implements UserRepositoryInterface {
 - 새 기본 데이터: 엔티티는 그대로 두고 `<X>_SEED_DATA` 배열 + `SEED_TARGETS` 에 `{entity, data}` 한 줄. FK 부모를 먼저.
 - 시드 행은 엔티티 타입의 객체 리터럴로 쓴다(정적 정의 데이터 — `new XEntity()` 규칙의 유일한 예외).
 
-## Pagination / 목록 조회 (미적용 규약)
+## Pagination / 목록 조회
 
-> 현재 목록 API · `@Query()` 0건. 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts`)은 있다 — 첫 목록 API 에서 이 형태를 따른다. Query DTO 생성자 규칙은 [conventions.md](conventions.md).
+> 적용: store 목록 3종(apps/admin-service/src/store/store.service.ts `getMyApplicationList` · `getApplicationList` · `getStoreList`). 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts`). Query DTO 생성자 규칙은 [conventions.md](conventions.md).
 
 - 응답 `{list, pagination}`.
 - 순서 **count → `Pagination` → 목록** — `Pagination` 이 `total_count` 로 `limit`/`offset` 을 산출한다. repository 는 `countX(where)` 와 `findXList(where, limit, offset)` 두 메서드로 둔다(`findAndCount` ❌).
 - 쓰는 모양: `const pagination = new Pagination({...dto, total_count});` → `findXList(where, pagination.limit, pagination.offset)` → `{list, pagination: pagination.getPagination()}`.
 - Query DTO 는 `extends PaginationDto`(기본값은 부모 생성자).
-- 검색 WHERE 는 도메인 util 이 `FindOptionsWhere<X>` 로 조립(통합검색은 배열 = OR), repository 는 실행만. `Like()` · 관계 필드 where 를 쓰면 Data-Access Smoke 대상이다.
+- 검색 WHERE 는 도메인 util 이 `FindOptionsWhere<X>` 로 조립(통합검색은 배열 = OR — `buildStoreListWhere`), repository 는 실행만. 부분 일치는 `ILike(toContainsPattern(keyword))` — `%` · `_` · `\` 를 글자 그대로 찾도록 이스케이프한다(store.util.ts). `Like()` · `ILike()` · 관계 필드 where 를 쓰면 Data-Access Smoke 대상이다(`buildApplicationListQuery` · `buildStoreListQuery`).
 - 기본 필터 `is_deleted = 0`, 정렬 `created_at DESC`.

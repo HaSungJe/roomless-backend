@@ -1,0 +1,194 @@
+import {BadRequestException, ServiceUnavailableException} from '@nestjs/common';
+import type {TestingModule} from '@nestjs/testing';
+import {getBcrypt} from '@app/common/utils/bcrypt.js';
+import {STORE_COMMAND} from '@app/contracts/store/store.commands.js';
+import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
+import {StoreEntity} from '@app/database/entities/store/store.entity.js';
+import {UserEntity} from '@app/database/entities/user/user.entity.js';
+import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
+import {storeApprovedText} from '../store.util.js';
+import {
+    ADMIN_ACTOR,
+    APPLICATION_ID,
+    applicationRow,
+    bootCommandPath,
+    createSmsSenderMock,
+    createStorageGatewayMock,
+    createStoreRepositoryMock,
+    runCommand,
+    SmsSenderMock,
+    StoreRepositoryMock,
+} from './store.test-helper.js';
+
+vi.mock('@app/common/utils/bcrypt.js', () => ({getBcrypt: vi.fn(), matchBcrypt: vi.fn()}));
+
+const PAYLOAD = {store_application_id: APPLICATION_ID};
+
+describe('admin.store.application-approve — 입점 승인 (큐 경로)', () => {
+    let repo: StoreRepositoryMock;
+    let sms: SmsSenderMock;
+    let dispatcher: CommandDispatcher;
+    let module: TestingModule;
+
+    beforeEach(async () => {
+        repo = createStoreRepositoryMock();
+        sms = createSmsSenderMock();
+        repo.findApplication.mockResolvedValue(applicationRow());
+        repo.countStoreFiles.mockResolvedValue(1);
+        repo.findApplicant.mockResolvedValue({user_id: 'u'.repeat(32), gender: 'F', birth: '1990-01-01'});
+        repo.countManagers.mockResolvedValue(0);
+        vi.mocked(getBcrypt).mockResolvedValue('hashed-temp-password');
+        ({dispatcher, module} = await bootCommandPath(repo, createStorageGatewayMock(), sms));
+    });
+
+    afterEach(async () => {
+        vi.clearAllMocks();
+        await module.close();
+    });
+
+    describe('[SUCCESS]', () => {
+        it('업체(활성 · 영업준비) → 파일을 업체로 → 업체 총관리자(= 대표자) → 신청 승인(대기 조건) → 안내 SMS(마지막)', async () => {
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
+
+            // 업체
+            expect(repo.countStoreFiles).toHaveBeenCalledWith({store_application_id: APPLICATION_ID, store_file_purpose_id: 'BUSINESS_LICENSE'});
+            const store = repo.insertStore.mock.calls[0][0] as StoreEntity;
+            expect(store).toBeInstanceOf(StoreEntity);
+            expect(store.store_id).toMatch(/^[a-f0-9]{32}$/);
+            expect(store).toMatchObject({
+                store_state_id: 'ACTIVE',
+                store_name: '룸리스 강남점',
+                business_number: '1234567890',
+                owner_name: '홍길동',
+                phone: '0212345678',
+                address_detail: null,
+                latitude: 37.4979,
+                longitude: 127.0276,
+                introduction: null,
+                store_detail: {},
+                is_always_open: 0,
+                is_open: 0,
+                maintenance_minutes: 0,
+                is_deleted: 0,
+                delete_backup: null,
+            });
+
+            // 파일 → 업체
+            expect(repo.assignStoreFiles).toHaveBeenCalledWith(APPLICATION_ID, store.store_id);
+
+            // 업체 총관리자
+            const login_id = repo.countManagers.mock.calls[0][0].login_id as string;
+            expect(login_id).toMatch(/^m\d{8}$/);
+            expect(repo.countManagers).toHaveBeenCalledWith({login_id, login_scope: 'MANAGER'});
+            const temporaryPassword = vi.mocked(getBcrypt).mock.calls[0][0];
+            const manager = repo.insertHeadManager.mock.calls[0][0] as UserEntity;
+            expect(manager).toBeInstanceOf(UserEntity);
+            expect(manager).toMatchObject({
+                auth_id: 'HEAD_MANAGER',
+                login_scope: 'MANAGER',
+                state_id: 'ACTIVE',
+                store_id: store.store_id,
+                login_id,
+                login_pw: 'hashed-temp-password',
+                name: '홍길동',
+                nickname: '홍길동',
+                gender: 'F',
+                birth: '1990-01-01',
+                phone: '01012345678',
+                sns_id: null,
+                is_password_change_required: 1,
+            });
+
+            // 신청 승인 — 대기 조건
+            const [where, approved] = repo.updateApplication.mock.calls[0] as [unknown, StoreApplicationEntity];
+            expect(where).toEqual({store_application_id: APPLICATION_ID, store_application_state_id: 'WAIT'});
+            expect(approved).toBeInstanceOf(StoreApplicationEntity);
+            expect(approved).toMatchObject({store_application_state_id: 'APPROVED', store_id: store.store_id});
+            expect(approved.reviewed_at).toBeInstanceOf(Date);
+
+            // 안내 SMS (마지막)
+            expect(sms.send).toHaveBeenCalledWith({to: '01012345678', text: storeApprovedText('룸리스 강남점', login_id, temporaryPassword)});
+            expect(repo.updateApplication.mock.invocationCallOrder[0]).toBeLessThan(sms.send.mock.invocationCallOrder[0]);
+            expect(result).toEqual({result: {store_id: store.store_id, login_id}, error: null});
+        });
+
+        it('아이디가 매니저 그룹에서 겹치면 다시 만든다', async () => {
+            repo.countManagers.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
+
+            expect(repo.countManagers).toHaveBeenCalledTimes(2);
+            expect(repo.insertHeadManager.mock.calls[0][0].login_id).toBe(repo.countManagers.mock.calls[1][0].login_id);
+            expect(result?.result).toEqual({store_id: expect.stringMatching(/^[a-f0-9]{32}$/), login_id: repo.countManagers.mock.calls[1][0].login_id});
+        });
+    });
+
+    describe('[FAIL:service]', () => {
+        it('신청이 없으면 failed 404, 업체 등록 없음', async () => {
+            repo.findApplication.mockResolvedValueOnce(null);
+
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
+
+            expect(result?.error).toEqual({status_code: 404, body: {message: '입점 신청을 찾을 수 없습니다.', validation_errors: null}});
+            expect(repo.insertStore).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            ['반려 신청', () => repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: 'REJECTED'})), '대기 중인 입점 신청만 처리할 수 있습니다.'],
+            ['사업자등록증 없음', () => repo.countStoreFiles.mockResolvedValueOnce(0), '사업자등록증 사진이 없어 승인할 수 없습니다.'],
+            ['신청자 계정 없음', () => repo.findApplicant.mockResolvedValueOnce(null), '신청자 정보를 찾을 수 없어 승인할 수 없습니다.'],
+        ])('%s → failed 400, 업체 등록 · SMS 없음', async (_label, arrange, message) => {
+            arrange();
+
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
+
+            expect(result?.error).toEqual({status_code: 400, body: {message, validation_errors: null}});
+            expect(repo.insertStore).not.toHaveBeenCalled();
+            expect(sms.send).not.toHaveBeenCalled();
+        });
+
+        it('그 사이 취소 · 반려돼 승인 수정이 0건이면 failed 400(롤백), SMS 없음', async () => {
+            repo.updateApplication.mockResolvedValueOnce(false);
+
+            const {decision, result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
+
+            expect(decision.action).toBe('ack');
+            expect(result?.error).toEqual({status_code: 400, body: {message: '대기 중인 입점 신청만 처리할 수 있습니다.', validation_errors: null}});
+            expect(sms.send).not.toHaveBeenCalled();
+        });
+
+        it('사업자번호 UK 충돌(repository 400)은 그대로 failed 400, 파일 · 계정 처리 없음', async () => {
+            repo.insertStore.mockRejectedValueOnce(new BadRequestException({message: '이미 신청 · 등록된 사업자등록번호입니다.'}));
+
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
+
+            expect(result?.error).toEqual({status_code: 400, body: {message: '이미 신청 · 등록된 사업자등록번호입니다.', validation_errors: null}});
+            expect(repo.assignStoreFiles).not.toHaveBeenCalled();
+            expect(repo.insertHeadManager).not.toHaveBeenCalled();
+        });
+
+        it('아이디를 5번 모두 못 만들면 500 — 마지막 전달이면 dead + failed 500, 계정 등록 없음', async () => {
+            repo.countManagers.mockResolvedValue(1);
+
+            const {decision, result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR, delivery_count: 3});
+
+            expect(repo.countManagers).toHaveBeenCalledTimes(5);
+            expect(decision.action).toBe('dead');
+            expect(result?.error).toEqual({status_code: 500, body: {message: '업체 총관리자 아이디를 만들지 못했습니다. 다시 시도해주세요.', validation_errors: null}});
+            expect(repo.insertHeadManager).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('[FAIL:infra]', () => {
+        it('SMS 503 은 재시도(requeue) — 마지막 전달이면 dead + failed 503', async () => {
+            sms.send.mockRejectedValue(new ServiceUnavailableException({message: 'SMS 발송을 사용할 수 없습니다. 잠시 후 다시 시도해주세요.'}));
+
+            const first = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
+            const last = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR, delivery_count: 3});
+
+            expect(first.decision.action).toBe('requeue');
+            expect(last.decision.action).toBe('dead');
+            expect(last.result?.error?.status_code).toBe(503);
+        });
+    });
+});

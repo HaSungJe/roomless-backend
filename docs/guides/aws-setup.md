@@ -13,24 +13,33 @@
 1. **S3 → 버킷 만들기**
    - 이름 `roomless-<dev|prod>-files`, 리전 `ap-northeast-2`
    - 객체 소유권: ACL 비활성화(버킷 소유자 적용)
-2. **퍼블릭 액세스 차단** — 사진을 버킷 주소로 바로 보이게 하려면 아래 두 항목만 끈다. ACL 관련 두 항목은 켜 둔다.
-   - 새 퍼블릭 버킷 또는 액세스 지점 정책을 통해 부여된 퍼블릭 액세스 차단
-   - 임의의 퍼블릭 버킷 또는 액세스 지점 정책을 통해 부여된 … 차단
-
-   CloudFront 를 앞에 둘 거면 네 항목을 모두 켜 두고 OAC 로 연결한다(5단계).
-3. **버킷 정책** — 공개 읽기. 사진 전용 버킷이라 전체 객체를 연다.
+2. **퍼블릭 액세스 차단 — 네 항목 모두 켠다.** 버킷은 직접 공개하지 않는다. 공개 파일은 CloudFront 로만, 비공개 파일(사업자등록증 · `private/…`)은 서버가 발급한 서명 주소(10분)로만 본다.
+3. **버킷 정책** — 5단계에서 CloudFront 배포를 만든 뒤 붙인다. CloudFront 가 읽을 수 있는 것은 공개 접두 `store/*` 뿐이다(`private/*` 는 열지 않는다).
    ```json
    {
      "Version": "2012-10-17",
-     "Statement": [{"Sid": "PublicRead", "Effect": "Allow", "Principal": "*", "Action": "s3:GetObject", "Resource": "arn:aws:s3:::roomless-<dev|prod>-files/*"}]
+     "Statement": [{
+       "Sid": "CloudFrontReadPublicPrefix",
+       "Effect": "Allow",
+       "Principal": {"Service": "cloudfront.amazonaws.com"},
+       "Action": "s3:GetObject",
+       "Resource": "arn:aws:s3:::roomless-<dev|prod>-files/store/*",
+       "Condition": {"StringEquals": {"AWS:SourceArn": "arn:aws:cloudfront::<계정 ID>:distribution/<배포 ID>"}}
+     }]
    }
    ```
+   공개 접두가 늘면(객실 사진 등) `Resource` 에 그 접두를 더한다.
 4. **CORS** — 브라우저가 presigned URL 로 직접 PUT 한다. `AllowedOrigins` 는 `.env` 의 `CORS_ORIGINS` 와 같은 프론트 주소로 한다.
    ```json
    [{"AllowedOrigins": ["http://localhost:3001"], "AllowedMethods": ["PUT", "GET"], "AllowedHeaders": ["*"], "ExposeHeaders": ["ETag"], "MaxAgeSeconds": 3000}]
    ```
    프론트는 업로드 주소를 요청할 때 보낸 `content_type` 과 **같은 `Content-Type` 헤더**로 PUT 한다. Content-Type 이 서명에 들어가 있어 다르면 S3 가 403 으로 거부한다.
-5. **(선택) CloudFront** — 배포를 만들고 원본을 이 버킷(OAC)으로 둔다. 배포 도메인을 `AWS_S3_PUBLIC_URL` 에 넣는다.
+5. **CloudFront(기본 구성)** — 공개 파일(업체 사진)은 CDN 주소로 내려간다.
+   - 배포 만들기 → 원본: 이 버킷(S3 REST 엔드포인트 — 웹사이트 엔드포인트 아님) · **원본 액세스 제어(OAC)** 를 새로 만들어 고른다. 콘솔이 보여 주는 버킷 정책 대신 3단계의 `store/*` 정책을 붙인다.
+   - 뷰어 프로토콜: Redirect HTTP to HTTPS · 허용 메서드: GET, HEAD.
+   - 캐시 정책: `CachingOptimized`(긴 TTL). 서버가 업로드마다 새 키를 만들고 같은 키를 덮어쓰지 않으므로 무효화(invalidation)가 필요 없다.
+   - 응답 헤더 정책(선택): 프론트가 `fetch` 로 이미지를 읽으면 `CORS-With-Preflight` 를 붙인다. `<img>` 로만 쓰면 필요 없다.
+   - 배포 도메인(`https://<배포>.cloudfront.net` 또는 연결한 도메인)을 `AWS_S3_PUBLIC_URL` 에 넣는다.
 
 ## 2. SMS — Amazon SNS
 
@@ -71,7 +80,7 @@ AWS_REGION=ap-northeast-2
 AWS_ACCESS_KEY_ID=<IAM 액세스 키>        # IAM 역할이면 비운다
 AWS_SECRET_ACCESS_KEY=<IAM 비밀 키>     # IAM 역할이면 비운다
 AWS_S3_BUCKET=roomless-dev-files
-AWS_S3_PUBLIC_URL=https://roomless-dev-files.s3.ap-northeast-2.amazonaws.com   # 필수 — CloudFront 를 쓰면 그 주소
+AWS_S3_PUBLIC_URL=https://<배포>.cloudfront.net   # 필수 — CloudFront 배포 주소(공개 파일 주소의 기준)
 ```
 
 Docker 는 `env_file: .env` 로 그대로 받는다. 게이트웨이에는 AWS 비밀값이 전달되지 않는다(compose.gateway.yml).
@@ -80,4 +89,4 @@ Docker 는 `env_file: .env` 로 그대로 받는다. 게이트웨이에는 AWS �
 
 - 부팅 로그에 `AWS_REGION ...` · `AWS_REGION · AWS_S3_BUCKET · AWS_S3_PUBLIC_URL ...` 경고가 없으면 값이 들어간 것이다.
 - SMS — 샌드박스에 등록한 번호로 보내 본다: `aws sns publish --region ap-northeast-2 --phone-number +8210XXXXXXXX --message "roomless 테스트"`
-- S3 — 콘솔에서 아무 이미지나 올리고 `https://<버킷>.s3.ap-northeast-2.amazonaws.com/<키>` 가 열리는지 본다.
+- S3 · CloudFront — 콘솔에서 `store/test.jpg` 를 올리고 `https://<배포>.cloudfront.net/store/test.jpg` 가 열리는지 본다. `private/test.jpg` 는 같은 주소 모양으로 403 이어야 한다(서명 주소로만 열린다).

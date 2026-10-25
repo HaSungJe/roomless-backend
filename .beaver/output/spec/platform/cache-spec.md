@@ -98,6 +98,8 @@ auth-user 결과 필드: 공통 `user_id` · `login_id` · `name` · `auth_id` �
 | 탈퇴 완료(자동처리) | scheduler | `state_id` · 개인정보 | 있음 |
 | 회원 정보 수정(이름 · 닉네임 등) | user-service | `name` · `nickname` … | 미래 |
 | 정지 · 정지 해제 | admin-service (Phase 20) | `state_id` · `is_login_allowed` | 미래 |
+| 업체 탈퇴(그 업체 매니저 정지 — `updateStoreManagers`) | admin-service store (Phase 9) | `state_id` · `is_login_allowed` — 매니저 여러 명, 키를 store_id 로 찾을 수 없어 매니저 목록을 먼저 읽고 지운다 | Phase 9 |
+| 입점 승인(업체 총관리자 계정 생성) | admin-service store (Phase 9) | 새 계정 — 지울 키 없음 | Phase 9 |
 | 권한 변경 · 업체 배정 · 배정 해제 | admin-service (Phase 10) | `auth_id` · `store_id` | 미래 |
 | 매니저 계정 수정 · 삭제 | admin-service (Phase 10) | 여러 필드 | 미래 |
 | 룩업(`t_state`) 변경 | 배포(시드) | `is_login_allowed` | 드묾 — #7 |
