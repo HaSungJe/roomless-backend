@@ -18,7 +18,7 @@ flowchart LR
   P3 --> P6["Phase 6 · 계정·인증 (4)"]:::done
   P7 --> P6
   P4 --> P6
-  P3 --> P9["Phase 9 · 업체 입점·관리 (5)"]:::inprog
+  P3 --> P9["Phase 9 · 업체 입점·관리 (5)"]:::done
   P4 --> P9
   P7 --> P9
   P8 --> P9
@@ -61,7 +61,7 @@ flowchart LR
 - Phase 6 — 계정·인증 · 유닛 4개 · 의존: Phase 3, 4, 7 · 푼다: Phase 20, 23 · 파일 집합: apps/user-service/src/user, apps/admin-service/src/{manager,admin}, apps/gateway/src/api/v1/{user-service/user, admin-service/manager, admin-service/admin} · guards, libs/account, libs/contracts/src/{user,manager,admin}, libs/database(entities · migrations · seeder), README.md, AGENTS.md, docs/ · done
 - Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · done
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done
-- Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · in-progress
+- Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · todo
 - Phase 11 — 업체 운영 설정 · 유닛 5개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · todo
 - Phase 12 — room 스키마 · 유닛 5개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
@@ -79,14 +79,15 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: Phase 9 진행 중 · Next up: Phase 9
+지금: 진행 중 없음 · Next up: Phase 10
 
 ## 지금 할 일
-
-업체 입점·관리(Phase 9) — 입점 신청 → 승인(업체 등록 + 업체 총관리자 계정 + 안내 SMS) · 반려, 업체 목록 · 상세 · 수정 · 삭제 · 상태 변경(admin-service store 도메인)
-- 정하기 — 승인 때 매니저 계정을 store 도메인에서 만들지 · manager 도메인 repository 로 만들지(#39), 업체 삭제 방식(`LEAVE` 상태와 `is_deleted` — #40), 영업중지 때 미래 예약 처리(#41 · Open Decisions)
-- 정하기 — 같은 사업자번호의 대기 중 신청 중복 막기, 업체 총관리자 계정의 아이디 · 성별 · 생년월일을 어디서 채울지
-- 시작 — `/beaver:direct 업체 입점·관리`
+Phase 10 업체 인력 시작하기
+- #42 업체 관리자 계정 등록 · 목록 · 수정 · 삭제
+- #43 매니저 업체 배정 · 배정 해제
+- ok → 다음
+- 사용자 — 마이그레이션 `StoreFile` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — `t_store_image` 삭제 · `head_manager_phone` → `owner_phone` · 업체 정보 파일 테이블)
+- 사용자 — CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬, `.env` 의 `AWS_S3_PUBLIC_URL` 을 CloudFront 주소로(docs/guides/aws-setup.md 1 · 5단계)
 - 사용자 — 마이그레이션 `StoreSchema` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 `t_store` 행이 있으면 영업중지 · 좌표 0 으로 채워진다)
 - 사용자 — 마이그레이션 `LoginScopeStoreDetail` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 기존 회원의 `login_scope` 를 권한으로 채운다)
 - 사용자 — `.env` 에 `RABBITMQ_ADMIN_SERVICE_PASSWORD` 추가 → `npm run docker:rabbitmq`(계정 생성) → `npm run docker:admin-service`(user-service 묶음 뒤). 로컬은 `npm run start:admin-service`(:4002)
@@ -258,21 +259,24 @@ ship 완료 (2026-10-24, 커밋 2ef929a) — report: `.beaver/output/report/stor
 ### Phase 9 — 업체 입점·관리 (신청 → 승인 → 업체 등록) · depends: Phase 3, Phase 4, Phase 7, Phase 8
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 37 | 입점 신청 · 내 신청 상태 | 이용자 페이지 하단, 로그인 필요 | — | 32 | in-progress |
-| 38 | 입점 신청 목록 · 상세 | 총관리자 | — | 32 | in-progress |
-| 39 | 입점 승인 · 반려 | 승인 = 업체 등록 + 업체 총관리자 계정 생성 + 안내 SMS, 반려 = 사유 (큐) | 계정 생성은 admin-service 가 공유 DB 에 직접(결정 2026-10-23) — store 도메인에서 할지 manager 도메인 repository 로 할지 | 17, 37 | in-progress |
-| 40 | 업체 목록 · 상세 · 수정 · 삭제 | 총관리자 — 새로 만든다 | 삭제 방식(soft delete) | 34 | in-progress |
-| 41 | 업체 상태 변경 | 활성 · 영업중지 | 영업중지 시 미래 예약 처리(Open Decisions) | 33 | in-progress |
+| 37 | 입점 신청 · 내 신청 상태 | 이용자 페이지 하단, 로그인 필요 | — | 32 | done(60e061b) |
+| 38 | 입점 신청 목록 · 상세 | 총관리자 | — | 32 | done(60e061b) |
+| 39 | 입점 승인 · 반려 | 승인 = 업체 등록 + 업체 총관리자 계정 생성 + 안내 SMS, 반려 = 사유 (큐) | 계정 생성은 admin-service 가 공유 DB 에 직접(결정 2026-10-23) — store 도메인에서 할지 manager 도메인 repository 로 할지 | 17, 37 | done(60e061b) |
+| 40 | 업체 목록 · 상세 · 수정 · 삭제 | 총관리자 — 새로 만든다 | 삭제 방식(soft delete) | 34 | done(60e061b) |
+| 41 | 업체 상태 변경 | 활성 · 영업중지 | 영업중지 시 미래 예약 처리(Open Decisions) | 33 | done(60e061b) |
 
-**Expected APIs** (가칭):
+**APIs** (구현 — store-application-spec.md):
 
 | Unit | Method | Path | Purpose |
 |------|--------|------|---------|
-| #37 | POST · GET | `/api/v1/admin-service/store/application` · `/application/mine` | 입점 신청 · 내 신청 (이용자 가드) |
-| #38 | GET | `/api/v1/admin-service/store/application` · `/:application_id` | 신청 목록 · 상세 (관리자 가드) |
-| #39 | PATCH | `/api/v1/admin-service/store/application/:application_id/approve` · `/reject` | 승인 · 반려 (SSE, 관리자 가드) |
-| #40 | GET · PATCH · DELETE | `/api/v1/admin-service/store` · `/:store_id` | 업체 관리 (관리자 가드) |
-| #41 | PATCH | `/api/v1/admin-service/store/:store_id/state` | 상태 변경 (관리자 가드) |
+| #37 | POST · DELETE · GET | `/api/v1/admin-service/store/application` · `/application/mine(/:store_application_id)` · `…/file/upload-url` · `…/file(/:store_file_id)` | 입점 신청 · 신청 취소(삭제) · 내 신청 · 업체 정보 파일 (이용자 가드) |
+| #38 | GET | `/api/v1/admin-service/store/application` · `/application/:store_application_id` | 신청 목록 · 상세 (관리자 가드) |
+| #39 | PATCH | `/api/v1/admin-service/store/application/:store_application_id/approve` · `/reject` | 승인 · 반려 (SSE, 관리자 가드) |
+| #40 | GET · PATCH | `/api/v1/admin-service/store` · `/:store_id` | 업체 목록 · 상세 · 수정 (관리자 가드) |
+| #41 | PATCH | `/api/v1/admin-service/store/:store_id/state` | 상태 변경 — 활성 · 영업중지 · 탈퇴 (관리자 가드) |
+
+메모: 업체 삭제 API 는 두지 않고 상태(탈퇴 = 매니저 정지 · 사업자번호 마스킹)로만 관리한다. 신청 취소(삭제)를 더했다(사용자 결정 2026-10-26).
+업체 사진은 `t_store_image` 대신 업체 정보 파일 `t_store_file`(용도 룩업 `t_store_file_purpose.is_private`)에 둔다 — #35 · #45 의 사진은 이 테이블이다.
 
 ### Phase 10 — 업체 인력 (업체 관리자 계정) · depends: Phase 9
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -428,8 +432,8 @@ ship 완료 (2026-10-24, 커밋 2ef929a) — report: `.beaver/output/report/stor
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 42/97 units done (8/23 phases)
-**Next up**: Phase 9 업체 입점·관리 — 의존(Phase 3 · 4 · 7 · 8)이 모두 끝났고, 가장 긴 의존 사슬(9 → 10 → 11 → 13 → 17)의 시작이다. `/beaver:direct 업체 입점·관리` 로 시작한다(한 기획이 유닛 5개를 모두 덮는다).
+**Progress**: 47/97 units done (9/23 phases)
+**Next up**: Phase 10 업체 인력 — 의존(Phase 9) 모두 완료
 
 함께 시작할 수 있는 것: room 스키마(Phase 12)와 api-log(Phase 22)도 의존이 끝났다. 둘 다 Phase 9 와 파일이 겹치지 않아 함께 돌릴 수 있지만, 서로는 마이그레이션 등록 파일이 겹쳐 동시에 돌리지 않는다.
 
