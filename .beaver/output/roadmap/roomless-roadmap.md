@@ -23,7 +23,7 @@ flowchart LR
   P7 --> P9
   P8 --> P9
   P9 --> P10["Phase 10 · 업체 인력 (2)"]:::done
-  P10 --> P11["Phase 11 · 업체 운영 설정 (5)"]:::inprog
+  P10 --> P11["Phase 11 · 업체 운영 설정 (6)"]:::done
   P8 --> P12["Phase 12 · room 스키마 (5)"]:::todo
   P11 --> P13["Phase 13 · 객실 관리 (5)"]:::todo
   P12 --> P13
@@ -63,7 +63,7 @@ flowchart LR
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · done
-- Phase 11 — 업체 운영 설정 · 유닛 5개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · in-progress
+- Phase 11 — 업체 운영 설정 · 유닛 6개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 12 — room 스키마 · 유닛 5개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
 - Phase 13 — 객실 관리 · 유닛 5개 · 의존: Phase 11, 12 · 푼다: Phase 15, 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · todo
 - Phase 14 — device 기반 · 유닛 2개 · 의존: Phase 12 · 푼다: Phase 15 · 파일 집합: libs/database/src/entities/device, libs/database/src/migrations, apps/admin-service/src/device(포트) · todo
@@ -79,18 +79,17 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: Phase 11 진행 중 · Next up: Phase 11
+지금: 진행 중 없음 · Next up: Phase 12
 
 ## 지금 할 일
-Phase 11 업체 운영 설정 시작하기
-- #44 내 업체 상세
-- #45 업체 소개 수정
-- #46 영업시간 · 브레이크타임 설정
-- #47 정비시간 설정
-- #94 영업중 여부 전환
-- 시작 전에 정하기
-  영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약 — 업체 취소(100% 환불 + 알림)로 처리할지. (Phase 9 · 11 — #41 · #46 · #94)
+Phase 12 room 스키마 시작하기
+- #48 t_room_state 룩업 + 시드
+- #49 t_room_group · t_room_group_image
+- #50 t_room
+- #51 t_room_group_plan
+- #52 t_room_group_plan_price
 - ok → 다음
+- 사용자 — 마이그레이션 `StoreOperation` 적용(`StoreCodeManagerScope` 뒤 — `t_store_break` 의 요일이 지워져 기존 브레이크 행은 매일로 남고, 일시 예약불가 테이블이 생긴다)
 - 사용자 — 마이그레이션 `StoreCodeManagerScope` 적용(`StoreFile` 뒤 — 기존 업체 행에 업체코드가 채워지고, 매니저 아이디 · 휴대폰 UK 가 업체 단위 부분 인덱스로 바뀐다. 이미 있던 입점 신청은 업체 총관리자 아이디 · 비밀번호가 비어 있어 반려 후 다시 신청)
 - 사용자 — 마이그레이션 `StoreFile` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — `t_store_image` 삭제 · `head_manager_phone` → `owner_phone` · 업체 정보 파일 테이블)
 - 사용자 — CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬, `.env` 의 `AWS_S3_PUBLIC_URL` 을 CloudFront 주소로(docs/guides/aws-setup.md 1 · 5단계)
@@ -298,13 +297,17 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 ### Phase 11 — 업체 운영 설정 (업체 관리자) · depends: Phase 10 (+ Phase 3)
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 44 | 내 업체 상세 | 업체 관리자 | — | 42 | in-progress |
-| 45 | 업체 소개 수정 | 소개 · 편의시설 · 연락처 · 사진 | — | 19, 35 | in-progress |
-| 46 | 영업시간 · 브레이크타임 설정 | 요일 반복 | 영업시간 변경 시 기존 예약 처리 | 36 | in-progress |
-| 47 | 정비시간 설정 | 퇴실 후 n분 | — | 34 | in-progress |
-| 94 | 영업중 여부 전환 | 업체 관리자가 영업중 · 영업중 아님을 바꾼다(`t_store.is_open`) — 0 이면 연중무휴 · 영업시간 안이어도 영업중 아님 | 영업중 아님으로 바꿀 때 기존 예약 처리(Open Decisions) | 34 | in-progress |
+| 44 | 내 업체 상세 | 업체 관리자 | — | 42 | done(4fe12f0) |
+| 45 | 업체 소개 수정 | 소개 · 편의시설 · 연락처 · 사진 | — | 19, 35 | done(4fe12f0) |
+| 46 | 영업시간 · 브레이크타임 설정 | 요일 반복 | 영업시간 변경 시 기존 예약 처리 | 36 | done(4fe12f0) |
+| 47 | 정비시간 설정 | 퇴실 후 n분 | — | 34 | done(4fe12f0) |
+| 94 | 영업중 여부 전환 | 업체 관리자가 영업중 · 영업중 아님을 바꾼다(`t_store.is_open`) — 0 이면 연중무휴 · 영업시간 안이어도 영업중 아님 | 영업중 아님으로 바꿀 때 기존 예약 처리(Open Decisions) | 34 | done(4fe12f0) |
+| 98 | 일시 예약불가 | 시작 일시 ~ 종료 일시(분 단위) 동안 예약을 받지 않는다(`t_store_unavailable_period`) — 서로 겹침 금지 · 메모 30자, 요일별 휴무와 별개 | 걸리는 기존 예약은 취소하지 않고 특수 표시(Phase 17) | 44 | done(4fe12f0) |
 
-**Expected APIs** (가칭, 매니저 가드): `GET /api/v1/admin-service/store/mine`(#44), `PATCH /api/v1/admin-service/store/mine/profile`(#45), `PUT /api/v1/admin-service/store/mine/hours` · `/breaks`(#46), `PATCH /api/v1/admin-service/store/mine/maintenance`(#47), `PATCH /api/v1/admin-service/store/mine/open`(#94).
+**APIs** (구현 — store-operation-spec.md, 매니저 가드): `GET /api/v1/admin-service/store/mine`(#44), `PATCH /mine/profile` · `POST /mine/file/upload-url` · `POST /mine/file` · `DELETE /mine/file/:store_file_id` · `PUT /mine/file/order`(#45), `PUT /mine/hours` · `/mine/breaks`(#46), `PATCH /mine/maintenance`(#47), `PATCH /mine/open`(#94), `GET · POST /mine/unavailable-period` · `DELETE /mine/unavailable-period/:store_unavailable_period_id`(#98).
+
+메모: 브레이크타임은 요일 없이 매일 · 서로 겹침 금지, 영업시간 시작 = 마감 불가(24시간은 연중무휴), 같은 업체 설정 쓰기는 업체 행 잠금(사용자 결정 2026-10-27).
+같은 배치로 날짜 · 시각 처리를 dayjs 로 통일했다(`libs/common/src/utils/dayjs.ts` — kst.ts 삭제).
 
 ### Phase 12 — room 스키마 (층 · 객실 그룹 · 호실 · 상품 · 기간 가격) · depends: Phase 8
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -438,11 +441,11 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 | — | notify-service | `roomless.event` 도메인 이벤트를 구독해 SMS 발송을 서비스에서 떼어낸다(그 전까지는 각 서비스가 `SmsSender` 포트를 직접 쓴다) | — | Phase 3 | 후순위 |
 | — | 업체 정산 | 수수료 · 정산 주기 · 지급 내역 | — | Phase 17 | 후순위 |
 | — | 리뷰 · 평점 | 이용 완료 후 | — | Phase 19 | 후순위 |
-| — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 11 | 후순위 |
+| — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 48/96 units done (10/23 phases)
-**Next up**: Phase 11 업체 운영 설정 — 의존(Phase 10, Phase 3) 모두 완료
+**Progress**: 54/97 units done (11/23 phases)
+**Next up**: Phase 12 room 스키마 — 의존(Phase 8) 모두 완료
 
 함께 시작할 수 있는 것: room 스키마(Phase 12)와 api-log(Phase 22)도 의존이 끝났다. 둘 다 Phase 9 와 파일이 겹치지 않아 함께 돌릴 수 있지만, 서로는 마이그레이션 등록 파일이 겹쳐 동시에 돌리지 않는다.
 
@@ -477,7 +480,8 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
 - [ ] **입장 QR 확인 수단** — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 14 · 19)
 - [ ] **취소 규정의 끝** — 시작 이후 · 노쇼 취소를 받을지. (Phase 17)
-- [ ] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지. (Phase 9 · 11 — #41 · #46 · #94)
+- [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 특수 표시한다. 예약 기능(Phase 17)에서 구현. (사용자 결정 2026-10-27 · #98)
+- [ ] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지, 일시 예약불가처럼 특수 표시로 둘지. (Phase 9 · 11 → Phase 17 기획 때 — #41 · #46 · #94)
 - [ ] **통계 정의** — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 21)
 - [ ] **결제 대기 유지 시간 · 결제 수단** — 추천: 10분, 토스페이먼츠 테스트 키로 개발. (Phase 17)
 - [x] **공개 · 내부 경로 규칙** — 서비스 이름으로 시작한다: 공개 `/api/v1/<service>/<domain>/<action>`, 내부 `/internal/v1/<service>/<domain>/<action>`(`/api/v1/user-service/user/login` · `/api/v1/admin-service/manager/login`). 로그인 그룹은 가드로만 가른다. (결정 2026-10-23 · Phase 6 리비전 261023-2)
