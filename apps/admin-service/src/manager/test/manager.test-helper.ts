@@ -29,6 +29,18 @@ export const TEST_INTERNAL_TOKEN = 'test-internal-token';
 /** 고정 시각 — 2026-01-01 00:00 (로컬) */
 export const FIXED_TIME = new Date(2026, 0, 1);
 
+/** 업체 ID */
+export const STORE_ID = 'b'.repeat(32);
+
+/** 업체코드 (PK 와 별개) */
+export const STORE_CODE = 'c'.repeat(32);
+
+/** 로그인한 업체 총관리자 */
+export const HEAD_ACTOR: Actor = {user_id: 'h'.repeat(32), auth_id: 'HEAD_MANAGER'};
+
+/** 업체 관리자 회원 ID */
+export const STAFF_ID = 'e'.repeat(32);
+
 /** 매니저 repository mock — 모든 메서드가 vi.fn() */
 export type ManagerRepositoryMock = {[K in keyof ManagerRepositoryInterface]: Mock};
 
@@ -48,6 +60,11 @@ export function createManagerRepositoryMock(): ManagerRepositoryMock {
         findManager: vi.fn(),
         findLoginManager: vi.fn(),
         updateManager: vi.fn(),
+        findManagerStore: vi.fn(),
+        countStaff: vi.fn(),
+        findStaffList: vi.fn(),
+        insertStaff: vi.fn(),
+        updateStaff: vi.fn(),
         insertSession: vi.fn(),
         findSession: vi.fn(),
         insertSessionRefresh: vi.fn(),
@@ -135,9 +152,67 @@ export async function bootHttpPath(repo: ManagerRepositoryMock, jwt: JwtServiceM
     return app;
 }
 
-/** 게이트웨이가 붙이는 내부 요청 헤더 */
-export function internalHeaders(clientIp = '10.0.0.1'): Record<string, string> {
-    return {[INTERNAL_HEADER.TOKEN]: TEST_INTERNAL_TOKEN, [INTERNAL_HEADER.CLIENT_IP]: clientIp};
+/**
+ * 게이트웨이가 붙이는 내부 요청 헤더 — actor 가 있으면 로그인 회원 헤더도.
+ *
+ * @param clientIp 클라이언트 IP
+ * @param actor 로그인 회원
+ * @returns 헤더
+ */
+export function internalHeaders(clientIp = '10.0.0.1', actor: Actor | null = null): Record<string, string> {
+    const headers: Record<string, string> = {[INTERNAL_HEADER.TOKEN]: TEST_INTERNAL_TOKEN, [INTERNAL_HEADER.CLIENT_IP]: clientIp};
+    if (actor) {
+        headers[INTERNAL_HEADER.ACTOR_USER_ID] = actor.user_id;
+        headers[INTERNAL_HEADER.ACTOR_AUTH_ID] = actor.auth_id;
+    }
+    return headers;
+}
+
+/**
+ * 업체 행 — 매니저 로그인 · 계정 찾기 · 업체 관리자 등록 안내가 쓴다
+ *
+ * @param override 바꿀 필드
+ * @returns 업체 행
+ */
+export function storeRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {store_id: STORE_ID, store_code: STORE_CODE, store_name: '룸리스 강남점', store_state_id: 'ACTIVE', ...override};
+}
+
+/**
+ * 업체 총관리자 행 (HEAD_ACTOR)
+ *
+ * @param override 바꿀 필드
+ * @returns 회원 행
+ */
+export function headManagerRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {user_id: HEAD_ACTOR.user_id, auth_id: 'HEAD_MANAGER', login_scope: 'MANAGER', state_id: 'ACTIVE', store_id: STORE_ID, login_id: 'owner01', ...override};
+}
+
+/**
+ * 업체 관리자 행 (정상)
+ *
+ * @param override 바꿀 필드
+ * @returns 회원 행
+ */
+export function staffRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        user_id: STAFF_ID,
+        auth_id: 'MANAGER',
+        login_scope: 'MANAGER',
+        state_id: 'ACTIVE',
+        store_id: STORE_ID,
+        login_id: 'staff01',
+        name: '김직원',
+        nickname: '김직원',
+        gender: 'M',
+        birth: '1995-05-05',
+        phone: '01022223333',
+        block_comment: null,
+        is_password_change_required: 1,
+        created_at: FIXED_TIME,
+        updated_at: FIXED_TIME,
+        ...override,
+    };
 }
 
 /**

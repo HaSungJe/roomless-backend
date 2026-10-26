@@ -1,8 +1,9 @@
-import {Body, Controller, Ip, Patch, Post, Res, UseGuards} from '@nestjs/common';
+import {Body, Controller, Delete, Ip, Param, Patch, Post, Res, UseGuards} from '@nestjs/common';
 import {
     ApiBadRequestResponse,
     ApiBearerAuth,
     ApiBody,
+    ApiForbiddenResponse,
     ApiInternalServerErrorResponse,
     ApiNotFoundResponse,
     ApiOkResponse,
@@ -21,14 +22,23 @@ import {ManagerFindLoginIdDto, ManagerFindLoginIdResultDto} from '@app/contracts
 import {ManagerPasswordResetConfirmDto} from '@app/contracts/manager/dto/manager-password-reset-confirm.dto.js';
 import {ManagerPasswordResetDto, ManagerPasswordResetResultDto} from '@app/contracts/manager/dto/manager-password-reset.dto.js';
 import {ManagerPasswordDto} from '@app/contracts/manager/dto/manager-password.dto.js';
+import {ManagerStaffDeleteParamDto} from '@app/contracts/manager/dto/manager-staff-delete.dto.js';
+import {ManagerStaffPasswordResetParamDto} from '@app/contracts/manager/dto/manager-staff-password-reset.dto.js';
+import {ManagerStaffStateDto, ManagerStaffStateParamDto} from '@app/contracts/manager/dto/manager-staff-state.dto.js';
+import {ManagerStaffUpdateDto, ManagerStaffUpdateParamDto} from '@app/contracts/manager/dto/manager-staff-update.dto.js';
+import {ManagerStaffDto, ManagerStaffResultDto} from '@app/contracts/manager/dto/manager-staff.dto.js';
 import {MANAGER_COMMAND} from '@app/contracts/manager/manager.commands.js';
+import {AUTH_ID} from '@app/contracts/roles.js';
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
 import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
+import {Roles} from '../../../../../guards/roles/roles.decorator.js';
+import {RolesGuard} from '../../../../../guards/roles/roles.guard.js';
 import {CommandStreamService} from '../../../../../modules/transport/command-stream.service.js';
 
 /**
  * 매니저 그룹(총매니저 · 매니저) 공개 API — 큐 경로(RabbitMQ `admin.manager.*` → admin-service + 요청 단위 SSE).
- * 비밀번호 변경(로그인) · 아이디 찾기 · 비밀번호 초기화(비로그인 — 등록된 휴대폰 번호로, 이용자 라우트의 미러).
+ * 비밀번호 변경(로그인) · 아이디 찾기 · 비밀번호 초기화(비로그인 — 업체코드 + 등록된 휴대폰 번호로, 이용자 라우트의 미러),
+ * 업체 관리자 등록 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제(매니저 가드 + RolesGuard · @Roles(HEAD_MANAGER) — 업체 총관리자만).
  * 동기 경로(로그인 · 재발급)는 같은 경로 접두의 manager.controller.ts(ManagerController)에 둔다.
  */
 @ApiTags('매니저')
@@ -120,5 +130,104 @@ export class ManagerQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async confirmPasswordReset(@Body() dto: ManagerPasswordResetConfirmDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.PASSWORD_RESET_CONFIRM, actor: null, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 업체 관리자 등록 — 업체 총관리자만. 임시 비밀번호는 업체 관리자 휴대폰으로 SMS. done 의 data 는 회원 ID.
+     */
+    @Post('/staff')
+    @UseGuards(PassportJwtManagerAuthGuard, RolesGuard)
+    @Roles(AUTH_ID.HEAD_MANAGER)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 등록'})
+    @ApiBody({type: ManagerStaffDto})
+    @ApiProduces('text/event-stream')
+    @ApiOkResponse({type: ManagerStaffResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async registerStaff(@PassportActor() actor: Actor, @Body() dto: ManagerStaffDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.STAFF, actor, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 업체 관리자 수정 — 업체 총관리자만. done 의 data 는 null.
+     */
+    @Patch('/staff/:user_id')
+    @UseGuards(PassportJwtManagerAuthGuard, RolesGuard)
+    @Roles(AUTH_ID.HEAD_MANAGER)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 수정'})
+    @ApiBody({type: ManagerStaffUpdateDto})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async updateStaff(@PassportActor() actor: Actor, @Param() param: ManagerStaffUpdateParamDto, @Body() dto: ManagerStaffUpdateDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.STAFF_UPDATE, actor, payload: {...param, ...dto}, client_ip: ip});
+    }
+
+    /**
+     * 업체 관리자 비밀번호 초기화 — 업체 총관리자만. 임시 비밀번호는 업체 관리자 휴대폰으로 SMS. done 의 data 는 null.
+     */
+    @Patch('/staff/:user_id/password-reset')
+    @UseGuards(PassportJwtManagerAuthGuard, RolesGuard)
+    @Roles(AUTH_ID.HEAD_MANAGER)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 비밀번호 초기화'})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async resetStaffPassword(@PassportActor() actor: Actor, @Param() param: ManagerStaffPasswordResetParamDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.STAFF_PASSWORD_RESET, actor, payload: param, client_ip: ip});
+    }
+
+    /**
+     * 업체 관리자 정지 · 해제 — 업체 총관리자만. 정지하면 다음 요청부터 로그인 · 재발급이 막힌다. done 의 data 는 null.
+     */
+    @Patch('/staff/:user_id/state')
+    @UseGuards(PassportJwtManagerAuthGuard, RolesGuard)
+    @Roles(AUTH_ID.HEAD_MANAGER)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 정지 · 해제'})
+    @ApiBody({type: ManagerStaffStateDto})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async changeStaffState(@PassportActor() actor: Actor, @Param() param: ManagerStaffStateParamDto, @Body() dto: ManagerStaffStateDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.STAFF_STATE, actor, payload: {...param, ...dto}, client_ip: ip});
+    }
+
+    /**
+     * 업체 관리자 삭제 — 업체 총관리자만. 같은 아이디 · 번호로 다시 등록할 수 있다. done 의 data 는 null.
+     */
+    @Delete('/staff/:user_id')
+    @UseGuards(PassportJwtManagerAuthGuard, RolesGuard)
+    @Roles(AUTH_ID.HEAD_MANAGER)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 삭제'})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async deleteStaff(@PassportActor() actor: Actor, @Param() param: ManagerStaffDeleteParamDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.STAFF_DELETE, actor, payload: param, client_ip: ip});
     }
 }

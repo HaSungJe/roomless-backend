@@ -57,6 +57,8 @@ export interface StoreRepositoryInterface {
     assignStoreFiles(store_application_id: string, store_id: string): Promise<void>;
     /** 업체 단건 */
     findStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null>;
+    /** 업체 여러 건 — 내 신청 목록의 업체코드 */
+    findStores(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity[]>;
     /** 업체 개수 — 목록 · 사업자번호 중복 확인 */
     countStores(where: FindOptionsWhere<StoreEntity> | FindOptionsWhere<StoreEntity>[]): Promise<number>;
     /** 업체 목록 — 등록일 최신순 */
@@ -67,9 +69,7 @@ export interface StoreRepositoryInterface {
     updateStore(where: FindOptionsWhere<StoreEntity>, entity: StoreEntity): Promise<void>;
     /** 신청자 — t_user 이용자 그룹 */
     findApplicant(user_id: string): Promise<UserEntity | null>;
-    /** 매니저 그룹 회원 수 — 업체 총관리자 아이디 중복 확인 */
-    countManagers(where: FindOptionsWhere<UserEntity>): Promise<number>;
-    /** 업체 총관리자 계정 등록 (t_user 매니저 그룹) — 아이디 · 휴대폰 번호 UK → 400 */
+    /** 업체 총관리자 계정 등록 (t_user 매니저 그룹) — 아이디 · 휴대폰 번호는 업체 단위라 새 업체에서 겹치지 않는다 */
     insertHeadManager(entity: UserEntity): Promise<void>;
     /** 그 업체 매니저 그룹 회원 상태 변경 (업체 탈퇴 → 정지) */
     updateStoreManagers(store_id: string, state_id: string, block_comment: string | null): Promise<void>;

@@ -2,7 +2,8 @@
  * 매니저 도메인(총매니저 · 매니저) RabbitMQ 명령 종류 (= 라우팅 키, admin-service 의 q.admin.cmd 가 `admin.#` 로 받는다).
  * 게이트웨이가 발행하고 admin-service 매니저 도메인의 `@OnCommand` 핸들러가 받는다. 큐 · 바인딩 상수는 admin.commands.ts.
  *
- * 큐 경로 기준: 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(등록된 휴대폰 SMS). 로그인 · 토큰 재발급은 내부 HTTP 동기 경로다.
+ * 큐 경로 기준: 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(등록된 휴대폰 SMS), 업체 관리자 등록 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제(업체 총관리자).
+ * 로그인 · 토큰 재발급 · 업체 관리자 조회는 내부 HTTP 동기 경로다.
  */
 export const MANAGER_COMMAND = {
     /** 비밀번호 변경 (로그인 매니저) */
@@ -15,9 +16,19 @@ export const MANAGER_COMMAND = {
     PASSWORD_RESET: 'admin.manager.password-reset',
     /** 비밀번호 초기화 — 인증번호 확인 → 임시 비밀번호 SMS */
     PASSWORD_RESET_CONFIRM: 'admin.manager.password-reset-confirm',
+    /** 업체 관리자 등록 (업체 총관리자) → 임시 비밀번호 SMS */
+    STAFF: 'admin.manager.staff',
+    /** 업체 관리자 수정 (업체 총관리자) */
+    STAFF_UPDATE: 'admin.manager.staff-update',
+    /** 업체 관리자 비밀번호 초기화 (업체 총관리자) → 임시 비밀번호 SMS */
+    STAFF_PASSWORD_RESET: 'admin.manager.staff-password-reset',
+    /** 업체 관리자 정지 · 해제 (업체 총관리자) */
+    STAFF_STATE: 'admin.manager.staff-state',
+    /** 업체 관리자 삭제 (업체 총관리자) */
+    STAFF_DELETE: 'admin.manager.staff-delete',
 } as const;
 
-/** 매니저 도메인 내부 HTTP 경로 (게이트웨이 → admin-service) */
+/** 매니저 도메인 내부 HTTP 경로 (게이트웨이 → admin-service). 파라미터가 있는 경로는 함수로 만든다. */
 export const MANAGER_INTERNAL_PATH = {
     /** 매니저 로그인 */
     LOGIN: '/internal/v1/admin-service/manager/login',
@@ -25,4 +36,8 @@ export const MANAGER_INTERNAL_PATH = {
     TOKEN_REFRESH: '/internal/v1/admin-service/manager/token-refresh',
     /** 로그인 매니저 조회(게이트웨이 jwt-manager 전략) — 뒤에 `/<user_id>` */
     AUTH_USER: '/internal/v1/admin-service/manager/auth-user',
+    /** 업체 관리자 목록 (GET, 업체 총관리자) */
+    STAFF_LIST: '/internal/v1/admin-service/manager/staff',
+    /** 업체 관리자 상세 (GET, 업체 총관리자) */
+    staff: (user_id: string) => `/internal/v1/admin-service/manager/staff/${encodeURIComponent(user_id)}`,
 } as const;

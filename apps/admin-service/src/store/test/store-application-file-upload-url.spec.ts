@@ -60,8 +60,8 @@ describe('POST /internal/v1/admin-service/store/application/mine/:store_applicat
     });
 
     describe('[FAIL:service]', () => {
-        it('반려 신청은 400, 용도 조회 · 주소 발급 없음', async () => {
-            repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: 'REJECTED'}));
+        it.each(['REJECTED', 'APPROVED'])('%s 신청은 400, 용도 조회 · 주소 발급 없음', async (state) => {
+            repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: state}));
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders(USER_ACTOR)).send({store_file_purpose_id: 'BUSINESS_LICENSE', content_type: 'image/jpeg'});
 
@@ -71,7 +71,7 @@ describe('POST /internal/v1/admin-service/store/application/mine/:store_applicat
             expect(storage.createUploadUrl).not.toHaveBeenCalled();
         });
 
-        it('남의 신청 · 승인 신청은 404', async () => {
+        it('남의 신청은 404', async () => {
             repo.findApplication.mockResolvedValueOnce(null);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders(USER_ACTOR)).send({store_file_purpose_id: 'BUSINESS_LICENSE', content_type: 'image/jpeg'});

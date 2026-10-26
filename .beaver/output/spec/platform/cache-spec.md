@@ -100,8 +100,9 @@ auth-user 결과 필드: 공통 `user_id` · `login_id` · `name` · `auth_id` �
 | 정지 · 정지 해제 | admin-service (Phase 20) | `state_id` · `is_login_allowed` | 미래 |
 | 업체 탈퇴(그 업체 매니저 정지 — `updateStoreManagers`) | admin-service store (Phase 9) | `state_id` · `is_login_allowed` — 매니저 여러 명, 키를 store_id 로 찾을 수 없어 매니저 목록을 먼저 읽고 지운다 | Phase 9 |
 | 입점 승인(업체 총관리자 계정 생성) | admin-service store (Phase 9) | 새 계정 — 지울 키 없음 | Phase 9 |
-| 권한 변경 · 업체 배정 · 배정 해제 | admin-service (Phase 10) | `auth_id` · `store_id` | 미래 |
-| 매니저 계정 수정 · 삭제 | admin-service (Phase 10) | 여러 필드 | 미래 |
+| 업체 관리자 등록 | admin-service manager (Phase 10) | 새 계정 — 지울 키 없음 | Phase 10 |
+| 업체 관리자 수정(`updateStaff` — 이름 · 번호) · 정지 · 해제(`changeStaffState`) · 삭제(`deleteStaff` — LEAVE · 아이디 마스킹) | admin-service manager (Phase 10) | `name` · `state_id` · `is_login_allowed` · `login_id` | Phase 10 |
+| 권한 변경 | admin-service (미정) | `auth_id` | 미래 — 업체 배정(#43)은 dropped |
 | 룩업(`t_state`) 변경 | 배포(시드) | `is_login_allowed` | 드묾 — #7 |
 | 비밀번호 변경 · 초기화 · 로그아웃 | user-service · admin-service | auth-user 결과에 없음 | 삭제 불필요(세션 무효화 정책이 생기면 다시 본다) |
 

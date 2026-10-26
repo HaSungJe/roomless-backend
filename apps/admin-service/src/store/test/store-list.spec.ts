@@ -1,7 +1,7 @@
 import {INestApplication} from '@nestjs/common';
 import request from 'supertest';
 import {ILike} from 'typeorm';
-import {ADMIN_ACTOR, bootHttpPath, createStoreRepositoryMock, FIXED_TIME, internalHeaders, STORE_ID, StoreRepositoryMock, storeRow} from './store.test-helper.js';
+import {ADMIN_ACTOR, bootHttpPath, createStoreRepositoryMock, FIXED_TIME, internalHeaders, STORE_CODE, STORE_ID, StoreRepositoryMock, storeRow} from './store.test-helper.js';
 
 const PATH = '/internal/v1/admin-service/store';
 
@@ -31,6 +31,7 @@ describe('GET /internal/v1/admin-service/store — 업체 목록 (총관리자, 
             expect(res.body.list).toEqual([
                 {
                     store_id: STORE_ID,
+                    store_code: STORE_CODE,
                     store_state_id: 'ACTIVE',
                     store_name: '룸리스 강남점',
                     business_number: '1234567890',

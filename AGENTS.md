@@ -34,14 +34,14 @@ NestJS 12 **모노레포**(ESM, `"type": "module"`) + TypeORM 1.x(PostgreSQL, pg
 apps/
 ├── gateway/src/
 │   ├── api/v1/<service>/<domain>/  # 공개 라우트 — user-service/user · admin-service/{manager,admin,store}. controllers/<domain>.controller.ts(동기 · 내부 HTTP) · controllers/<domain>.controller.queue.ts(큐 · RabbitMQ + 요청 단위 SSE)
-│   ├── guards/               # passport.jwt.auth(로그인 그룹별 JWT 전략 · 가드 — jwt-user · jwt-manager · jwt-admin) · roles(그룹 안 권한 — 미적용)
+│   ├── guards/               # passport.jwt.auth(로그인 그룹별 JWT 전략 · 가드 — jwt-user · jwt-manager · jwt-admin) · roles(그룹 안 권한 — 업체 관리자 라우트)
 │   ├── modules/transport/    # InternalHttpClient · CommandStreamService
 │   └── config/               # cors.config.ts · trust-proxy.config.ts
 ├── user-service/src/        # 이용자 서버 — DB 소유(마이그레이션 · 시드)
 │   ├── user/                 # 이용자 도메인: controllers/(user.controller.ts 내부 HTTP · user.controller.queue.ts RabbitMQ) → UserService
 │   └── migrate.ts            # 마이그레이션 실행기
 ├── admin-service/src/       # 관리자 서버 — 공유 DB 직접(마이그레이션 · 시드 없음)
-│   ├── manager/              # 매니저 도메인(총매니저 · 매니저): controllers/ → ManagerService
+│   ├── manager/              # 매니저 도메인(총매니저 · 매니저 — 인증 · 계정 찾기 · 업체 관리자 계정 관리): controllers/ → ManagerService
 │   ├── admin/                # 관리자 도메인(총관리자 · 관리자): controllers/ → AdminService
 │   └── store/                # 업체 도메인(입점 신청 · 취소 · 업체 정보 파일 — 이용자, 승인 · 반려 · 업체 관리 — 총관리자): controllers/ → StoreService
 └── scheduler/src/            # crontab 전용 — 들어오는 연결 없음(listen · 큐 소비 · 컨트롤러 없음), DB 직접
@@ -61,7 +61,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - **헥사고날 경계(포트·어댑터)**: 인바운드 어댑터 controller(내부 HTTP · 큐 `@OnCommand`)는 service 로 위임만 하고, service 는 아웃바운드 포트(repository · 외부 연동 인터페이스 Symbol 토큰)와 프레임워크 서비스(`JwtService`)만 안다. 같은 service 를 HTTP 와 RabbitMQ 양쪽에서 부른다. **crontab 은 예외** — API 가 아니므로 service 를 거치지 않고 repository 포트를 직접 쓴다. crontab 은 **scheduler 앱에만** 두고(서비스 앱에는 `ScheduleModule` · `crontabs/` 없음), 그 데이터 접근은 scheduler 안의 도메인 repository 다(공유 DB — 같은 엔티티). 폴더 배치(api · guards · modules · config)는 헥사고날과 무관한 정리 기준이다. 순수 도메인 객체 분리(클린 아키텍처)는 하지 않는다.
 - 레이어: **controller → service → repository**, **crontab → repository**, 단방향. repository 만 TypeORM(`txHost.tx`)을 쓴다.
 - **엔티티는 `libs/database/src/entities/<domain>/`** — 공유 DB 단계라 여러 앱이 같은 엔티티를 쓰므로 앱이 아니라 공용 라이브러리 안의 소유 도메인 폴더에 둔다.
-- **도메인 간 데이터 접근**: 다른 도메인 테이블이 필요하면 소유 도메인의 repository 가 그 엔티티를 직접 다룬다(service→service ❌). 메서드명은 소유 도메인 어휘(예: `t_user` 를 다뤄도 store 에서는 `insertStaff`).
+- **도메인 간 데이터 접근**: 다른 도메인 테이블이 필요하면 소유 도메인의 repository 가 그 엔티티를 직접 다룬다(service→service ❌). 메서드명은 소유 도메인 어휘(예: `t_user` 를 다뤄도 store 에서는 `insertHeadManager`, 매니저 도메인이 `t_store` 를 읽을 때는 `findManagerStore`).
 
 → 상세(앱 구성 · 경로 선택 · 모듈 · 부트스트랩 · 수명주기 · 새 도메인 절차): [docs/architecture.md](docs/architecture.md) · 메시징: [docs/messaging.md](docs/messaging.md)
 
@@ -97,7 +97,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 ## 공통 로직 분리
 
-- **순수 함수(stateless) → util**: 전역 `libs/common/src/utils/*.ts`(`bcrypt` · `hash` · `cipher` · `jwt` · `validation` · `fail-result` · `retry` · `pagination` · `env` · `id` · `kst`), 서비스 앱 여러 개가 쓰는 계정 로직 `libs/account/src/utils/*.ts`(`token` · `sms-verification` · `password`, 상수 · 공통 메시지는 `account.constants.ts`), 도메인 전용 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. `@Injectable` 없이 named `function` export — `pagination.ts` 의 `Pagination` 만 계산 결과를 들고 다니는 값 객체라 class 다. 파일 전용 헬퍼(export 안 함)는 인프라 · util 파일에만.
+- **순수 함수(stateless) → util**: 전역 `libs/common/src/utils/*.ts`(`bcrypt` · `hash` · `cipher` · `jwt` · `validation` · `fail-result` · `retry` · `pagination` · `env` · `id` · `kst` · `search`), 서비스 앱 여러 개가 쓰는 계정 로직 `libs/account/src/utils/*.ts`(`token` · `sms-verification` · `password`, 상수 · 공통 메시지는 `account.constants.ts`), 도메인 전용 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. `@Injectable` 없이 named `function` export — `pagination.ts` 의 `Pagination` 만 계산 결과를 들고 다니는 값 객체라 class 다. 파일 전용 헬퍼(export 안 함)는 인프라 · util 파일에만.
 - **DI/lifecycle/외부연동 → `@Module`/`@Injectable`**: 여러 앱이 쓰는 인프라는 `libs/`, 앱 전용은 그 앱 안(`src/modules/`).
 - **로깅**: 인프라 클래스만 `private readonly logger = new Logger(X.name)`. 도메인 계층(service · repository · crontab · controller)은 로그를 남기지 않는다. `console.*` 금지.
 
@@ -109,7 +109,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - **입력 DTO 의 모든 필드에 검증 데코레이터 최소 1개**(없으면 `@IsOptional()`) — whitelist 를 켜면 무장식 필드가 조용히 사라진다. 응답 ResultDto 는 대상 아님.
 - **검증 위치**: 공개 입력은 게이트웨이의 ValidationPipe 에서 1회. 서비스 큐 컨트롤러는 다시 검증하지 않는다(내부 HTTP 컨트롤러는 같은 DTO 로 한 번 더 검증 — 방어).
 - 전역 ValidationPipe 는 `transform: true` + `forbidNonWhitelisted: true` + `exceptionFactory: validationExceptionFactory`(main.ts · spec 공용) — **설정을 바꾸지 않는다**. `whitelist` 는 켜지 않는다 — 그래서 선언 안 된 필드는 걸러지지 않는다.
-- **`@Query()` DTO (적용 — store 목록 3종 `StoreMyApplicationListDto` · `StoreApplicationListDto` · `StoreListDto`)**: 생성자를 세트로 갖고, 컨트롤러가 `const dto = new 클래스명(query);` 로 지역변수를 만들어 넘긴다(호출부 `new` 인라인 ❌ · 필드 하나씩 대입 ❌ · 앞선 인자가 있으면 dto 는 마지막). **생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — 파이프가 `new targetType()` 을 인자 없이 호출해 필수면 매 요청 500, 컴파일에서 안 잡힌다. 페이지 기본값은 `PaginationDto` 생성자(`libs/common/src/dto/pagination.dto.ts` 의 `PAGINATION_DEFAULTS` — 하위 util 의 NaN 폴백에 맡기지 않는다), 기능별 Query DTO 는 `super(data)` 후 자기 필드만(부모 필드 재선언 ❌). 쿼리 값은 문자열이다. `@Body()`/`@Param()` 은 해당 없음. 전체 조항 → [docs/conventions.md](docs/conventions.md).
+- **`@Query()` DTO (적용 — store 목록 3종 `StoreMyApplicationListDto` · `StoreApplicationListDto` · `StoreListDto` · 업체 관리자 목록 `ManagerStaffListDto`)**: 생성자를 세트로 갖고, 컨트롤러가 `const dto = new 클래스명(query);` 로 지역변수를 만들어 넘긴다(호출부 `new` 인라인 ❌ · 필드 하나씩 대입 ❌ · 앞선 인자가 있으면 dto 는 마지막). **생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — 파이프가 `new targetType()` 을 인자 없이 호출해 필수면 매 요청 500, 컴파일에서 안 잡힌다. 페이지 기본값은 `PaginationDto` 생성자(`libs/common/src/dto/pagination.dto.ts` 의 `PAGINATION_DEFAULTS` — 하위 util 의 NaN 폴백에 맡기지 않는다), 기능별 Query DTO 는 `super(data)` 후 자기 필드만(부모 필드 재선언 ❌). 쿼리 값은 문자열이다. `@Body()`/`@Param()` 은 해당 없음. 전체 조항 → [docs/conventions.md](docs/conventions.md).
 
 → 상세: [docs/conventions.md](docs/conventions.md)
 
@@ -129,7 +129,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 - **모든 함수/메서드에 주석 필수**(JSDoc/한 줄, export 여부 무관). 공개 controller(게이트웨이) 핸들러에 Swagger 데코레이터 필수. 내부 controller(`/internal/...`)는 Swagger 없음.
 - 클래스: `@ApiTags('<한글>')` → `@Controller(...)`.
-- 동기 핸들러(`controllers/<domain>.controller.ts`): HTTP verb → `@HttpCode(200)` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → 에러 응답들(`type: ApiFailResultDto`). 인증이 붙으면 verb 뒤에 `@UseGuards` → `@Roles`(그룹 안 권한 시) → `@HttpCode` → `@ApiBearerAuth()`(규약 — 사례 없음).
+- 동기 핸들러(`controllers/<domain>.controller.ts`): HTTP verb → `@HttpCode(200)` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → 에러 응답들(`type: ApiFailResultDto`). 인증이 붙으면 verb 뒤에 `@UseGuards` → `@Roles`(그룹 안 권한 시) → `@HttpCode` → `@ApiBearerAuth()`(store 조회 · 업체 관리자 목록 · 상세).
 - **큐 핸들러**(`controllers/<domain>.controller.queue.ts`): HTTP verb → `@UseGuards`(인증 시, 그 그룹의 가드) → `@Roles`(그룹 안 권한 시) → `@ApiBearerAuth`(인증 시) → `@ApiOperation` → `@ApiBody`(입력 시) → `@ApiProduces('text/event-stream')` → `@ApiOkResponse({type: done 의 data DTO})`(void 면 생략) → 에러 응답들(권한 시 `@ApiUnauthorizedResponse` 뒤에 `@ApiForbiddenResponse`). `@HttpCode` 없음. 본문 `commandStream.dispatch(res, {...})` 한 줄.
 - 응답 데코레이터는 `{type}` 만(❌ `description`), `@ApiOperation` 은 `summary` 만.
 
@@ -139,9 +139,10 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 - **엔티티** `libs/database/src/entities/<domain>/<feature>.entity.ts`, `ENTITIES`(entities.ts)에 등록: 테이블 **`t_<feature snake>`**(`t_user_setting`), `@Entity({name, comment})`, 제약 PascalCase(`primaryKeyConstraintName: 'PK_<Model>'` · `@Unique('UK_<Model>_<Cols>')`(그룹 단위 UK 는 컬럼을 이어 붙인다 — `UK_User_LoginIdLoginScope`) · `@JoinColumn({foreignKeyConstraintName: 'FK_<Model>_<Target>'})` · `@Index('IDX_…')` · `@Check('CHK_<Model>_<내용>', '<SQL 식>')`(컬럼 조합 규칙 — `CHK_StoreHour_OpenCloseTime`, 식을 바꾸면 이름도 바꾼다)), 컬럼 이름 명시(`@Column({name})`), **모든 컬럼 `comment`**(→ DB COMMENT), 타임스탬프 `@BeforeInsert`/`@BeforeUpdate` 훅 `insertTimestamp()`/`updateTimestamp()`(❌ `@CreateDateColumn`), 시각 `timestamptz`(기존 예외 `leave_reserved_at` 문자열) · 하루 안 시각 `time`(한국 시각 분 단위, 마감이 시작보다 이르면 다음 날 — 24시간 · 휴무는 플래그) · 좌표 `double precision`, 플래그 `smallint`. FK 는 문자열 속성 + `@ManyToOne(() => X, {nullable, onUpdate: 'CASCADE', onDelete: nullable ? 'RESTRICT' : 'CASCADE'})` + `@JoinColumn`(관계 속성을 엔티티 타입으로 두지 않는다 — ESM 순환 import 회피, 역방향 관계 없음). 룩업 엔티티는 구조 컬럼 + 그 값으로 동작이 갈리는 플래그만(`t_state.is_login_allowed` · `t_store_file_purpose.is_private`). 항목이 자주 바뀌는 상세정보는 `jsonb` 컬럼 하나 + 같은 파일의 TS 인터페이스(`t_store.store_detail` · `StoreDetail`, 기본 `'{}'`).
 - **컬럼 이름**: 시각은 `<과거분사>_at`(`created_at` · `updated_at` · `verified_at`) · 만료는 `expires_at`, 여부 플래그는 `is_<형용사 · 과거분사>`(`is_deleted` · `is_login_allowed`), 직전 값은 `previous_<이름>`, PK 는 `<테이블>_id`(FK 는 가리키는 PK 와 같은 이름). 이름을 바꿀 때는 `db:generate`(DROP + ADD — 데이터가 사라진다) 대신 손으로 쓴 RENAME 마이그레이션(`1792477492198-RenameColumns.ts`). 단일 컬럼 `@Unique` 는 생성기가 `UQ_<해시>` 이름을 만들 수 있어 생성된 마이그레이션의 제약명을 확인한다.
+- **nullable 컬럼에 따라 갈리는 유일성은 부분 유니크 인덱스** — `@Index('UK_…', [...], {unique: true, where: '"store_id" IS NULL'})` 처럼 이름은 UK_ 접두(유일성 규칙), PostgreSQL 오류의 제약명이 인덱스 이름이라 `isUniqueViolation` 분기가 그대로 쓴다. TypeORM 에 `NULLS NOT DISTINCT` 가 없고 NULL 이 많은 컬럼(미인증 phone)이 있어서다 — `t_user` 의 아이디 · 휴대폰 번호(업체 없는 계정 `UK_User_LoginIdLoginScope` · `UK_User_PhoneLoginScope`, 업체 소속 계정 `UK_User_LoginIdLoginScopeStoreId` · `UK_User_PhoneLoginScopeStoreId`).
 - **repository**: `TransactionHost<TransactionalAdapterTypeOrm>` 주입, `this.txHost.tx.getRepository(XEntity)` 를 private getter 로 감싸 접근. 조회 `findOne`/`find` + `loadRelationIds: true`, 쓰기 `insert(entity)` · `update(where, entity)`(엔티티 인스턴스라야 훅이 돈다). 상태 조건을 건 쓰기(그 사이 바뀌었는지 판별)는 `affected === 1` 을 boolean 으로 돌려주고 service 가 false 면 400 을 던져 롤백한다(`consumeSmsVerificationAttempt` · store `updateApplication` · `deleteApplication`). where 타입 `FindOptionsWhere<XEntity>`(❌ `Partial`). 조인 · raw select 는 QueryBuilder 빌더 메서드(public, 포트 인터페이스 밖)로 분리하고 repository spec 의 Data-Access Smoke 로 SQL 고정.
 - **마이그레이션**: 스키마는 마이그레이션으로만 바꾼다(`synchronize` 항상 off, 목록 테이블 `t_migration`). 엔티티 수정 → `npm run db:generate -- <Name>`(DB 없이 PGlite 로 계산해 `libs/database/src/migrations/<ts>-<Name>.ts` 생성 + `MIGRATIONS` 등록, COMMENT 변경 포함) → `npm run db:check` 로 일치 확인 → 적용은 사용자(`db:migrate` 또는 Docker migrate 컨테이너).
-- **Pagination (적용 — store 목록 3종, store.service.ts)**: 응답 `{list, pagination}`, 순서 **count → `Pagination` → 목록**, repository 는 개수 · 목록 두 메서드(`findAndCount` ❌). 검색어 부분 일치는 `ILike(toContainsPattern(keyword))`(`%` · `_` · `\` 이스케이프 — store.util.ts), 통합검색은 WHERE 배열(OR) — 매핑 민감이라 Smoke 대상. Query DTO 는 `extends PaginationDto`. 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts` — `limit` · `offset` · `getPagination()`)을 쓴다: `new Pagination({...dto, total_count})`.
+- **Pagination (적용 — store 목록 3종 · 업체 관리자 목록, store.service.ts · manager.service.ts)**: 응답 `{list, pagination}`, 순서 **count → `Pagination` → 목록**, repository 는 개수 · 목록 두 메서드(`findAndCount` ❌). 검색어 부분 일치는 `ILike(toContainsPattern(keyword))`(`%` · `_` · `\` 이스케이프 — `libs/common/src/utils/search.ts`), 통합검색은 WHERE 배열(OR) — 매핑 민감이라 Smoke 대상. Query DTO 는 `extends PaginationDto`. 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts` — `limit` · `offset` · `getPagination()`)을 쓴다: `new Pagination({...dto, total_count})`.
 
 → 상세: [docs/data-layer.md](docs/data-layer.md)
 
@@ -158,11 +159,12 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
   | 그룹 `LOGIN_SCOPE` | 권한(`AUTH_ID`, `t_auth` PK) | 경로 접두 · 서비스 | 로그인 |
   |---|---|---|---|
   | `USER` | `USER`(이용자) | `/api/v1/user-service/user` · user-service | SNS 만(`/login`) — 이용자는 SNS 로만 가입하고 비밀번호가 없다 |
-  | `MANAGER` | `HEAD_MANAGER` · `MANAGER`(총매니저 · 매니저) | `/api/v1/admin-service/manager` · admin-service | 아이디 · 비밀번호 — 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(등록된 휴대폰) |
+  | `MANAGER` | `HEAD_MANAGER` · `MANAGER`(총매니저 · 매니저) | `/api/v1/admin-service/manager` · admin-service | **업체코드(`t_store.store_code`)** + 아이디 · 비밀번호 — 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(업체코드 + 등록된 휴대폰) |
   | `ADMIN` | `SUPER_ADMIN` · `ADMIN`(총관리자 · 관리자) | `/api/v1/admin-service/admin` · admin-service | 아이디 · 비밀번호 — 비밀번호 변경만 |
   - 다른 그룹 계정은 로그인에서 없는 계정과 같은 404, 재발급에서 401(refresh 만료 단축). 각 도메인 service 가 자기 그룹 조건으로 찾는다(`findManager({..., login_scope: LOGIN_SCOPE.MANAGER})`).
-  - `login_scope` 는 계정을 만들 때 권한에 맞춰 넣는다(가입 · 시드 · 이후 입점 승인 · 매니저 등록). 아이디 · 휴대폰 번호 UK 도 그룹 단위다.
-- **미적용 규약(정의만 있고 사용 0)**: 그룹 안에서 권한을 더 좁히는 API(예: 총매니저만)는 그룹 가드 뒤에 `RolesGuard` + `@Roles(AUTH_ID.HEAD_MANAGER)`(`guards/roles/roles.decorator.ts`)를 **한 세트로** 붙이고 `@ApiForbiddenResponse` 를 명시한다 — 불일치 403 `{message: '접근 권한이 없습니다.'}`. 그룹 자체는 그룹 가드가 가르므로 그룹 전체에 열린 라우트에는 `@Roles` 를 붙이지 않는다. 게이트웨이 안에서만 쓰는 회원 값은 `@PassportUser('user_id')`.
+  - `login_scope` 는 계정을 만들 때 권한에 맞춰 넣는다(가입 · 시드 · 입점 승인 · 업체 관리자 등록). 아이디 · 휴대폰 번호 유일성은 업체가 없는 계정(이용자 · 관리자)은 그룹 단위, 매니저 그룹은 **업체 단위**다(같은 아이디를 다른 업체에서 쓸 수 있다) — 그래서 매니저 로그인 · 계정 찾기는 업체코드로 업체를 먼저 찾는다(없으면 계정이 없는 것과 같은 404).
+- **그룹 안 권한(적용 — 업체 관리자 라우트 `/api/v1/admin-service/manager/staff…`)**: 그룹 안에서 권한을 더 좁히는 API(예: 업체 총관리자만)는 그룹 가드 뒤에 `RolesGuard` + `@Roles(AUTH_ID.HEAD_MANAGER)`(`guards/roles/roles.decorator.ts`)를 **한 세트로** 붙이고 `@ApiForbiddenResponse` 를 명시한다(`@UseGuards(PassportJwtManagerAuthGuard, RolesGuard)` → `@Roles(...)`) — 불일치 403 `{message: '접근 권한이 없습니다.'}`. 그룹 자체는 그룹 가드가 가르므로 그룹 전체에 열린 라우트에는 `@Roles` 를 붙이지 않는다. service 는 역할을 다시 보지 않고 actor 로 그 계정(업체 총관리자)을 찾아 그 업체만 다룬다.
+- **미적용 규약(정의만 있고 사용 0)**: 게이트웨이 안에서만 쓰는 회원 값은 `@PassportUser('user_id')`.
 - 서비스 내부 HTTP 의 로그인 회원은 `@InternalActor('user_id') user_id: string`(게이트웨이가 actor 헤더로 넘긴다 — store 내 신청 라우트).
 - 서비스 내부 HTTP 의 클라이언트 IP 는 `@ClientIp()`.
 - 휴대폰 SMS 인증 여부는 `is_phone_verified`(가입 · 로그인 결과, auth-user) — 인증 전 회원을 막는 가드는 회원 전용 기능이 처음 생길 때 붙인다(지금은 막지 않는다).
@@ -208,7 +210,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - 전역 setup([vitest.setup.ts](vitest.setup.ts)): `@Transactional()` pass-through mock + Nest 로거 끔. spec 마다 반복하지 않는다.
 - **큐 경로**: 실제 큐 컨트롤러 · service · `CommandHandlerRegistry` · `CommandDispatcher` 를 부팅(`DiscoveryModule` + `module.init()` 필수)하고 **repository · 외부 연동 포트(Symbol 토큰) · `JwtService` 만 mock** 주입, 봉투를 `dispatcher.dispatch()` 에 넣어 판정(ack/requeue/dead)과 done/failed 결과를 단언.
 - **동기 경로**: 실제 controller + service + ValidationPipe + 필터 + 전역 InternalAuthGuard · ReturnedExceptionInterceptor 부팅, repository · 외부 연동 포트 · JwtService 만 mock.
-- **Data-Access Smoke**: 매핑 민감 쿼리(관계 필드 where · QueryBuilder · raw select · 동적 조립) 메서드는 repository spec 에서 DB 연결 없이 `new DataSource(...)` + `buildMetadatas()` 로 SQL 을 빌드해 고정한다 — service spec 은 repository 를 mock 하므로 쿼리 매핑을 실행하지 않는다. 현재 적용 [user.repository.spec.ts](apps/user-service/src/user/test/user.repository.spec.ts) `findLoginUser` · `consumeSmsVerificationAttempt`, [manager.repository.spec.ts](apps/admin-service/src/manager/test/manager.repository.spec.ts) `findLoginManager` · `consumeSmsVerificationAttempt`, [admin.repository.spec.ts](apps/admin-service/src/admin/test/admin.repository.spec.ts) `findLoginAdmin`, [store.repository.spec.ts](apps/admin-service/src/store/test/store.repository.spec.ts) 목록 2종 · 업체 정보 파일 조회 · 업체 지정 · 신청 파일 삭제 · 매니저 상태, [scheduler user.repository.spec.ts](apps/scheduler/src/user/test/user.repository.spec.ts) `buildUsersQuery`.
+- **Data-Access Smoke**: 매핑 민감 쿼리(관계 필드 where · QueryBuilder · raw select · 동적 조립) 메서드는 repository spec 에서 DB 연결 없이 `new DataSource(...)` + `buildMetadatas()` 로 SQL 을 빌드해 고정한다 — service spec 은 repository 를 mock 하므로 쿼리 매핑을 실행하지 않는다. 현재 적용 [user.repository.spec.ts](apps/user-service/src/user/test/user.repository.spec.ts) `findLoginUser` · `consumeSmsVerificationAttempt`, [manager.repository.spec.ts](apps/admin-service/src/manager/test/manager.repository.spec.ts) `findLoginManager` · `consumeSmsVerificationAttempt` · 업체 인력 목록, [admin.repository.spec.ts](apps/admin-service/src/admin/test/admin.repository.spec.ts) `findLoginAdmin`, [store.repository.spec.ts](apps/admin-service/src/store/test/store.repository.spec.ts) 목록 2종 · 업체 정보 파일 조회 · 업체 지정 · 신청 파일 삭제 · 매니저 상태, [scheduler user.repository.spec.ts](apps/scheduler/src/user/test/user.repository.spec.ts) `buildUsersQuery`.
 - 외부 util 은 `vi.mock('<alias 경로>.js', ...)` + `vi.mocked(fn).mockReturnValue`(ESM 이라 `spyOn(모듈)` 불가), 외부 패키지는 `vi.hoisted` + `vi.mock`. 시간은 날짜만 필요하면 `vi.useFakeTimers({toFake: ['Date']})`, 타이머 의존 로직은 전체 `vi.useFakeTimers()`.
 - 강도: 상태코드만 검사 금지 — mock 호출 횟수 · 인자(쓰기는 엔티티 컬럼 값, `toBeInstanceOf(XEntity)`) · 실패 후 `.not.toHaveBeenCalled()` 까지. 메시지는 한국어 리터럴. `[SUCCESS]`/`[FAIL:*]`/`[SKIP]`/`[SECURITY]` 등 분류 태그를 describe 또는 it 제목에. **실 DB · 브로커 · 외부 IO 금지.**
 - 공유 service 생성자에 DI 를 추가하면 그 service 를 부팅하는 모든 spec · 도우미의 providers 에 mock 을 추가한다. repository 메서드를 추가하면 `createUserRepositoryMock()` 에도 추가해야 typecheck 를 통과한다.

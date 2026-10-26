@@ -12,12 +12,12 @@ export class StoreApplicationApproveParamDto {
 }
 
 /**
- * 입점 승인 결과 — 임시 비밀번호는 대표자 휴대폰으로만 보낸다(응답에 없음)
+ * 입점 승인 결과 — 업체 총관리자는 신청 때 정한 아이디 · 비밀번호로 로그인한다
  */
 export class StoreApplicationApproveResultDto {
     @ApiProperty({description: '등록한 업체 ID'})
     store_id: string;
 
-    @ApiProperty({description: '업체 총관리자 아이디'})
-    login_id: string;
+    @ApiProperty({description: '업체코드 (매니저 로그인 · 매니저 화면 주소)'})
+    store_code: string;
 }

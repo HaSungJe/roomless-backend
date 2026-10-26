@@ -40,7 +40,7 @@ export class StoreController {
     constructor(private readonly internalHttp: InternalHttpClient) {}
 
     /**
-     * 내 입점 신청 목록 — 대기 · 반려만(승인 신청은 보이지 않는다)
+     * 내 입점 신청 목록 — 대기 · 반려 · 승인 모두(승인 신청은 업체코드 포함)
      */
     @Get('/application/mine')
     @UseGuards(PassportJwtAuthGuard)
@@ -58,7 +58,7 @@ export class StoreController {
     }
 
     /**
-     * 내 입점 신청 상세 — 업체 정보 파일 열람 주소 포함, 승인 신청은 404
+     * 내 입점 신청 상세 — 업체 정보 파일 열람 주소 · 승인 신청은 업체코드 포함, 남의 신청은 404
      */
     @Get('/application/mine/:store_application_id')
     @UseGuards(PassportJwtAuthGuard)

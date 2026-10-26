@@ -30,7 +30,7 @@ function constraintError(code: '23505' | '23503', constraint: string): QueryFail
  * @returns 저장소와 엔티티별 가짜 repository
  */
 function makeRepository() {
-    const fake = () => ({insert: vi.fn(), findOne: vi.fn(), update: vi.fn(), delete: vi.fn(), count: vi.fn()});
+    const fake = () => ({insert: vi.fn(), findOne: vi.fn(), find: vi.fn(), update: vi.fn(), delete: vi.fn(), count: vi.fn()});
     const repos = new Map<unknown, ReturnType<typeof fake>>([
         [StoreApplicationEntity, fake()],
         [StoreFilePurposeEntity, fake()],
@@ -70,17 +70,11 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         expect((error as BadRequestException).getResponse()).toEqual({message: '이미 신청 · 등록된 사업자등록번호입니다.'});
     });
 
-    it.each([
-        ['UK_User_PhoneLoginScope', '이미 다른 매니저 계정에 등록된 휴대폰 번호입니다.'],
-        ['UK_User_LoginIdLoginScope', '업체 총관리자 아이디가 겹쳤습니다. 다시 승인해주세요.'],
-    ] as const)('insertHeadManager — 23505 %s → 400 "%s"', async (constraint, message) => {
+    it('insertHeadManager — 새 업체라 업체 단위 UK 와 겹칠 수 없다: 어떤 위반이든 통일 500', async () => {
         const {repository, user} = makeRepository();
-        user.insert.mockRejectedValueOnce(constraintError('23505', constraint));
+        user.insert.mockRejectedValueOnce(constraintError('23505', 'UK_User_LoginIdLoginScopeStoreId'));
 
-        const error = await repository.insertHeadManager(new UserEntity()).catch((e: unknown) => e);
-
-        expect(error).toBeInstanceOf(BadRequestException);
-        expect((error as BadRequestException).getResponse()).toEqual({message});
+        await expect(repository.insertHeadManager(new UserEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
     });
 
     it('다른 제약 위반은 제약명이 맞지 않으므로 통일 500', async () => {
@@ -96,6 +90,14 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         await repository.findApplicant('u1');
 
         expect(user.findOne).toHaveBeenCalledWith({where: {user_id: 'u1', login_scope: 'USER'}, loadRelationIds: true});
+    });
+
+    it('findStores 는 조건 그대로 여러 건을 loadRelationIds 로 조회한다(내 신청 목록의 업체코드)', async () => {
+        const {repository, store} = makeRepository();
+
+        await repository.findStores({store_id: In(['s1', 's2'])});
+
+        expect(store.find).toHaveBeenCalledWith({where: {store_id: In(['s1', 's2'])}, loadRelationIds: true});
     });
 
     it('findStoreFilePurpose 는 용도 PK 로 조회한다', async () => {
@@ -133,11 +135,11 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         ['insertStoreFile', 'file', 'insert'],
         ['deleteStoreFile', 'file', 'delete'],
         ['findStore', 'store', 'findOne'],
+        ['findStores', 'store', 'find'],
         ['countStores', 'store', 'count'],
         ['insertStore', 'store', 'insert'],
         ['updateStore', 'store', 'update'],
         ['findApplicant', 'user', 'findOne'],
-        ['countManagers', 'user', 'count'],
         ['insertHeadManager', 'user', 'insert'],
     ] as const)('%s 실패는 통일 500', async (method, repo, fn) => {
         const fakes = makeRepository();

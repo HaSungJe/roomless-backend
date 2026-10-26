@@ -4,6 +4,7 @@ import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapte
 import type {FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
 import {USER_NOT_EXIST_MESSAGE} from '@app/account/account.constants.js';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
+import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
 import {SessionEntity} from '@app/database/entities/user/session.entity.js';
 import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
@@ -11,12 +12,13 @@ import {StateEntity} from '@app/database/entities/user/state.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginManagerRow, ManagerRepositoryInterface} from '../interfaces/manager.repository.interface.js';
+import {STAFF_LOGIN_ID_TAKEN_MESSAGE, STAFF_PHONE_TAKEN_MESSAGE} from '../manager.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
 
 /**
- * 매니저 repository (아웃바운드 어댑터) — 공유 DB 의 t_user · t_session · t_session_refresh · t_sms_verification 을 직접 다룬다.
+ * 매니저 repository (아웃바운드 어댑터) — 공유 DB 의 t_user · t_session · t_session_refresh · t_sms_verification 과 매니저 소속 업체(t_store)를 직접 다룬다.
  * `txHost.tx` 는 `@Transactional()` 범위 안에서는 트랜잭션 EntityManager, 밖에서는 기본 EntityManager 다.
  */
 @Injectable()
@@ -44,6 +46,11 @@ export class ManagerRepository implements ManagerRepositoryInterface {
     /** t_sms_verification repository (현재 트랜잭션 기준) */
     private get smsVerifications(): Repository<SmsVerificationEntity> {
         return this.txHost.tx.getRepository(SmsVerificationEntity);
+    }
+
+    /** t_store repository (현재 트랜잭션 기준) */
+    private get stores(): Repository<StoreEntity> {
+        return this.txHost.tx.getRepository(StoreEntity);
     }
 
     /**
@@ -107,6 +114,99 @@ export class ManagerRepository implements ManagerRepositoryInterface {
             await this.users.update(where, entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 매니저 소속 업체 단건 — 업체코드(로그인 · 아이디 찾기 · 비밀번호 초기화) · 업체 ID(업체 관리자 등록 안내)로 찾는다.
+     *
+     * @param where 조회 조건
+     * @returns 업체 또는 null
+     */
+    async findManagerStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null> {
+        try {
+            return await this.stores.findOne({where, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 업체 인력 수
+     *
+     * @param where 조회 조건 (배열 = OR)
+     * @returns 개수
+     */
+    async countStaff(where: FindOptionsWhere<UserEntity> | FindOptionsWhere<UserEntity>[]): Promise<number> {
+        try {
+            return await this.users.count({where});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 업체 인력 목록
+     *
+     * @param where 조회 조건 (배열 = OR)
+     * @param limit 개수
+     * @param offset 건너뛸 개수
+     * @returns 인력 목록 (업체 총관리자가 위, 등록일 최신순)
+     */
+    async findStaffList(where: FindOptionsWhere<UserEntity> | FindOptionsWhere<UserEntity>[], limit: number, offset: number): Promise<UserEntity[]> {
+        try {
+            return await this.buildStaffListQuery(where, limit, offset).getMany();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 업체 인력 목록 쿼리 — 매핑 민감(관계 필드 where · 정렬 · ILike · 배열 OR)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param where 조회 조건 (배열 = OR)
+     * @param limit 개수
+     * @param offset 건너뛸 개수
+     * @returns 쿼리 빌더
+     */
+    buildStaffListQuery(where: FindOptionsWhere<UserEntity> | FindOptionsWhere<UserEntity>[], limit: number, offset: number): SelectQueryBuilder<UserEntity> {
+        return this.users.createQueryBuilder('u').setFindOptions({where, order: {auth_id: 'ASC', created_at: 'DESC'}, take: limit, skip: offset, loadRelationIds: true});
+    }
+
+    /**
+     * 업체 관리자 계정 등록 — 같은 업체 안 아이디 · 휴대폰 번호면 400
+     *
+     * @param entity new UserEntity() + 할당
+     */
+    async insertStaff(entity: UserEntity): Promise<void> {
+        try {
+            await this.users.insert(entity);
+        } catch (error) {
+            if (isUniqueViolation(error, 'UK_User_LoginIdLoginScopeStoreId')) {
+                throw new BadRequestException({message: STAFF_LOGIN_ID_TAKEN_MESSAGE});
+            } else if (isUniqueViolation(error, 'UK_User_PhoneLoginScopeStoreId')) {
+                throw new BadRequestException({message: STAFF_PHONE_TAKEN_MESSAGE});
+            } else {
+                throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+            }
+        }
+    }
+
+    /**
+     * 업체 관리자 수정 · 삭제 — 같은 업체 안 휴대폰 번호면 400
+     *
+     * @param where 수정 조건
+     * @param entity 바꿀 필드만 할당한 엔티티
+     */
+    async updateStaff(where: FindOptionsWhere<UserEntity>, entity: UserEntity): Promise<void> {
+        try {
+            await this.users.update(where, entity);
+        } catch (error) {
+            if (isUniqueViolation(error, 'UK_User_PhoneLoginScopeStoreId')) {
+                throw new BadRequestException({message: STAFF_PHONE_TAKEN_MESSAGE});
+            } else {
+                throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+            }
         }
     }
 

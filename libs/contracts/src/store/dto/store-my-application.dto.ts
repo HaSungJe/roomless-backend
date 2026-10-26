@@ -38,7 +38,7 @@ export class StoreMyApplicationFileResultDto {
 }
 
 /**
- * 내 입점 신청 상세 — 대기 · 반려 신청만(승인 신청은 404)
+ * 내 입점 신청 상세 — 모든 상태(승인 신청은 업체코드 포함), 남의 신청은 404
  */
 export class StoreMyApplicationResultDto {
     @ApiProperty({description: '입점 신청 ID'})
@@ -58,6 +58,9 @@ export class StoreMyApplicationResultDto {
 
     @ApiProperty({description: '대표자 휴대폰 번호 — 업체 총관리자 계정'})
     owner_phone: string;
+
+    @ApiProperty({description: '업체 총관리자 아이디'})
+    head_manager_login_id: string;
 
     @ApiProperty({description: '업체 연락처'})
     phone: string;
@@ -85,6 +88,9 @@ export class StoreMyApplicationResultDto {
 
     @ApiProperty({description: '신청일시 (ISO 8601)'})
     created_at: string;
+
+    @ApiProperty({description: '업체코드 — 승인 신청이면 그 업체의 코드, 아니면 null', nullable: true, type: String})
+    store_code: string | null;
 
     @ApiProperty({description: '업체 정보 파일 (용도 · 정렬 순서)', type: () => [StoreMyApplicationFileResultDto]})
     files: StoreMyApplicationFileResultDto[];

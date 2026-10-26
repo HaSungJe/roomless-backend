@@ -65,7 +65,7 @@ export class UserSettingEntity {
 규칙:
 - **파일** `entities/<domain>/<feature>.entity.ts`, 클래스 `<Feature>Entity`, 새 엔티티는 [entities.ts](../libs/database/src/entities.ts) `ENTITIES` 에 한 줄 추가.
 - **테이블** `t_<feature snake>` — 엔티티 파일명과 같은 이름이다(`t_user` · `t_user_setting` · `t_session_refresh` 모두 user 도메인). `@Entity({name, comment})` — 테이블 주석도 DB COMMENT 로 들어간다.
-- **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})` — 여러 컬럼은 이어 붙인다: 로그인 그룹 단위 `UK_User_LoginIdLoginScope(login_id, login_scope)` · `UK_User_PhoneLoginScope(phone, login_scope)`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`) · `CHK_<Model>_<내용>`(`@Check('CHK_…', '<SQL 식>')` — 컬럼 조합 규칙을 DB 가 막을 때. 예: `CHK_StoreHour_OpenCloseTime` 휴무가 아니면 open_time · close_time 둘 다, 휴무면 둘 다 NULL — store-hour.entity.ts. 스키마 비교(`db:check`)는 CHECK 를 이름으로 맞추므로 식을 바꾸면 이름도 바꾼다). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
+- **제약명 PascalCase**: `PK_<Model>`(`primaryKeyConstraintName`) · `UK_<Model>_<Cols>`(`@Unique('UK_…', [...])`, ❌ `@Column({unique})` — 여러 컬럼은 이어 붙인다: `UK_User_SnsSnsUserId(sns_id, sns_user_id)`) · `FK_<Model>_<Target>`(`@JoinColumn({foreignKeyConstraintName})`) · `IDX_<Model>_<Cols>`(`@Index('IDX_…', [...])`) · `CHK_<Model>_<내용>`(`@Check('CHK_…', '<SQL 식>')` — 컬럼 조합 규칙을 DB 가 막을 때. 예: `CHK_StoreHour_OpenCloseTime` 휴무가 아니면 open_time · close_time 둘 다, 휴무면 둘 다 NULL — store-hour.entity.ts. 스키마 비교(`db:check`)는 CHECK 를 이름으로 맞추므로 식을 바꾸면 이름도 바꾼다). PostgreSQL 은 인덱스 · 제약 이름이 스키마 전역에서 유일해야 하므로 모델명을 반드시 접두로 둔다.
 - **모든 컬럼에 `comment`** — 마이그레이션 생성 시 `COMMENT ON` 으로 들어간다. FK 컬럼은 참조 대상 PK 의 주석을 따른다(TypeORM 동작).
 - **FK 는 문자열 속성 + `@ManyToOne(() => X, {nullable, onUpdate: 'CASCADE', onDelete})` + `@JoinColumn({name, referencedColumnName, foreignKeyConstraintName})`** — `nullable: false` 면 `onDelete: 'CASCADE'`, `nullable: true` 면 `onDelete: 'RESTRICT'`(user.entity.ts:23-39, 6건 모두). 조회 시 `loadRelationIds: true` 로 ID 를 채운다. 관계 속성을 엔티티 타입(`auth: AuthEntity`)으로 두지 않는다: ESM 에서 데코레이터 메타데이터가 클래스를 즉시 참조해 순환 import 가 깨진다. 역방향(`@OneToMany`)도 두지 않는다.
 - **컬럼 이름은 항상 명시** — `@Column({name: 'bio', ...})`.
@@ -88,7 +88,7 @@ export class UserSettingEntity {
 5. 적용(사용자): Docker 로 띄우면 `migrate` 컨테이너가 자동 적용, 로컬은 `npm run db:migrate`, 되돌리기 `npm run db:revert`. 운영은 배포 절차에서 같은 실행기(`migrate.js`)를 돌린다.
 
 - 데이터 이전 · 파티셔닝처럼 엔티티로 표현할 수 없는 작업은 생성된 파일에 `queryRunner.query(...)` 를 직접 추가한다.
-- **기존 행이 있는 테이블에 NOT NULL 컬럼을 더할 때**: 생성된 `ADD ... NOT NULL` 을 `DEFAULT <임시값>` 으로 추가 → `UPDATE` 로 실제 값 채우기 → `ALTER COLUMN ... DROP DEFAULT` 로 고친다(엔티티에 기본값이 없으면 `db:check` 가 일치로 본다). 예: `t_user.login_scope` 를 권한으로 채움(`1792682222497-LoginScopeStoreDetail.ts`).
+- **기존 행이 있는 테이블에 NOT NULL 컬럼을 더할 때**: 생성된 `ADD ... NOT NULL` 을 `DEFAULT <임시값>` 으로 추가 → `UPDATE` 로 실제 값 채우기 → `ALTER COLUMN ... DROP DEFAULT` 로 고친다(엔티티에 기본값이 없으면 `db:check` 가 일치로 본다). 예: `t_user.login_scope` 를 권한으로 채움(`1792682222497-LoginScopeStoreDetail.ts`). 값을 계산해 채울 때는 NULL 로 더한 뒤 `UPDATE` → `SET NOT NULL` 도 된다 — `t_store.store_code` 를 `replace(gen_random_uuid()::text, '-', '')` 로 채움(`1793027933626-StoreCodeManagerScope.ts`).
 - 마이그레이션 목록 테이블은 `t_migration`.
 
 ## Repository
@@ -150,6 +150,9 @@ export class UserRepository implements UserRepositoryInterface {
 - 직전 값을 가리키는 컬럼은 `previous_<이름>` 이다 — `previous_refresh_hash` · `leave_previous_state_id`.
 - PK 는 `<t_ 를 뗀 테이블 이름>_id`, FK 는 가리키는 PK 와 같은 이름이다 — `api_log_id` · `user_id` · `sms_purpose_id`.
 - **이름을 바꿀 때는 마이그레이션을 손으로 쓴다.** `db:generate` 는 이름 변경을 DROP + ADD 로 계산해 데이터가 사라진다. `ALTER TABLE ... RENAME COLUMN` · `ALTER INDEX ... RENAME` · `ALTER SEQUENCE ... RENAME` 만 쓰고(데이터 · 제약 · 주석 유지), `RenameColumns` 처럼 먼저 등록한 뒤 남은 차이만 생성한다(`1792477492198-RenameColumns.ts`).
+- **nullable 컬럼에 따라 갈리는 유일성은 부분 유니크 인덱스**로 둔다 — `@Index('UK_…', [...], {unique: true, where: '"store_id" IS NULL'})`. 이름은 유일성 규칙이라 UK_ 접두, PostgreSQL 오류의 제약명이 인덱스 이름이라 `isUniqueViolation(error, 'UK_…')` 분기가 그대로 쓴다. TypeORM 1.x 에 `NULLS NOT DISTINCT` 가 없고, 세 컬럼 UK 하나로는 NULL 이 많은 컬럼(미인증 이용자의 phone)이 서로 다른 값으로 취급돼 유일성이 깨지기 때문이다.
+  - `t_user` 아이디 · 휴대폰 번호 — 업체가 없는 계정(이용자 · 총관리자 · 관리자)은 그룹 안에서 `UK_User_LoginIdLoginScope(login_id, login_scope) WHERE store_id IS NULL` · `UK_User_PhoneLoginScope(phone, login_scope) WHERE store_id IS NULL`, 업체 소속 계정(매니저 그룹)은 그 업체 안에서 `UK_User_LoginIdLoginScopeStoreId(…, store_id) WHERE store_id IS NOT NULL` · `UK_User_PhoneLoginScopeStoreId`(user.entity.ts).
+  - 제약 → 인덱스로 바꿀 때는 제약을 먼저 지우고 같은 이름의 인덱스를 만든다(`1793027933626-StoreCodeManagerScope.ts`). 되돌리기는 업체 간에 겹치는 값이 있으면 실패한다.
 - 단일 컬럼 `@Unique` 는 생성기가 `UQ_<해시>` 제약명을 만들 수 있다. `db:check` 는 이 이름 차이를 잡지 못하므로, 생성된 마이그레이션의 제약명을 `UK_<Model>_<Cols>` 로 맞춘다(repository 의 `isUniqueViolation(error, 'UK_…')` 분기가 제약명에 기댄다).
 
 ## 트랜잭션
@@ -170,11 +173,11 @@ export class UserRepository implements UserRepositoryInterface {
 
 ## Pagination / 목록 조회
 
-> 적용: store 목록 3종(apps/admin-service/src/store/store.service.ts `getMyApplicationList` · `getApplicationList` · `getStoreList`). 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts`). Query DTO 생성자 규칙은 [conventions.md](conventions.md).
+> 적용: store 목록 3종(apps/admin-service/src/store/store.service.ts `getMyApplicationList` · `getApplicationList` · `getStoreList`) · 업체 관리자 목록(apps/admin-service/src/manager/manager.service.ts `getStaffList`). 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts`). Query DTO 생성자 규칙은 [conventions.md](conventions.md).
 
 - 응답 `{list, pagination}`.
 - 순서 **count → `Pagination` → 목록** — `Pagination` 이 `total_count` 로 `limit`/`offset` 을 산출한다. repository 는 `countX(where)` 와 `findXList(where, limit, offset)` 두 메서드로 둔다(`findAndCount` ❌).
 - 쓰는 모양: `const pagination = new Pagination({...dto, total_count});` → `findXList(where, pagination.limit, pagination.offset)` → `{list, pagination: pagination.getPagination()}`.
 - Query DTO 는 `extends PaginationDto`(기본값은 부모 생성자).
-- 검색 WHERE 는 도메인 util 이 `FindOptionsWhere<X>` 로 조립(통합검색은 배열 = OR — `buildStoreListWhere`), repository 는 실행만. 부분 일치는 `ILike(toContainsPattern(keyword))` — `%` · `_` · `\` 를 글자 그대로 찾도록 이스케이프한다(store.util.ts). `Like()` · `ILike()` · 관계 필드 where 를 쓰면 Data-Access Smoke 대상이다(`buildApplicationListQuery` · `buildStoreListQuery`).
+- 검색 WHERE 는 도메인 util 이 `FindOptionsWhere<X>` 로 조립(통합검색은 배열 = OR — `buildStoreListWhere`), repository 는 실행만. 부분 일치는 `ILike(toContainsPattern(keyword))` — `%` · `_` · `\` 를 글자 그대로 찾도록 이스케이프한다(`libs/common/src/utils/search.ts`). `Like()` · `ILike()` · 관계 필드 where 를 쓰면 Data-Access Smoke 대상이다(`buildApplicationListQuery` · `buildStoreListQuery` · `buildStaffListQuery`).
 - 기본 필터 `is_deleted = 0`, 정렬 `created_at DESC`.

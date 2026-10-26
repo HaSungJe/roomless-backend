@@ -22,7 +22,7 @@ flowchart LR
   P4 --> P9
   P7 --> P9
   P8 --> P9
-  P9 --> P10["Phase 10 · 업체 인력 (2)"]:::todo
+  P9 --> P10["Phase 10 · 업체 인력 (2)"]:::inprog
   P10 --> P11["Phase 11 · 업체 운영 설정 (5)"]:::todo
   P8 --> P12["Phase 12 · room 스키마 (5)"]:::todo
   P11 --> P13["Phase 13 · 객실 관리 (5)"]:::todo
@@ -62,7 +62,7 @@ flowchart LR
 - Phase 7 — admin-service 기반 · 유닛 4개 · 의존: Phase 1 · 푼다: Phase 9 · 파일 집합: apps/admin-service, compose.admin-service.yml, docker/, libs/messaging, apps/gateway/src/modules/transport · done
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
-- Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · todo
+- Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · in-progress
 - Phase 11 — 업체 운영 설정 · 유닛 5개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · todo
 - Phase 12 — room 스키마 · 유닛 5개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
 - Phase 13 — 객실 관리 · 유닛 5개 · 의존: Phase 11, 12 · 푼다: Phase 15, 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · todo
@@ -79,7 +79,7 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 10
+지금: Phase 10 진행 중 · Next up: Phase 10
 
 ## 지금 할 일
 Phase 10 업체 인력 시작하기
@@ -281,8 +281,8 @@ ship 완료 (2026-10-24, 커밋 2ef929a) — report: `.beaver/output/report/stor
 ### Phase 10 — 업체 인력 (업체 관리자 계정) · depends: Phase 9
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 42 | 업체 관리자 계정 등록 · 목록 · 수정 · 삭제 | 업체 총관리자 — 수정에 비밀번호 초기화 포함. 매니저 도메인(같은 그룹 계정) | 총매니저만 — 매니저 가드 + `RolesGuard` · `@Roles(HEAD_MANAGER)` 첫 사용처 | 39 | todo |
-| 43 | 매니저 업체 배정 · 배정 해제 | 총관리자 | 유지할지(업체 총관리자가 직접 관리하므로) | 39 | todo |
+| 42 | 업체 관리자 계정 등록 · 목록 · 수정 · 삭제 | 업체 총관리자 — 수정에 비밀번호 초기화 포함. 매니저 도메인(같은 그룹 계정) | 총매니저만 — 매니저 가드 + `RolesGuard` · `@Roles(HEAD_MANAGER)` 첫 사용처 | 39 | in-progress |
+| 43 | 매니저 업체 배정 · 배정 해제 | 총관리자 | 유지할지(업체 총관리자가 직접 관리하므로) | 39 | dropped(업체 관리자는 업체 총관리자가 자기 업체로 만들어 처음부터 소속이 정해진다 — 배정 API 불필요, 사용자 결정 2026-10-26) |
 
 **Expected APIs** (가칭): `POST · GET · PATCH · DELETE /api/v1/admin-service/manager/staff`(#42, 매니저 가드 + `@Roles(HEAD_MANAGER)`), `PATCH /api/v1/admin-service/store/:store_id/manager`(#43, 관리자 가드).
 
@@ -432,7 +432,7 @@ ship 완료 (2026-10-24, 커밋 2ef929a) — report: `.beaver/output/report/stor
 | — | 특정 날짜 임시휴무 · 특별영업 | 지금은 요일 반복만 — 6개월 사전 예약 때문에 앞당길지 검토 | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 47/97 units done (9/23 phases)
+**Progress**: 47/96 units done (9/23 phases)
 **Next up**: Phase 10 업체 인력 — 의존(Phase 9) 모두 완료
 
 함께 시작할 수 있는 것: room 스키마(Phase 12)와 api-log(Phase 22)도 의존이 끝났다. 둘 다 Phase 9 와 파일이 겹치지 않아 함께 돌릴 수 있지만, 서로는 마이그레이션 등록 파일이 겹쳐 동시에 돌리지 않는다.

@@ -20,10 +20,14 @@ export interface StoreDetail {
  */
 @Entity({name: 't_store', comment: '업체 정보'})
 @Unique('UK_Store_BusinessNumber', ['business_number'])
+@Unique('UK_Store_StoreCode', ['store_code'])
 @Index('IDX_Store_LatitudeLongitude', ['latitude', 'longitude'])
 export class StoreEntity {
     @PrimaryColumn({name: 'store_id', length: 32, comment: '업체 ID', primaryKeyConstraintName: 'PK_Store'})
     store_id: string;
+
+    @Column({name: 'store_code', length: 32, nullable: false, comment: '업체코드(UUID 32자 — PK 와 별개, 매니저 로그인 · 매니저 화면 주소에 쓴다. 승인 때 만들고 바꾸지 않는다)'})
+    store_code: string;
 
     @ManyToOne(() => StoreStateEntity, {nullable: false, onUpdate: 'CASCADE', onDelete: 'CASCADE'})
     @JoinColumn({name: 'store_state_id', referencedColumnName: 'store_state_id', foreignKeyConstraintName: 'FK_Store_StoreState'})

@@ -5,6 +5,11 @@ import type {ManagerFindLoginIdDto, ManagerFindLoginIdResultDto} from '@app/cont
 import type {ManagerPasswordResetConfirmDto} from '@app/contracts/manager/dto/manager-password-reset-confirm.dto.js';
 import type {ManagerPasswordResetDto, ManagerPasswordResetResultDto} from '@app/contracts/manager/dto/manager-password-reset.dto.js';
 import type {ManagerPasswordDto} from '@app/contracts/manager/dto/manager-password.dto.js';
+import type {ManagerStaffDeleteParamDto} from '@app/contracts/manager/dto/manager-staff-delete.dto.js';
+import type {ManagerStaffPasswordResetParamDto} from '@app/contracts/manager/dto/manager-staff-password-reset.dto.js';
+import type {ManagerStaffStateDto, ManagerStaffStateParamDto} from '@app/contracts/manager/dto/manager-staff-state.dto.js';
+import type {ManagerStaffUpdateDto, ManagerStaffUpdateParamDto} from '@app/contracts/manager/dto/manager-staff-update.dto.js';
+import type {ManagerStaffDto, ManagerStaffResultDto} from '@app/contracts/manager/dto/manager-staff.dto.js';
 import {MANAGER_COMMAND} from '@app/contracts/manager/manager.commands.js';
 import type {MessageEnvelope} from '@app/contracts/message-envelope.js';
 import {requireActor} from '@app/messaging/messaging.util.js';
@@ -75,5 +80,56 @@ export class ManagerQueueController {
     @OnCommand(MANAGER_COMMAND.PASSWORD_RESET_CONFIRM)
     async confirmPasswordReset(command: MessageEnvelope<ManagerPasswordResetConfirmDto>): Promise<void | BadRequestException> {
         return this.managerService.confirmPasswordReset(command.payload);
+    }
+
+    /**
+     * 업체 관리자 등록 — 업체 총관리자
+     *
+     * @param command 명령 봉투 (actor 필수)
+     * @returns 업체 관리자 회원 ID
+     */
+    @OnCommand(MANAGER_COMMAND.STAFF)
+    async registerStaff(command: MessageEnvelope<ManagerStaffDto>): Promise<ManagerStaffResultDto> {
+        return this.managerService.registerStaff(requireActor(command).user_id, command.payload);
+    }
+
+    /**
+     * 업체 관리자 수정 — 업체 총관리자
+     *
+     * @param command 명령 봉투 (actor 필수, payload = path param + 본문)
+     */
+    @OnCommand(MANAGER_COMMAND.STAFF_UPDATE)
+    async updateStaff(command: MessageEnvelope<ManagerStaffUpdateParamDto & ManagerStaffUpdateDto>): Promise<void> {
+        return this.managerService.updateStaff(requireActor(command).user_id, command.payload.user_id, command.payload);
+    }
+
+    /**
+     * 업체 관리자 비밀번호 초기화 — 업체 총관리자
+     *
+     * @param command 명령 봉투 (actor 필수, payload = path param)
+     */
+    @OnCommand(MANAGER_COMMAND.STAFF_PASSWORD_RESET)
+    async resetStaffPassword(command: MessageEnvelope<ManagerStaffPasswordResetParamDto>): Promise<void> {
+        return this.managerService.resetStaffPassword(requireActor(command).user_id, command.payload.user_id);
+    }
+
+    /**
+     * 업체 관리자 정지 · 해제 — 업체 총관리자
+     *
+     * @param command 명령 봉투 (actor 필수, payload = path param + 본문)
+     */
+    @OnCommand(MANAGER_COMMAND.STAFF_STATE)
+    async changeStaffState(command: MessageEnvelope<ManagerStaffStateParamDto & ManagerStaffStateDto>): Promise<void> {
+        return this.managerService.changeStaffState(requireActor(command).user_id, command.payload.user_id, command.payload);
+    }
+
+    /**
+     * 업체 관리자 삭제 — 업체 총관리자
+     *
+     * @param command 명령 봉투 (actor 필수, payload = path param)
+     */
+    @OnCommand(MANAGER_COMMAND.STAFF_DELETE)
+    async deleteStaff(command: MessageEnvelope<ManagerStaffDeleteParamDto>): Promise<void> {
+        return this.managerService.deleteStaff(requireActor(command).user_id, command.payload.user_id);
     }
 }

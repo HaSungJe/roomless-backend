@@ -58,7 +58,8 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 |---|---|
 | `POST /api/v1/user-service/user/login` · `/api/v1/admin-service/{manager,admin}/login` · 각 `/token-refresh` | 동기 (`/internal/v1/user-service/user/*` → user-service, `/internal/v1/admin-service/{manager,admin}/*` → admin-service) |
 | `POST /api/v1/user-service/user/sign` · `DELETE · PATCH /api/v1/user-service/user/leave` · `POST /api/v1/user-service/user/phone-verification(+/confirm)` · `/find-login-id(+/confirm)` | 큐 (`user.member.*` → `q.user.cmd`) |
-| `PATCH /api/v1/admin-service/manager/password` · `POST /api/v1/admin-service/manager/find-login-id(+/confirm)` · `/password-reset(+/confirm)` | 큐 (`admin.manager.*` → `q.admin.cmd`) |
+| `GET /api/v1/admin-service/manager/staff(/:user_id)` | 동기 (`/internal/v1/admin-service/manager/staff*` → admin-service, 업체 총관리자만 — RolesGuard) |
+| `PATCH /api/v1/admin-service/manager/password` · `POST /api/v1/admin-service/manager/find-login-id(+/confirm)` · `/password-reset(+/confirm)` · `POST /staff` · `PATCH /staff/:user_id(/password-reset · /state)` · `DELETE /staff/:user_id` | 큐 (`admin.manager.*` → `q.admin.cmd`) |
 | `PATCH /api/v1/admin-service/admin/password` | 큐 (`admin.admin.password` → `q.admin.cmd`) |
 | `GET /api/v1/admin-service/store/application/mine(/:id)` · `/application(/:id)` · `/` · `/:store_id` · `POST …/application/mine/:id/file/upload-url` | 동기 (`/internal/v1/admin-service/store/*` → admin-service) |
 | `POST /api/v1/admin-service/store/application` · `DELETE …/application/mine/:id` · `POST · DELETE …/application/mine/:id/file(/:file_id)` · `PATCH …/application/:id/{approve,reject}` · `PATCH /:store_id(/state)` | 큐 (`admin.store.*` → `q.admin.cmd`) |

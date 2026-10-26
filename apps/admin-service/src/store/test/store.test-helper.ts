@@ -40,6 +40,9 @@ export const APPLICATION_ID = 'a'.repeat(32);
 /** 업체 ID */
 export const STORE_ID = 'b'.repeat(32);
 
+/** 업체코드 */
+export const STORE_CODE = 'c'.repeat(32);
+
 /** store repository mock — 모든 메서드가 vi.fn() */
 export type StoreRepositoryMock = {[K in keyof StoreRepositoryInterface]: Mock};
 
@@ -72,12 +75,12 @@ export function createStoreRepositoryMock(): StoreRepositoryMock {
         deleteApplicationFiles: vi.fn(),
         assignStoreFiles: vi.fn(),
         findStore: vi.fn(),
+        findStores: vi.fn(),
         countStores: vi.fn(),
         findStoreList: vi.fn(),
         insertStore: vi.fn(),
         updateStore: vi.fn(),
         findApplicant: vi.fn(),
-        countManagers: vi.fn(),
         insertHeadManager: vi.fn(),
         updateStoreManagers: vi.fn(),
     };
@@ -212,6 +215,8 @@ export function applicationRow(override: Record<string, unknown> = {}): Record<s
         business_number: '1234567890',
         owner_name: '홍길동',
         owner_phone: '01012345678',
+        head_manager_login_id: 'owner01',
+        head_manager_login_pw: 'hashed-owner-password',
         phone: '0212345678',
         address: '서울시 강남구',
         address_detail: null,
@@ -257,6 +262,7 @@ export function fileRow(override: Partial<StoreFileRow> = {}): StoreFileRow {
 export function storeRow(override: Record<string, unknown> = {}): Record<string, unknown> {
     return {
         store_id: STORE_ID,
+        store_code: STORE_CODE,
         store_state_id: 'ACTIVE',
         store_name: '룸리스 강남점',
         business_number: '1234567890',

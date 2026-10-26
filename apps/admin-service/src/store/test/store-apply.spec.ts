@@ -1,14 +1,19 @@
 import type {TestingModule} from '@nestjs/testing';
+import {getBcrypt} from '@app/common/utils/bcrypt.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
 import {STORE_COMMAND} from '@app/contracts/store/store.commands.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
 import {bootCommandPath, createStoreRepositoryMock, runCommand, StoreRepositoryMock, USER_ACTOR} from './store.test-helper.js';
+
+vi.mock('@app/common/utils/bcrypt.js', () => ({getBcrypt: vi.fn(), matchBcrypt: vi.fn()}));
 
 const DTO = {
     store_name: '룸리스 강남점',
     business_number: '1234567890',
     owner_name: '홍길동',
     owner_phone: '01012345678',
+    head_manager_login_id: 'owner01',
+    head_manager_login_pw: 'owner1234!',
     phone: '0212345678',
     address: '서울시 강남구',
     latitude: 37.4979,
@@ -24,6 +29,7 @@ describe('admin.store.application — 입점 신청 (큐 경로)', () => {
         repo = createStoreRepositoryMock();
         repo.countApplications.mockResolvedValue(0);
         repo.countStores.mockResolvedValue(0);
+        vi.mocked(getBcrypt).mockResolvedValue('hashed-owner-password');
         ({dispatcher, module} = await bootCommandPath(repo));
     });
 
@@ -33,7 +39,7 @@ describe('admin.store.application — 입점 신청 (큐 경로)', () => {
     });
 
     describe('[SUCCESS]', () => {
-        it('대기 신청 · 같은 사업자번호가 없으면 대기 신청을 등록하고 신청 ID 를 돌려준다', async () => {
+        it('대기 신청 · 같은 사업자번호가 없으면 대기 신청을 등록하고 신청 ID 를 돌려준다 — 업체 총관리자 비밀번호는 해시로만', async () => {
             const {decision, result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION, payload: DTO, actor: USER_ACTOR});
 
             expect(decision.result?.type).toBe('admin.store.application.done');
@@ -50,6 +56,8 @@ describe('admin.store.application — 입점 신청 (큐 경로)', () => {
                 store_id: null,
                 owner_name: '홍길동',
                 owner_phone: '01012345678',
+                head_manager_login_id: 'owner01',
+                head_manager_login_pw: 'hashed-owner-password',
                 address_detail: null,
                 application_comment: null,
                 reject_comment: null,
@@ -57,6 +65,7 @@ describe('admin.store.application — 입점 신청 (큐 경로)', () => {
                 latitude: 37.4979,
                 longitude: 127.0276,
             });
+            expect(getBcrypt).toHaveBeenCalledWith('owner1234!');
             expect(result).toEqual({result: {store_application_id: inserted.store_application_id}, error: null});
         });
     });

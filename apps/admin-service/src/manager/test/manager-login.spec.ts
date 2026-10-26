@@ -18,6 +18,7 @@ const MOCK_REFRESH_TOKEN = 'mock.refresh.token';
 const MOCK_ACCESS_EXPIRES_AT = new Date(2026, 0, 1, 0, 20, 0);
 const MOCK_REFRESH_EXPIRES_AT = new Date(2027, 0, 1);
 const STORE_ID = 's'.repeat(32);
+const STORE_CODE = 'c'.repeat(32);
 const MANAGER = {
     user_id: 'u'.repeat(32),
     login_pw: '$2b$12$stored',
@@ -28,8 +29,8 @@ const MANAGER = {
     login_scope: 'MANAGER',
     store_id: STORE_ID,
 };
-const BODY = {login_id: 'manager_01', login_pw: 'abcd1234!'};
-const MANAGER_WHERE = {login_id: 'manager_01', login_scope: 'MANAGER', state_id: In(['ACTIVE', 'BLOCK'])};
+const BODY = {store_code: STORE_CODE, login_id: 'manager_01', login_pw: 'abcd1234!'};
+const MANAGER_WHERE = {login_id: 'manager_01', login_scope: 'MANAGER', store_id: STORE_ID, state_id: In(['ACTIVE', 'BLOCK'])};
 
 describe('POST /internal/v1/admin-service/manager/login — 매니저 로그인 (동기 경로)', () => {
     let app: INestApplication;
@@ -44,6 +45,7 @@ describe('POST /internal/v1/admin-service/manager/login — 매니저 로그인 
         vi.mocked(encryptAesGcm).mockReturnValue('iv:tag:ct');
         vi.mocked(extractJwtExpiresAt).mockImplementation((token) => (token === MOCK_ACCESS_TOKEN ? MOCK_ACCESS_EXPIRES_AT : MOCK_REFRESH_EXPIRES_AT));
         repo = createManagerRepositoryMock();
+        repo.findManagerStore.mockResolvedValue({store_id: STORE_ID, store_code: STORE_CODE});
         jwt = createJwtServiceMock(MOCK_ACCESS_TOKEN, MOCK_REFRESH_TOKEN);
         app = await bootHttpPath(repo, jwt);
     });
@@ -55,7 +57,7 @@ describe('POST /internal/v1/admin-service/manager/login — 매니저 로그인 
     });
 
     describe('[SUCCESS]', () => {
-        it('매니저 그룹에서 찾고, 세션 · refresh 를 만든 뒤 토큰 4종 + 변경 필요 여부 + 권한 · 소속 업체 반환', async () => {
+        it('업체코드로 업체를 찾고 그 업체의 매니저 그룹에서 찾아, 세션 · refresh 를 만든 뒤 토큰 4종 + 변경 필요 여부 + 권한 · 소속 업체 반환', async () => {
             repo.findManager.mockResolvedValueOnce(MANAGER);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(BODY);
@@ -70,6 +72,7 @@ describe('POST /internal/v1/admin-service/manager/login — 매니저 로그인 
                 auth_id: 'HEAD_MANAGER',
                 store_id: STORE_ID,
             });
+            expect(repo.findManagerStore).toHaveBeenCalledWith({store_code: STORE_CODE});
             expect(repo.findManager).toHaveBeenCalledTimes(1);
             expect(repo.findManager).toHaveBeenCalledWith(MANAGER_WHERE);
             expect(matchBcrypt).toHaveBeenCalledWith('abcd1234!', '$2b$12$stored');
@@ -99,7 +102,19 @@ describe('POST /internal/v1/admin-service/manager/login — 매니저 로그인 
     });
 
     describe('[FAIL:auth]', () => {
-        it('다른 그룹 계정(매니저 그룹 조건으로 조회 null) → 없는 계정과 같은 404, 비밀번호 · 토큰 · 세션 없음', async () => {
+        it('업체코드가 없는 업체면 없는 계정과 같은 404, 계정 조회 · 비밀번호 · 세션 없음', async () => {
+            repo.findManagerStore.mockResolvedValueOnce(null);
+
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(BODY);
+
+            expect(res.status).toBe(404);
+            expect(res.body).toEqual({message: '잘못된 로그인 정보입니다.', validation_errors: null});
+            expect(repo.findManager).not.toHaveBeenCalled();
+            expect(matchBcrypt).not.toHaveBeenCalled();
+            expect(repo.insertSession).not.toHaveBeenCalled();
+        });
+
+        it('다른 그룹 · 다른 업체 계정(그 업체 · 매니저 그룹 조건으로 조회 null) → 없는 계정과 같은 404, 비밀번호 · 토큰 · 세션 없음', async () => {
             repo.findManager.mockResolvedValueOnce(null);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(BODY);
@@ -148,11 +163,22 @@ describe('POST /internal/v1/admin-service/manager/login — 매니저 로그인 
 
     describe('[FAIL:validation]', () => {
         it('아이디 누락은 400, 조회 없음', async () => {
-            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({login_pw: 'x'});
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({store_code: STORE_CODE, login_pw: 'x'});
 
             expect(res.status).toBe(400);
             expect(res.body.validation_errors).toEqual([{property: 'login_id', message: '아이디를 입력해주세요.'}]);
             expect(repo.findManager).not.toHaveBeenCalled();
+        });
+
+        it.each([
+            [{login_id: 'manager_01', login_pw: 'x'}, '업체코드를 입력해주세요.'],
+            [{store_code: 'xyz', login_id: 'manager_01', login_pw: 'x'}, '업체코드가 올바르지 않습니다.'],
+        ])('업체코드 누락 · 형식 오류 %o → 400 validation_errors.store_code, 업체 조회 없음', async (body, message) => {
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(body);
+
+            expect(res.status).toBe(400);
+            expect(res.body.validation_errors).toEqual([{property: 'store_code', message}]);
+            expect(repo.findManagerStore).not.toHaveBeenCalled();
         });
     });
 

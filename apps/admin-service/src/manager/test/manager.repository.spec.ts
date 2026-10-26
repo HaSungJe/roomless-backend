@@ -2,11 +2,14 @@ import {BadRequestException, InternalServerErrorException} from '@nestjs/common'
 import type {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
 import {DataSource, QueryFailedError} from 'typeorm';
+import {ManagerStaffListDto} from '@app/contracts/manager/dto/manager-staff-list.dto.js';
 import {ENTITIES} from '@app/database/entities.js';
+import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
 import {SessionEntity} from '@app/database/entities/user/session.entity.js';
 import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
+import {buildStaffListWhere} from '../manager.util.js';
 import {ManagerRepository} from '../repositories/manager.repository.js';
 
 /**
@@ -32,6 +35,7 @@ function makeRepository() {
         [SessionEntity, fake()],
         [SessionRefreshEntity, fake()],
         [SmsVerificationEntity, fake()],
+        [StoreEntity, fake()],
     ]);
     const txHost = {tx: {getRepository: (entity: unknown) => repos.get(entity)}} as unknown as TransactionHost<TransactionalAdapterTypeOrm>;
     return {
@@ -40,6 +44,7 @@ function makeRepository() {
         session: repos.get(SessionEntity)!,
         refresh: repos.get(SessionRefreshEntity)!,
         sms: repos.get(SmsVerificationEntity)!,
+        store: repos.get(StoreEntity)!,
     };
 }
 
@@ -98,8 +103,52 @@ describe('ManagerRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     });
 
     it.each([
+        ['UK_User_LoginIdLoginScopeStoreId', '이미 사용 중인 아이디입니다.'],
+        ['UK_User_PhoneLoginScopeStoreId', '이미 다른 계정에 등록된 휴대폰 번호입니다.'],
+    ] as const)('insertStaff — 23505 %s(업체 안 유일) → 400 "%s"', async (constraint, message) => {
+        const {repository, user} = makeRepository();
+        user.insert.mockRejectedValueOnce(constraintError('23505', constraint));
+
+        const error = await repository.insertStaff(new UserEntity()).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toEqual({message});
+    });
+
+    it('insertStaff — 업체 없는 계정용 UK(UK_User_LoginIdLoginScope)는 매니저 등록에서 걸리지 않으므로 통일 500', async () => {
+        const {repository, user} = makeRepository();
+        user.insert.mockRejectedValueOnce(constraintError('23505', 'UK_User_LoginIdLoginScope'));
+
+        await expect(repository.insertStaff(new UserEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+    });
+
+    it('updateStaff — 23505 UK_User_PhoneLoginScopeStoreId → 400 번호 문구, 넘긴 where · 엔티티 그대로', async () => {
+        const {repository, user} = makeRepository();
+        user.update.mockRejectedValueOnce(constraintError('23505', 'UK_User_PhoneLoginScopeStoreId'));
+        const entity = Object.assign(new UserEntity(), {phone: '01022223333'});
+
+        const error = await repository.updateStaff({user_id: 'x'}, entity).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).getResponse()).toEqual({message: '이미 다른 계정에 등록된 휴대폰 번호입니다.'});
+        expect(user.update).toHaveBeenCalledWith({user_id: 'x'}, entity);
+    });
+
+    it('findManagerStore 는 조건 그대로 업체를 loadRelationIds 로 조회한다(업체코드 · 업체 ID)', async () => {
+        const {repository, store} = makeRepository();
+
+        await repository.findManagerStore({store_code: 'c1'});
+
+        expect(store.findOne).toHaveBeenCalledWith({where: {store_code: 'c1'}, loadRelationIds: true});
+    });
+
+    it.each([
         ['findManager', 'user', 'findOne'],
         ['updateManager', 'user', 'update'],
+        ['findManagerStore', 'store', 'findOne'],
+        ['countStaff', 'user', 'count'],
+        ['insertStaff', 'user', 'insert'],
+        ['updateStaff', 'user', 'update'],
         ['findSession', 'session', 'findOne'],
         ['findSessionRefresh', 'refresh', 'findOne'],
         ['updateSessionRefresh', 'refresh', 'update'],
@@ -114,7 +163,7 @@ describe('ManagerRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     });
 });
 
-describe('[SMOKE:data-access] findLoginManager · consumeSmsVerificationAttempt 쿼리 — DB 연결 없이 SQL 빌드', () => {
+describe('[SMOKE:data-access] findLoginManager · consumeSmsVerificationAttempt · 업체 인력 목록 쿼리 — DB 연결 없이 SQL 빌드', () => {
     let dataSource: DataSource;
     let repository: ManagerRepository;
 
@@ -148,5 +197,36 @@ describe('[SMOKE:data-access] findLoginManager · consumeSmsVerificationAttempt 
 
         expect(parameters).toEqual(['v1', 3]);
         expect(sql).toBe('UPDATE "t_sms_verification" SET "attempt_count" = "attempt_count" + 1, "updated_at" = CURRENT_TIMESTAMP WHERE "sms_verification_id" = $1 AND "attempt_count" < $2');
+    });
+
+    const USER_SELECT =
+        'SELECT "u"."user_id" AS "u_user_id", "u"."user_search_code" AS "u_user_search_code", "u"."sns_user_id" AS "u_sns_user_id", "u"."login_id" AS "u_login_id", ' +
+        '"u"."login_scope" AS "u_login_scope", "u"."login_pw" AS "u_login_pw", "u"."name" AS "u_name", "u"."gender" AS "u_gender", "u"."birth" AS "u_birth", "u"."phone" AS "u_phone", ' +
+        '"u"."phone_verified_at" AS "u_phone_verified_at", "u"."nickname" AS "u_nickname", "u"."device_os" AS "u_device_os", "u"."device_token" AS "u_device_token", ' +
+        '"u"."is_password_change_required" AS "u_is_password_change_required", "u"."block_comment" AS "u_block_comment", "u"."leave_comment" AS "u_leave_comment", ' +
+        '"u"."leave_reserved_at" AS "u_leave_reserved_at", "u"."leave_previous_state_id" AS "u_leave_previous_state_id", "u"."leave_backup" AS "u_leave_backup", ' +
+        '"u"."created_at" AS "u_created_at", "u"."updated_at" AS "u_updated_at", "u"."auth_id" AS "u_auth_id", "u"."state_id" AS "u_state_id", "u"."sns_id" AS "u_sns_id", ' +
+        '"u"."store_id" AS "u_store_id" FROM "t_user" "u"';
+
+    it('업체 인력 목록 — 그 업체 · 매니저 그룹 · 삭제 제외 + 검색어 OR(아이디 · 이름 · 번호, 이스케이프), 업체 총관리자가 위 · 등록일 최신순 · 페이지', () => {
+        const [sql, parameters] = repository.buildStaffListQuery(buildStaffListWhere('s1', new ManagerStaffListDto({keyword: 'a_b'})), 20, 0).getQueryAndParameters();
+
+        expect(parameters).toEqual(['MANAGER', 's1', 'ACTIVE', 'BLOCK', '%a\\_b%', 'MANAGER', 's1', 'ACTIVE', 'BLOCK', '%a\\_b%', 'MANAGER', 's1', 'ACTIVE', 'BLOCK', '%a\\_b%']);
+        expect(sql.replace(/\s+/g, ' ')).toBe(
+            `${USER_SELECT} WHERE ((((` +
+                '"u"."login_scope" = $1) AND ("u"."store_id" = $2) AND ("u"."state_id" IN ($3, $4)) AND ("u"."login_id" ILIKE $5))) OR ((' +
+                '("u"."login_scope" = $6) AND ("u"."store_id" = $7) AND ("u"."state_id" IN ($8, $9)) AND ("u"."name" ILIKE $10))) OR ((' +
+                '("u"."login_scope" = $11) AND ("u"."store_id" = $12) AND ("u"."state_id" IN ($13, $14)) AND ("u"."phone" ILIKE $15)))) ' +
+                'ORDER BY "u"."auth_id" ASC, "u"."created_at" DESC LIMIT 20 OFFSET 0',
+        );
+    });
+
+    it('업체 인력 목록 — 검색어가 없으면 기본 조건 하나', () => {
+        const [sql, parameters] = repository.buildStaffListQuery(buildStaffListWhere('s1', new ManagerStaffListDto()), 20, 0).getQueryAndParameters();
+
+        expect(parameters).toEqual(['MANAGER', 's1', 'ACTIVE', 'BLOCK']);
+        expect(sql.replace(/\s+/g, ' ')).toBe(
+            `${USER_SELECT} WHERE (((("u"."login_scope" = $1) AND ("u"."store_id" = $2) AND ("u"."state_id" IN ($3, $4))))) ORDER BY "u"."auth_id" ASC, "u"."created_at" DESC LIMIT 20 OFFSET 0`,
+        );
     });
 });

@@ -36,6 +36,12 @@ export class StoreApplicationEntity {
     @Column({name: 'owner_phone', length: 30, nullable: false, comment: '대표자 휴대폰 번호(숫자만) — 승인 때 만드는 업체 총관리자(매니저) 계정 · 안내 SMS'})
     owner_phone: string;
 
+    @Column({name: 'head_manager_login_id', length: 30, nullable: false, comment: '업체 총관리자 아이디 — 승인 때 만드는 업체 총관리자(매니저) 계정의 아이디(그 업체 안에서 유일)'})
+    head_manager_login_id: string;
+
+    @Column({name: 'head_manager_login_pw', length: 100, nullable: false, comment: '업체 총관리자 비밀번호(bcrypt 해시) — 승인 때 계정에 그대로 옮긴다'})
+    head_manager_login_pw: string;
+
     @Column({name: 'phone', length: 30, nullable: false, comment: '업체 연락처'})
     phone: string;
 

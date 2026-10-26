@@ -70,6 +70,9 @@ export class StoreApplicationDetailResultDto {
     @ApiProperty({description: '승인으로 만든 업체 ID', nullable: true, type: String})
     store_id: string | null;
 
+    @ApiProperty({description: '업체코드 (승인 전 null)', nullable: true, type: String})
+    store_code: string | null;
+
     @ApiProperty({description: '상호명'})
     store_name: string;
 
@@ -81,6 +84,9 @@ export class StoreApplicationDetailResultDto {
 
     @ApiProperty({description: '대표자 휴대폰 번호 — 업체 총관리자 계정'})
     owner_phone: string;
+
+    @ApiProperty({description: '업체 총관리자 아이디'})
+    head_manager_login_id: string;
 
     @ApiProperty({description: '업체 연락처'})
     phone: string;

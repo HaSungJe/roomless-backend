@@ -5,7 +5,19 @@ import {sha256Hex} from '@app/common/utils/hash.js';
 import {MANAGER_COMMAND} from '@app/contracts/manager/manager.commands.js';
 import type {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
-import {bootCommandPath, createJwtServiceMock, createManagerRepositoryMock, createSmsSenderMock, FIXED_TIME, ManagerRepositoryMock, runCommand, SmsSenderMock} from './manager.test-helper.js';
+import {
+    bootCommandPath,
+    createJwtServiceMock,
+    createManagerRepositoryMock,
+    createSmsSenderMock,
+    FIXED_TIME,
+    ManagerRepositoryMock,
+    runCommand,
+    SmsSenderMock,
+    STORE_CODE,
+    STORE_ID,
+    storeRow,
+} from './manager.test-helper.js';
 
 vi.mock('@app/common/utils/bcrypt.js', () => ({getBcrypt: vi.fn(), matchBcrypt: vi.fn()}));
 vi.mock(import('@app/account/utils/sms-verification.js'), async (importOriginal) => ({...(await importOriginal()), generateVerificationCode: vi.fn(() => '123456')}));
@@ -15,6 +27,7 @@ const USER_ID = 'u'.repeat(32);
 const PHONE = '01012345678';
 const RECOVERY_STATES = In(['ACTIVE', 'BLOCK', 'LEAVE_WAIT']);
 const PAYLOAD = {sms_verification_id: 'v'.repeat(32), code: '123456'};
+const SEND_PAYLOAD = {store_code: STORE_CODE, login_id: 'manager_01', phone: PHONE};
 
 /**
  * 비밀번호 초기화 인증 기록 — 사용 가능(만료 1분 전 · 미인증).
@@ -44,6 +57,7 @@ describe('매니저 비밀번호 초기화 (큐 경로)', () => {
         vi.useFakeTimers({toFake: ['Date']});
         vi.setSystemTime(FIXED_TIME);
         repo = createManagerRepositoryMock();
+        repo.findManagerStore.mockResolvedValue(storeRow());
         sms = createSmsSenderMock();
         ({dispatcher, module} = await bootCommandPath(repo, createJwtServiceMock('a', 'r'), sms));
     });
@@ -55,24 +69,35 @@ describe('매니저 비밀번호 초기화 (큐 경로)', () => {
     });
 
     describe('admin.manager.password-reset — 인증번호 발송', () => {
-        it('[SUCCESS] 아이디 + 번호가 같은 매니저이면 기록을 남기고 SMS 를 보낸 뒤 인증 ID · 만료 시각', async () => {
+        it('[SUCCESS] 업체코드의 업체에서 아이디 + 번호가 같은 매니저이면 기록을 남기고 SMS 를 보낸 뒤 인증 ID · 만료 시각', async () => {
             repo.findManager.mockResolvedValueOnce({user_id: USER_ID});
             repo.countSmsVerifications.mockResolvedValueOnce(0);
 
-            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.PASSWORD_RESET, payload: {login_id: 'manager_01', phone: PHONE}});
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.PASSWORD_RESET, payload: SEND_PAYLOAD});
 
             expect(repo.findManager).toHaveBeenCalledTimes(1);
-            expect(repo.findManager).toHaveBeenCalledWith({login_id: 'manager_01', phone: PHONE, login_scope: 'MANAGER', state_id: RECOVERY_STATES});
+            expect(repo.findManagerStore).toHaveBeenCalledWith({store_code: STORE_CODE});
+            expect(repo.findManager).toHaveBeenCalledWith({login_id: 'manager_01', phone: PHONE, login_scope: 'MANAGER', store_id: STORE_ID, state_id: RECOVERY_STATES});
             const inserted = repo.insertSmsVerification.mock.calls[0][0];
             expect(inserted).toMatchObject({sms_purpose_id: 'PASSWORD_RESET', user_id: USER_ID, phone: PHONE});
             expect(sms.send).toHaveBeenCalledWith({to: PHONE, text: '[roomless] 인증번호 [123456] — 5분 안에 입력해주세요.'});
             expect(result).toEqual({result: {sms_verification_id: inserted.sms_verification_id, expires_at: new Date(FIXED_TIME.getTime() + 5 * 60 * 1000).toISOString()}, error: null});
         });
 
-        it('[FAIL:service] 아이디 + 번호가 같은 매니저가 없으면(이용자 · 관리자 포함) 404, 기록 · 발송 없음', async () => {
+        it('[FAIL:service] 업체코드가 없는 업체면 같은 404, 계정 조회 · 기록 · 발송 없음', async () => {
+            repo.findManagerStore.mockResolvedValueOnce(null);
+
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.PASSWORD_RESET, payload: SEND_PAYLOAD});
+
+            expect(result?.error).toEqual({status_code: 404, body: {message: '일치하는 회원 정보가 없습니다.', validation_errors: null}});
+            expect(repo.findManager).not.toHaveBeenCalled();
+            expect(sms.send).not.toHaveBeenCalled();
+        });
+
+        it('[FAIL:service] 그 업체에 아이디 + 번호가 같은 매니저가 없으면(이용자 · 관리자 · 다른 업체 포함) 404, 기록 · 발송 없음', async () => {
             repo.findManager.mockResolvedValueOnce(null);
 
-            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.PASSWORD_RESET, payload: {login_id: 'manager_01', phone: PHONE}});
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.PASSWORD_RESET, payload: SEND_PAYLOAD});
 
             expect(result?.error).toEqual({status_code: 404, body: {message: '일치하는 회원 정보가 없습니다.', validation_errors: null}});
             expect(repo.countSmsVerifications).not.toHaveBeenCalled();
@@ -84,7 +109,7 @@ describe('매니저 비밀번호 초기화 (큐 경로)', () => {
             repo.findManager.mockResolvedValueOnce({user_id: USER_ID});
             repo.countSmsVerifications.mockResolvedValueOnce(10);
 
-            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.PASSWORD_RESET, payload: {login_id: 'manager_01', phone: PHONE}});
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.PASSWORD_RESET, payload: SEND_PAYLOAD});
 
             expect(result?.error?.status_code).toBe(429);
             expect(sms.send).not.toHaveBeenCalled();

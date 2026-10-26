@@ -5,7 +5,19 @@ import {kstDayStart} from '@app/common/utils/kst.js';
 import {MANAGER_COMMAND} from '@app/contracts/manager/manager.commands.js';
 import type {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
-import {bootCommandPath, createJwtServiceMock, createManagerRepositoryMock, createSmsSenderMock, FIXED_TIME, ManagerRepositoryMock, runCommand, SmsSenderMock} from './manager.test-helper.js';
+import {
+    bootCommandPath,
+    createJwtServiceMock,
+    createManagerRepositoryMock,
+    createSmsSenderMock,
+    FIXED_TIME,
+    ManagerRepositoryMock,
+    runCommand,
+    SmsSenderMock,
+    STORE_CODE,
+    STORE_ID,
+    storeRow,
+} from './manager.test-helper.js';
 
 vi.mock(import('@app/account/utils/sms-verification.js'), async (importOriginal) => ({...(await importOriginal()), generateVerificationCode: vi.fn(() => '123456')}));
 
@@ -14,6 +26,7 @@ const PHONE = '01012345678';
 const CREATED_AT = new Date(2025, 5, 1, 9, 30);
 const RECOVERY_STATES = In(['ACTIVE', 'BLOCK', 'LEAVE_WAIT']);
 const PAYLOAD = {sms_verification_id: 'v'.repeat(32), code: '123456'};
+const SEND_PAYLOAD = {store_code: STORE_CODE, phone: PHONE};
 
 /**
  * 아이디 찾기 인증 기록 — 사용 가능(만료 1분 전 · 미인증).
@@ -43,6 +56,7 @@ describe('매니저 아이디 찾기 (큐 경로)', () => {
         vi.useFakeTimers({toFake: ['Date']});
         vi.setSystemTime(FIXED_TIME);
         repo = createManagerRepositoryMock();
+        repo.findManagerStore.mockResolvedValue(storeRow());
         sms = createSmsSenderMock();
         ({dispatcher, module} = await bootCommandPath(repo, createJwtServiceMock('a', 'r'), sms));
     });
@@ -54,14 +68,15 @@ describe('매니저 아이디 찾기 (큐 경로)', () => {
     });
 
     describe('admin.manager.find-login-id — 인증번호 발송', () => {
-        it('[SUCCESS] 매니저 그룹에서 그 번호의 매니저를 찾아 기록을 남기고 SMS 를 보낸 뒤 인증 ID · 만료 시각', async () => {
+        it('[SUCCESS] 업체코드의 업체 · 매니저 그룹에서 그 번호의 매니저를 찾아 기록을 남기고 SMS 를 보낸 뒤 인증 ID · 만료 시각', async () => {
             repo.findManager.mockResolvedValueOnce({user_id: USER_ID});
             repo.countSmsVerifications.mockResolvedValueOnce(0);
 
-            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.FIND_LOGIN_ID, payload: {phone: PHONE}});
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.FIND_LOGIN_ID, payload: SEND_PAYLOAD});
 
+            expect(repo.findManagerStore).toHaveBeenCalledWith({store_code: STORE_CODE});
             expect(repo.findManager).toHaveBeenCalledTimes(1);
-            expect(repo.findManager).toHaveBeenCalledWith({phone: PHONE, login_scope: 'MANAGER', state_id: RECOVERY_STATES});
+            expect(repo.findManager).toHaveBeenCalledWith({phone: PHONE, login_scope: 'MANAGER', store_id: STORE_ID, state_id: RECOVERY_STATES});
             expect(repo.countSmsVerifications).toHaveBeenCalledWith({phone: PHONE, created_at: MoreThanOrEqual(kstDayStart(FIXED_TIME))});
             const inserted = repo.insertSmsVerification.mock.calls[0][0];
             expect(inserted).toMatchObject({sms_purpose_id: 'FIND_LOGIN_ID', user_id: USER_ID, phone: PHONE, code_hash: sha256Hex('123456')});
@@ -69,13 +84,23 @@ describe('매니저 아이디 찾기 (큐 경로)', () => {
             expect(result).toEqual({result: {sms_verification_id: inserted.sms_verification_id, expires_at: new Date(FIXED_TIME.getTime() + 5 * 60 * 1000).toISOString()}, error: null});
         });
 
-        it('[FAIL:service] 매니저 그룹에 그 번호가 없으면(이용자 번호여도) 404, 기록 · 발송 없음', async () => {
+        it('[FAIL:service] 그 업체의 매니저 그룹에 그 번호가 없으면(이용자 · 다른 업체 번호여도) 404, 기록 · 발송 없음', async () => {
             repo.findManager.mockResolvedValueOnce(null);
 
-            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.FIND_LOGIN_ID, payload: {phone: PHONE}});
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.FIND_LOGIN_ID, payload: SEND_PAYLOAD});
 
             expect(result?.error).toEqual({status_code: 404, body: {message: '일치하는 회원 정보가 없습니다.', validation_errors: null}});
             expect(repo.insertSmsVerification).not.toHaveBeenCalled();
+            expect(sms.send).not.toHaveBeenCalled();
+        });
+
+        it('[FAIL:service] 업체코드가 없는 업체면 같은 404, 계정 조회 · 기록 · 발송 없음', async () => {
+            repo.findManagerStore.mockResolvedValueOnce(null);
+
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.FIND_LOGIN_ID, payload: SEND_PAYLOAD});
+
+            expect(result?.error).toEqual({status_code: 404, body: {message: '일치하는 회원 정보가 없습니다.', validation_errors: null}});
+            expect(repo.findManager).not.toHaveBeenCalled();
             expect(sms.send).not.toHaveBeenCalled();
         });
 
@@ -83,7 +108,7 @@ describe('매니저 아이디 찾기 (큐 경로)', () => {
             repo.findManager.mockResolvedValueOnce({user_id: USER_ID});
             repo.countSmsVerifications.mockResolvedValueOnce(10);
 
-            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.FIND_LOGIN_ID, payload: {phone: PHONE}});
+            const {result} = await runCommand(dispatcher, {type: MANAGER_COMMAND.FIND_LOGIN_ID, payload: SEND_PAYLOAD});
 
             expect(result?.error?.status_code).toBe(429);
             expect(repo.insertSmsVerification).not.toHaveBeenCalled();

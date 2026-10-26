@@ -10,7 +10,7 @@ import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {StoreFileRow, StoreRepositoryInterface} from '../interfaces/store.repository.interface.js';
-import {HEAD_MANAGER_PHONE_TAKEN_MESSAGE, STORE_BUSINESS_NUMBER_TAKEN_MESSAGE} from '../store.constants.js';
+import {STORE_BUSINESS_NUMBER_TAKEN_MESSAGE} from '../store.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
@@ -341,6 +341,20 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
+     * 업체 여러 건
+     *
+     * @param where 조회 조건
+     * @returns 업체 목록
+     */
+    async findStores(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity[]> {
+        try {
+            return await this.stores.find({where, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
      * 업체 개수
      *
      * @param where 조회 조건 (배열 = OR)
@@ -428,35 +442,15 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 매니저 그룹 회원 수
-     *
-     * @param where 조회 조건 (login_scope = MANAGER 를 함께 준다)
-     * @returns 개수
-     */
-    async countManagers(where: FindOptionsWhere<UserEntity>): Promise<number> {
-        try {
-            return await this.users.count({where});
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
-     * 업체 총관리자 계정 등록 — 매니저 그룹 아이디 · 휴대폰 번호가 겹치면 400
+     * 업체 총관리자 계정 등록 — 아이디 · 휴대폰 번호 유일성은 업체 단위라 새 업체에서는 겹치지 않는다
      *
      * @param entity new UserEntity() + 할당
      */
     async insertHeadManager(entity: UserEntity): Promise<void> {
         try {
             await this.users.insert(entity);
-        } catch (error) {
-            if (isUniqueViolation(error, 'UK_User_PhoneLoginScope')) {
-                throw new BadRequestException({message: HEAD_MANAGER_PHONE_TAKEN_MESSAGE});
-            } else if (isUniqueViolation(error, 'UK_User_LoginIdLoginScope')) {
-                throw new BadRequestException({message: '업체 총관리자 아이디가 겹쳤습니다. 다시 승인해주세요.'});
-            } else {
-                throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-            }
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
     }
 

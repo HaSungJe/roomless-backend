@@ -26,6 +26,16 @@ export class StoreApplicationDto {
     @IsNotEmpty({message: '대표자 휴대폰 번호를 입력해주세요.'})
     owner_phone: string;
 
+    @ApiProperty({description: '업체 총관리자 아이디 (영문 · 숫자 · _ 4~30자) — 승인 때 이 아이디로 업체 총관리자 계정을 만든다'})
+    @Matches(/^[a-zA-Z0-9_]{4,30}$/, {message: '아이디는 영문 · 숫자 · _ 4~30자로 입력해주세요.'})
+    @IsNotEmpty({message: '업체 총관리자 아이디를 입력해주세요.'})
+    head_manager_login_id: string;
+
+    @ApiProperty({description: '업체 총관리자 비밀번호 (8~20자, 영문+숫자 필수, 특수문자 !@#$%^&* 허용) — 해시로만 저장한다'})
+    @Matches(/^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z0-9!@#$%^&*]{8,20}$/, {message: '비밀번호는 8~20자이며 영문과 숫자를 반드시 포함해야 합니다. (특수문자는 !@#$%^&* 만 허용)'})
+    @IsNotEmpty({message: '업체 총관리자 비밀번호를 입력해주세요.'})
+    head_manager_login_pw: string;
+
     @ApiProperty({description: '업체 연락처 (숫자만)', example: '0212345678'})
     @Matches(/^\d{8,11}$/, {message: '업체 연락처를 숫자만 정확히 입력해주세요.'})
     @IsNotEmpty({message: '업체 연락처를 입력해주세요.'})

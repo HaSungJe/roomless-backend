@@ -10,8 +10,10 @@ import {
     FIXED_TIME,
     fileRow,
     internalHeaders,
+    STORE_CODE,
     StorageGatewayMock,
     StoreRepositoryMock,
+    storeRow,
     USER_ACTOR,
 } from './store.test-helper.js';
 
@@ -36,14 +38,16 @@ describe('GET /internal/v1/admin-service/store/application/:store_application_id
     });
 
     describe('[SUCCESS]', () => {
-        it('신청 · 신청자 · 파일(비공개는 서명 주소)을 모아 돌려준다 — 상태와 무관하게 조회', async () => {
+        it('신청 · 신청자 · 파일(비공개는 서명 주소) · 업체코드(승인 신청)를 모아 돌려준다 — 상태와 무관하게 조회', async () => {
             repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: 'APPROVED', store_id: 'b'.repeat(32)}));
+            repo.findStore.mockResolvedValueOnce(storeRow());
             repo.findApplicant.mockResolvedValueOnce({user_id: USER_ACTOR.user_id, name: '김이용', nickname: '이용자', phone: '01099998888'});
 
             const res = await request(app.getHttpServer()).get(PATH).set(internalHeaders(ADMIN_ACTOR));
 
             expect(res.status).toBe(200);
             expect(repo.findApplication).toHaveBeenCalledWith({store_application_id: APPLICATION_ID});
+            expect(repo.findStore).toHaveBeenCalledWith({store_id: 'b'.repeat(32)});
             expect(repo.findApplicant).toHaveBeenCalledWith(USER_ACTOR.user_id);
             expect(storage.createDownloadUrl).toHaveBeenCalledWith(LICENSE_KEY);
             expect(storage.getPublicUrl).not.toHaveBeenCalled();
@@ -52,7 +56,9 @@ describe('GET /internal/v1/admin-service/store/application/:store_application_id
                 user_id: USER_ACTOR.user_id,
                 store_application_state_id: 'APPROVED',
                 store_id: 'b'.repeat(32),
+                store_code: STORE_CODE,
                 owner_phone: '01012345678',
+                head_manager_login_id: 'owner01',
                 application_comment: null,
                 created_at: FIXED_TIME.toISOString(),
                 applicant: {user_id: USER_ACTOR.user_id, name: '김이용', nickname: '이용자', phone: '01099998888'},
@@ -70,7 +76,7 @@ describe('GET /internal/v1/admin-service/store/application/:store_application_id
             ]);
         });
 
-        it('신청자 계정이 없으면 applicant 는 null (필드 생략 없음)', async () => {
+        it('신청자 계정이 없으면 applicant 는 null, 대기 신청은 store_code null · 업체 조회 없음 (필드 생략 없음)', async () => {
             repo.findApplication.mockResolvedValueOnce(applicationRow());
             repo.findApplicant.mockResolvedValueOnce(null);
 
@@ -78,6 +84,8 @@ describe('GET /internal/v1/admin-service/store/application/:store_application_id
 
             expect(res.status).toBe(200);
             expect(res.body.applicant).toBeNull();
+            expect(res.body.store_code).toBeNull();
+            expect(repo.findStore).not.toHaveBeenCalled();
         });
     });
 

@@ -1,6 +1,7 @@
-import {randomInt, randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {ILike} from 'typeorm';
 import type {FindOptionsWhere} from 'typeorm';
+import {toContainsPattern} from '@app/common/utils/search.js';
 import type {StoreApplicationApplicantResultDto, StoreApplicationDetailFileResultDto, StoreApplicationDetailResultDto} from '@app/contracts/store/dto/store-application-detail.dto.js';
 import type {StoreApplicationListDto, StoreApplicationListItemResultDto} from '@app/contracts/store/dto/store-application-list.dto.js';
 import type {StoreDetailFileResultDto, StoreDetailResultDto} from '@app/contracts/store/dto/store-detail.dto.js';
@@ -12,16 +13,6 @@ import type {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import type {UserEntity} from '@app/database/entities/user/user.entity.js';
 import type {StoreFileRow} from './interfaces/store.repository.interface.js';
 import {STORE_FILE_EXTENSION} from './store.constants.js';
-
-/**
- * 검색어를 부분 일치 패턴으로 — `%` · `_` · `\` 는 글자 그대로 찾도록 이스케이프한다(PostgreSQL 기본 이스케이프 문자 `\`).
- *
- * @param keyword 검색어
- * @returns ILike 패턴
- */
-export function toContainsPattern(keyword: string): string {
-    return `%${keyword.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-}
 
 /**
  * 입점 신청 목록 WHERE — 상태 + 검색어(상호명 · 사업자등록번호 OR).
@@ -99,33 +90,23 @@ export function isApplicationFileKey(file_key: string, is_private: number, store
 }
 
 /**
- * 업체 총관리자 아이디 후보 — `m` + 숫자 8자리.
- *
- * @returns 아이디 후보
- */
-export function generateHeadManagerLoginId(): string {
-    return `m${String(randomInt(0, 100_000_000)).padStart(8, '0')}`;
-}
-
-/**
- * 입점 승인 안내 SMS 본문 — 업체명 · 아이디 · 임시 비밀번호.
+ * 입점 승인 안내 SMS 본문 — 아이디 · 비밀번호는 신청자가 정했고 업체코드는 내 신청에서 보인다.
  *
  * @param store_name 상호명
- * @param login_id 업체 총관리자 아이디
- * @param password 임시 비밀번호
  * @returns 본문
  */
-export function storeApprovedText(store_name: string, login_id: string, password: string): string {
-    return `[roomless] ${store_name} 입점이 승인되었습니다. 아이디 ${login_id} 임시 비밀번호 ${password} — 로그인 후 비밀번호를 바꿔주세요.`;
+export function storeApprovedText(store_name: string): string {
+    return `[roomless] ${store_name} 입점이 승인되었습니다.`;
 }
 
 /**
  * 내 입점 신청 목록 항목
  *
  * @param entity 입점 신청
+ * @param store_code 승인 신청이면 그 업체의 코드, 아니면 null
  * @returns 목록 항목
  */
-export function toMyApplicationItem(entity: StoreApplicationEntity): StoreMyApplicationItemResultDto {
+export function toMyApplicationItem(entity: StoreApplicationEntity, store_code: string | null): StoreMyApplicationItemResultDto {
     return {
         store_application_id: entity.store_application_id,
         store_application_state_id: entity.store_application_state_id,
@@ -134,6 +115,7 @@ export function toMyApplicationItem(entity: StoreApplicationEntity): StoreMyAppl
         reject_comment: entity.reject_comment ?? null,
         reviewed_at: entity.reviewed_at ? entity.reviewed_at.toISOString() : null,
         created_at: entity.created_at.toISOString(),
+        store_code,
     };
 }
 
@@ -160,10 +142,11 @@ export function toMyApplicationFile(row: StoreFileRow, file_url: string): StoreM
  * 내 입점 신청 상세
  *
  * @param entity 입점 신청
+ * @param store_code 승인 신청이면 그 업체의 코드, 아니면 null
  * @param files 파일 항목
  * @returns 상세
  */
-export function toMyApplicationDetail(entity: StoreApplicationEntity, files: StoreMyApplicationFileResultDto[]): StoreMyApplicationResultDto {
+export function toMyApplicationDetail(entity: StoreApplicationEntity, store_code: string | null, files: StoreMyApplicationFileResultDto[]): StoreMyApplicationResultDto {
     return {
         store_application_id: entity.store_application_id,
         store_application_state_id: entity.store_application_state_id,
@@ -176,10 +159,12 @@ export function toMyApplicationDetail(entity: StoreApplicationEntity, files: Sto
         latitude: entity.latitude,
         longitude: entity.longitude,
         owner_phone: entity.owner_phone,
+        head_manager_login_id: entity.head_manager_login_id,
         application_comment: entity.application_comment ?? null,
         reject_comment: entity.reject_comment ?? null,
         reviewed_at: entity.reviewed_at ? entity.reviewed_at.toISOString() : null,
         created_at: entity.created_at.toISOString(),
+        store_code,
         files,
     };
 }
@@ -240,12 +225,14 @@ export function toApplicant(user: UserEntity | null): StoreApplicationApplicantR
  * 입점 신청 상세 (총관리자)
  *
  * @param entity 입점 신청
+ * @param store_code 업체코드 (승인 전 null)
  * @param applicant 신청자
  * @param files 파일 항목
  * @returns 상세
  */
 export function toApplicationDetail(
     entity: StoreApplicationEntity,
+    store_code: string | null,
     applicant: StoreApplicationApplicantResultDto | null,
     files: StoreApplicationDetailFileResultDto[],
 ): StoreApplicationDetailResultDto {
@@ -254,6 +241,7 @@ export function toApplicationDetail(
         user_id: entity.user_id,
         store_application_state_id: entity.store_application_state_id,
         store_id: entity.store_id ?? null,
+        store_code,
         store_name: entity.store_name,
         business_number: entity.business_number,
         owner_name: entity.owner_name,
@@ -263,6 +251,7 @@ export function toApplicationDetail(
         latitude: entity.latitude,
         longitude: entity.longitude,
         owner_phone: entity.owner_phone,
+        head_manager_login_id: entity.head_manager_login_id,
         application_comment: entity.application_comment ?? null,
         reject_comment: entity.reject_comment ?? null,
         reviewed_at: entity.reviewed_at ? entity.reviewed_at.toISOString() : null,
@@ -281,6 +270,7 @@ export function toApplicationDetail(
 export function toStoreListItem(entity: StoreEntity): StoreListItemResultDto {
     return {
         store_id: entity.store_id,
+        store_code: entity.store_code,
         store_state_id: entity.store_state_id,
         store_name: entity.store_name,
         business_number: entity.business_number,
@@ -322,6 +312,7 @@ export function toStoreDetailFile(row: StoreFileRow, file_url: string): StoreDet
 export function toStoreDetail(entity: StoreEntity, files: StoreDetailFileResultDto[]): StoreDetailResultDto {
     return {
         store_id: entity.store_id,
+        store_code: entity.store_code,
         store_state_id: entity.store_state_id,
         store_name: entity.store_name,
         business_number: entity.business_number,

@@ -109,7 +109,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 ## Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다
 
-> 적용: store 목록 3종 `StoreMyApplicationListDto` · `StoreApplicationListDto` · `StoreListDto`(libs/contracts/src/store/dto/), 컨트롤러는 게이트웨이 · admin-service 의 store.controller.ts. `PaginationDto` 는 `libs/common/src/dto/pagination.dto.ts`(기본값 상수 `PAGINATION_DEFAULTS`). 출처: 사용자 결정(2026-07-27).
+> 적용: store 목록 3종 `StoreMyApplicationListDto` · `StoreApplicationListDto` · `StoreListDto`(libs/contracts/src/store/dto/) · 업체 관리자 목록 `ManagerStaffListDto`(libs/contracts/src/manager/dto/), 컨트롤러는 게이트웨이 · admin-service 의 store.controller.ts · manager.controller.ts. `PaginationDto` 는 `libs/common/src/dto/pagination.dto.ts`(기본값 상수 `PAGINATION_DEFAULTS`). 출처: 사용자 결정(2026-07-27).
 
 1. `@Query()` 로 받는 DTO 는 **생성자를 세트로** 갖는다 — 쿼리는 키가 통째로 빠질 수 있고 그 누락은 정상 요청이라 잡아줄 검증기가 없다.
 2. **컨트롤러가 `const dto = new XListDto(query);` 로 지역변수를 만든 뒤 service 에 넘긴다** — 받은 쿼리 객체를 그대로 흘리지 않고, 생성자를 한 번 태워 기본값이 확정된 인스턴스를 만든다. 호출부 `new` 인라인 ❌, 필드 하나씩 대입 ❌. 앞선 인자가 있으면 dto 를 마지막에 둔다 — `this.xService.list(user_id, dto)`.

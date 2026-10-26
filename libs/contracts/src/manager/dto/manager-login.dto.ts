@@ -1,10 +1,15 @@
 import {ApiProperty} from '@nestjs/swagger';
-import {IsNotEmpty, MaxLength, ValidateIf} from 'class-validator';
+import {IsNotEmpty, Matches, MaxLength, ValidateIf} from 'class-validator';
 
 /**
- * 매니저(총매니저 · 매니저) 로그인 입력 (아이디 · 비밀번호)
+ * 매니저(총매니저 · 매니저) 로그인 입력 (업체코드 · 아이디 · 비밀번호) — 매니저 계정은 업체 안에서만 유일하다
  */
 export class ManagerLoginDto {
+    @ApiProperty({description: '업체코드 (32자 — 매니저 화면 주소에 들어 있다)', example: '0123456789abcdef0123456789abcdef'})
+    @Matches(/^[a-f0-9]{32}$/, {message: '업체코드가 올바르지 않습니다.'})
+    @IsNotEmpty({message: '업체코드를 입력해주세요.'})
+    store_code: string;
+
     @ApiProperty({description: '로그인 아이디'})
     @MaxLength(30, {message: '아이디는 30자 이하여야 합니다.'})
     @IsNotEmpty({message: '아이디를 입력해주세요.'})

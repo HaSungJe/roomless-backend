@@ -98,7 +98,7 @@ describe('admin.store.application-file — 업체 정보 파일 등록 (큐 경�
             expect(repo.insertStoreFile).not.toHaveBeenCalled();
         });
 
-        it('남의 신청 · 승인 신청은 failed 404', async () => {
+        it('남의 신청은 failed 404', async () => {
             repo.findApplication.mockResolvedValueOnce(null);
 
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_FILE, payload: PAYLOAD, actor: USER_ACTOR});
@@ -107,12 +107,15 @@ describe('admin.store.application-file — 업체 정보 파일 등록 (큐 경�
             expect(repo.insertStoreFile).not.toHaveBeenCalled();
         });
 
-        it('반려 신청 · 한도 초과는 failed 400', async () => {
+        it('승인 · 반려 신청 · 한도 초과는 failed 400', async () => {
+            repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: 'APPROVED'}));
+            const approved = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_FILE, payload: PAYLOAD, actor: USER_ACTOR});
             repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: 'REJECTED'}));
             const rejected = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_FILE, payload: PAYLOAD, actor: USER_ACTOR});
             repo.countStoreFiles.mockResolvedValueOnce(1);
             const full = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_FILE, payload: PAYLOAD, actor: USER_ACTOR});
 
+            expect(approved.result?.error?.body.message).toBe('대기 중인 입점 신청만 처리할 수 있습니다.');
             expect(rejected.result?.error?.body.message).toBe('대기 중인 입점 신청만 처리할 수 있습니다.');
             expect(full.result?.error?.body.message).toBe('올릴 수 있는 파일 수를 넘었습니다.');
             expect(repo.insertStoreFile).not.toHaveBeenCalled();

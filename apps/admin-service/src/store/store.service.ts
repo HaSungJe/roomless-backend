@@ -1,8 +1,7 @@
-import {BadRequestException, Inject, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
+import {BadRequestException, Inject, Injectable, NotFoundException} from '@nestjs/common';
 import {Transactional} from '@nestjs-cls/transactional';
 import {In} from 'typeorm';
 import type {FindOptionsWhere} from 'typeorm';
-import {generateTemporaryPassword} from '@app/account/utils/password.js';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
 import {generateId} from '@app/common/utils/id.js';
 import {Pagination} from '@app/common/utils/pagination.js';
@@ -29,11 +28,9 @@ import {SMS_SENDER, STORAGE_GATEWAY} from '@app/integration/integration.symbols.
 import type {SmsSenderInterface, StorageGatewayInterface} from '@app/integration/interfaces/integration.interface.js';
 import type {StoreRepositoryInterface} from './interfaces/store.repository.interface.js';
 import {
-    HEAD_MANAGER_LOGIN_ID_ATTEMPTS,
     STORE_APPLICATION_NOT_FOUND_MESSAGE,
     STORE_APPLICATION_NOT_WAITING_MESSAGE,
     STORE_APPLICATION_STATE,
-    STORE_APPLICATION_VISIBLE_STATES,
     STORE_BUSINESS_NUMBER_TAKEN_MESSAGE,
     STORE_FILE_LIMIT,
     STORE_FILE_LIMIT_MESSAGE,
@@ -49,7 +46,6 @@ import {
     buildApplicationFileKey,
     buildApplicationListWhere,
     buildStoreListWhere,
-    generateHeadManagerLoginId,
     isApplicationFileKey,
     storeApprovedText,
     toApplicant,
@@ -87,7 +83,7 @@ export class StoreService {
     ) {}
 
     /**
-     * 입점 신청 — 업체 정보만 등록하고, 업체 정보 파일은 신청 뒤 따로 붙인다. (RabbitMQ: admin.store.application)
+     * 입점 신청 — 업체 정보 · 업체 총관리자 아이디 · 비밀번호(해시로만 저장)를 등록하고, 업체 정보 파일은 신청 뒤 따로 붙인다. (RabbitMQ: admin.store.application)
      * - 대기 중 신청이 있으면 400 (한 번에 1건)
      * - 같은 사업자번호의 대기 신청 · 등록 업체가 있으면 400 (validation_errors.business_number)
      *
@@ -110,7 +106,7 @@ export class StoreService {
             throw new BadRequestException({message: STORE_BUSINESS_NUMBER_TAKEN_MESSAGE, validation_errors: createValidationError('business_number', STORE_BUSINESS_NUMBER_TAKEN_MESSAGE)});
         }
 
-        // 3. 신청 등록 (대기)
+        // 3. 신청 등록 (대기) — 업체 총관리자 비밀번호는 해시로만 둔다
         const application = new StoreApplicationEntity();
         application.store_application_id = generateId();
         application.user_id = user_id;
@@ -125,6 +121,8 @@ export class StoreService {
         application.latitude = Number(dto.latitude);
         application.longitude = Number(dto.longitude);
         application.owner_phone = dto.owner_phone;
+        application.head_manager_login_id = dto.head_manager_login_id;
+        application.head_manager_login_pw = await getBcrypt(dto.head_manager_login_pw);
         application.application_comment = dto.application_comment ?? null;
         application.reject_comment = null;
         application.reviewed_at = null;
@@ -133,39 +131,46 @@ export class StoreService {
     }
 
     /**
-     * 내 입점 신청 목록 — 대기 · 반려만(승인 신청은 빠진다). (내부 HTTP: GET /internal/v1/admin-service/store/application/mine)
+     * 내 입점 신청 목록 — 대기 · 반려 · 승인 모두, 승인 신청은 업체코드(매니저 로그인 · 매니저 화면 주소) 포함. (내부 HTTP: GET /internal/v1/admin-service/store/application/mine)
      *
      * @param user_id 로그인 이용자 ID
      * @param dto 페이지
      * @returns 목록 · 페이지 정보
      */
     async getMyApplicationList(user_id: string, dto: StoreMyApplicationListDto): Promise<StoreMyApplicationListResultDto> {
-        const where: FindOptionsWhere<StoreApplicationEntity> = {user_id, store_application_state_id: In(STORE_APPLICATION_VISIBLE_STATES)};
+        const where: FindOptionsWhere<StoreApplicationEntity> = {user_id};
         const total_count = await this.storeRepository.countApplications(where);
         const pagination = new Pagination({...dto, total_count});
         const applications = await this.storeRepository.findApplicationList(where, pagination.limit, pagination.offset);
-        return {list: applications.map(toMyApplicationItem), pagination: pagination.getPagination()};
+        const storeIds = applications.flatMap((application) => (application.store_id ? [application.store_id] : []));
+        const stores = storeIds.length > 0 ? await this.storeRepository.findStores({store_id: In(storeIds)}) : [];
+        const codes = new Map(stores.map((store) => [store.store_id, store.store_code]));
+        return {
+            list: applications.map((application) => toMyApplicationItem(application, application.store_id ? (codes.get(application.store_id) ?? null) : null)),
+            pagination: pagination.getPagination(),
+        };
     }
 
     /**
-     * 내 입점 신청 상세 — 대기 · 반려만, 업체 정보 파일 열람 주소 포함. 남의 신청 · 승인 신청은 404. (내부 HTTP: GET /internal/v1/admin-service/store/application/mine/:store_application_id)
+     * 내 입점 신청 상세 — 모든 상태, 업체 정보 파일 열람 주소 · 승인 신청은 업체코드 포함. 남의 신청은 404. (내부 HTTP: GET /internal/v1/admin-service/store/application/mine/:store_application_id)
      *
      * @param user_id 로그인 이용자 ID
      * @param store_application_id 입점 신청 ID
      * @returns 신청 상세
      */
     async getMyApplication(user_id: string, store_application_id: string): Promise<StoreMyApplicationResultDto> {
-        const application = await this.storeRepository.findApplication({store_application_id, user_id, store_application_state_id: In(STORE_APPLICATION_VISIBLE_STATES)});
+        const application = await this.storeRepository.findApplication({store_application_id, user_id});
         if (!application) {
             throw new NotFoundException({message: STORE_APPLICATION_NOT_FOUND_MESSAGE});
         }
+        const store = application.store_id ? await this.storeRepository.findStore({store_id: application.store_id}) : null;
         const rows = await this.storeRepository.findApplicationFileRows(store_application_id);
         const files: StoreMyApplicationFileResultDto[] = [];
         for (const row of rows) {
             const file_url = Number(row.is_private) === 1 ? (await this.storageGateway.createDownloadUrl(row.file_key)).download_url : this.storageGateway.getPublicUrl(row.file_key);
             files.push(toMyApplicationFile(row, file_url));
         }
-        return toMyApplicationDetail(application, files);
+        return toMyApplicationDetail(application, store?.store_code ?? null, files);
     }
 
     /**
@@ -178,7 +183,7 @@ export class StoreService {
      */
     async createMyApplicationFileUploadUrl(user_id: string, store_application_id: string, dto: StoreApplicationFileUploadUrlDto): Promise<StoreApplicationFileUploadUrlResultDto> {
         // 1. 대기 중 내 신청
-        const application = await this.storeRepository.findApplication({store_application_id, user_id, store_application_state_id: In(STORE_APPLICATION_VISIBLE_STATES)});
+        const application = await this.storeRepository.findApplication({store_application_id, user_id});
         if (!application) {
             throw new NotFoundException({message: STORE_APPLICATION_NOT_FOUND_MESSAGE});
         }
@@ -216,7 +221,7 @@ export class StoreService {
     @Transactional()
     async addMyApplicationFile(user_id: string, store_application_id: string, dto: StoreApplicationFileDto): Promise<StoreApplicationFileResultDto> {
         // 1. 대기 중 내 신청
-        const application = await this.storeRepository.findApplication({store_application_id, user_id, store_application_state_id: In(STORE_APPLICATION_VISIBLE_STATES)});
+        const application = await this.storeRepository.findApplication({store_application_id, user_id});
         if (!application) {
             throw new NotFoundException({message: STORE_APPLICATION_NOT_FOUND_MESSAGE});
         }
@@ -271,7 +276,7 @@ export class StoreService {
     @Transactional()
     async removeMyApplicationFile(user_id: string, store_application_id: string, store_file_id: string): Promise<void> {
         // 1. 대기 중 내 신청
-        const application = await this.storeRepository.findApplication({store_application_id, user_id, store_application_state_id: In(STORE_APPLICATION_VISIBLE_STATES)});
+        const application = await this.storeRepository.findApplication({store_application_id, user_id});
         if (!application) {
             throw new NotFoundException({message: STORE_APPLICATION_NOT_FOUND_MESSAGE});
         }
@@ -300,7 +305,7 @@ export class StoreService {
     @Transactional()
     async cancelMyApplication(user_id: string, store_application_id: string): Promise<void> {
         // 1. 대기 중 내 신청
-        const application = await this.storeRepository.findApplication({store_application_id, user_id, store_application_state_id: In(STORE_APPLICATION_VISIBLE_STATES)});
+        const application = await this.storeRepository.findApplication({store_application_id, user_id});
         if (!application) {
             throw new NotFoundException({message: STORE_APPLICATION_NOT_FOUND_MESSAGE});
         }
@@ -339,7 +344,7 @@ export class StoreService {
     }
 
     /**
-     * 입점 신청 상세 (총관리자) — 신청자 · 업체 정보 파일 열람 주소 포함. (내부 HTTP: GET /internal/v1/admin-service/store/application/:store_application_id)
+     * 입점 신청 상세 (총관리자) — 신청자 · 업체 정보 파일 열람 주소 · 업체코드(승인 신청) 포함. (내부 HTTP: GET /internal/v1/admin-service/store/application/:store_application_id)
      *
      * @param store_application_id 입점 신청 ID
      * @returns 신청 상세
@@ -349,6 +354,7 @@ export class StoreService {
         if (!application) {
             throw new NotFoundException({message: STORE_APPLICATION_NOT_FOUND_MESSAGE});
         }
+        const store = application.store_id ? await this.storeRepository.findStore({store_id: application.store_id}) : null;
         const applicant = await this.storeRepository.findApplicant(application.user_id);
         const rows = await this.storeRepository.findApplicationFileRows(store_application_id);
         const files: StoreApplicationDetailFileResultDto[] = [];
@@ -356,17 +362,17 @@ export class StoreService {
             const file_url = Number(row.is_private) === 1 ? (await this.storageGateway.createDownloadUrl(row.file_key)).download_url : this.storageGateway.getPublicUrl(row.file_key);
             files.push(toApplicationDetailFile(row, file_url));
         }
-        return toApplicationDetail(application, toApplicant(applicant), files);
+        return toApplicationDetail(application, store?.store_code ?? null, toApplicant(applicant), files);
     }
 
     /**
-     * 입점 승인 (총관리자) — 업체 등록(활성 · 영업준비) + 신청의 업체 정보 파일을 업체로 + 업체 총관리자(= 대표자) 계정 + 아이디 · 임시 비밀번호 SMS(대표자 번호, 마지막). (RabbitMQ: admin.store.application-approve)
+     * 입점 승인 (총관리자) — 업체 등록(활성 · 영업준비 · 업체코드) + 신청의 업체 정보 파일을 업체로 + 업체 총관리자(= 대표자) 계정(신청 때 정한 아이디 · 비밀번호) + 승인 알림 SMS(대표자 번호, 마지막). (RabbitMQ: admin.store.application-approve)
      * - 대기 중 신청만, 사업자등록증 1장 필수, 신청자 계정이 있어야 한다(성별 · 생년월일 복사)
-     * - 사업자번호 · 휴대폰 번호 UK 충돌은 repository 가 400 — 트랜잭션 전체가 롤백된다
+     * - 사업자번호 UK 충돌은 repository 가 400 — 트랜잭션 전체가 롤백된다. 매니저 아이디 · 휴대폰 번호는 업체 단위라 새 업체에서 겹치지 않는다
      * - 신청 상태는 대기 조건으로 바꾼다 — 그 사이 취소 · 반려됐으면 0건이라 400(롤백, SMS 없음)
      *
      * @param store_application_id 입점 신청 ID
-     * @returns 등록한 업체 ID · 업체 총관리자 아이디
+     * @returns 등록한 업체 ID · 업체코드
      */
     @Transactional()
     async approveApplication(store_application_id: string): Promise<StoreApplicationApproveResultDto> {
@@ -391,10 +397,12 @@ export class StoreService {
             throw new BadRequestException({message: '신청자 정보를 찾을 수 없어 승인할 수 없습니다.'});
         }
 
-        // 4. 업체 등록 — 활성 + 영업준비(is_open = 0)
+        // 4. 업체 등록 — 활성 + 영업준비(is_open = 0) + 업체코드(매니저 로그인 · 매니저 화면 주소)
         const store_id = generateId();
+        const store_code = generateId();
         const store = new StoreEntity();
         store.store_id = store_id;
+        store.store_code = store_code;
         store.store_state_id = STORE_STATE.ACTIVE;
         store.store_name = application.store_name;
         store.business_number = application.business_number;
@@ -416,20 +424,7 @@ export class StoreService {
         // 5. 신청의 업체 정보 파일을 업체로 (같은 행에 store_id — 파일을 옮기지 않는다)
         await this.storeRepository.assignStoreFiles(store_application_id, store_id);
 
-        // 6. 업체 총관리자 아이디 — 매니저 그룹에서 겹치면 다시
-        let login_id: string | null = null;
-        for (let attempt = 0; attempt < HEAD_MANAGER_LOGIN_ID_ATTEMPTS && !login_id; attempt++) {
-            const candidate = generateHeadManagerLoginId();
-            if ((await this.storeRepository.countManagers({login_id: candidate, login_scope: LOGIN_SCOPE.MANAGER})) === 0) {
-                login_id = candidate;
-            }
-        }
-        if (!login_id) {
-            throw new InternalServerErrorException({message: '업체 총관리자 아이디를 만들지 못했습니다. 다시 시도해주세요.'});
-        }
-
-        // 7. 업체 총관리자 계정(= 대표자) — 이름 · 닉네임 대표자명, 휴대폰 대표자 번호, 임시 비밀번호 · 첫 로그인 때 변경
-        const temporaryPassword = generateTemporaryPassword();
+        // 6. 업체 총관리자 계정(= 대표자) — 신청 때 정한 아이디 · 비밀번호(이미 해시), 이름 · 닉네임 대표자명, 휴대폰 대표자 번호
         const manager = new UserEntity();
         manager.user_id = generateId();
         manager.user_search_code = generateId();
@@ -439,8 +434,8 @@ export class StoreService {
         manager.sns_id = null;
         manager.sns_user_id = null;
         manager.store_id = store_id;
-        manager.login_id = login_id;
-        manager.login_pw = await getBcrypt(temporaryPassword);
+        manager.login_id = application.head_manager_login_id;
+        manager.login_pw = application.head_manager_login_pw;
         manager.name = application.owner_name;
         manager.gender = applicant.gender;
         manager.birth = applicant.birth;
@@ -449,7 +444,7 @@ export class StoreService {
         manager.nickname = application.owner_name;
         manager.device_os = null;
         manager.device_token = null;
-        manager.is_password_change_required = 1;
+        manager.is_password_change_required = 0;
         manager.block_comment = null;
         manager.leave_comment = null;
         manager.leave_reserved_at = null;
@@ -457,7 +452,7 @@ export class StoreService {
         manager.leave_backup = null;
         await this.storeRepository.insertHeadManager(manager);
 
-        // 8. 신청 승인 — 그 사이 취소 · 반려된 신청이면 0건이라 400 (위 쓰기가 모두 롤백된다)
+        // 7. 신청 승인 — 그 사이 취소 · 반려된 신청이면 0건이라 400 (위 쓰기가 모두 롤백된다)
         const approved = new StoreApplicationEntity();
         approved.store_application_state_id = STORE_APPLICATION_STATE.APPROVED;
         approved.store_id = store_id;
@@ -467,9 +462,9 @@ export class StoreService {
             throw new BadRequestException({message: STORE_APPLICATION_NOT_WAITING_MESSAGE});
         }
 
-        // 9. 안내 SMS (마지막 — 실패 503 이면 위 쓰기가 모두 롤백되고 재시도된다)
-        await this.smsSender.send({to: application.owner_phone, text: storeApprovedText(application.store_name, login_id, temporaryPassword)});
-        return {store_id, login_id};
+        // 8. 승인 알림 SMS (마지막 — 실패 503 이면 위 쓰기가 모두 롤백되고 재시도된다)
+        await this.smsSender.send({to: application.owner_phone, text: storeApprovedText(application.store_name)});
+        return {store_id, store_code};
     }
 
     /**

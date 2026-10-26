@@ -2,9 +2,14 @@ import {ApiProperty} from '@nestjs/swagger';
 import {IsNotEmpty, Matches, MaxLength} from 'class-validator';
 
 /**
- * 매니저 비밀번호 초기화 — 인증번호 발송 입력 (아이디 + 휴대폰 번호가 같은 매니저 계정일 때만 보낸다)
+ * 매니저 비밀번호 초기화 — 인증번호 발송 입력 (그 업체에서 아이디 + 휴대폰 번호가 같은 매니저 계정일 때만 보낸다)
  */
 export class ManagerPasswordResetDto {
+    @ApiProperty({description: '업체코드 (32자 — 매니저 화면 주소에 들어 있다)', example: '0123456789abcdef0123456789abcdef'})
+    @Matches(/^[a-f0-9]{32}$/, {message: '업체코드가 올바르지 않습니다.'})
+    @IsNotEmpty({message: '업체코드를 입력해주세요.'})
+    store_code: string;
+
     @ApiProperty({description: '로그인 아이디'})
     @MaxLength(30, {message: '아이디는 30자 이하여야 합니다.'})
     @IsNotEmpty({message: '아이디를 입력해주세요.'})

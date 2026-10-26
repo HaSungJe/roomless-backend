@@ -2,7 +2,7 @@ import {ApiProperty} from '@nestjs/swagger';
 import {PaginationDto, PaginationResultDto} from '@app/common/dto/pagination.dto.js';
 
 /**
- * 내 입점 신청 목록 query — 페이지만. 승인된 신청은 빠진다(대기 · 반려만).
+ * 내 입점 신청 목록 query — 페이지만. 대기 · 반려 · 승인 모두 나온다(승인 신청은 업체코드 포함).
  */
 export class StoreMyApplicationListDto extends PaginationDto {
     /**
@@ -37,6 +37,9 @@ export class StoreMyApplicationItemResultDto {
 
     @ApiProperty({description: '신청일시 (ISO 8601)'})
     created_at: string;
+
+    @ApiProperty({description: '업체코드 — 승인 신청이면 그 업체의 코드(매니저 로그인 · 매니저 화면 주소), 아니면 null', nullable: true, type: String})
+    store_code: string | null;
 }
 
 /**

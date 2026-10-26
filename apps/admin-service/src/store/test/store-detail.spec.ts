@@ -9,6 +9,7 @@ import {
     FIXED_TIME,
     fileRow,
     internalHeaders,
+    STORE_CODE,
     STORE_ID,
     StorageGatewayMock,
     StoreRepositoryMock,
@@ -59,6 +60,7 @@ describe('GET /internal/v1/admin-service/store/:store_id — 업체 상세 (총�
             expect(repo.findStoreFileRows).toHaveBeenCalledWith(STORE_ID);
             expect(res.body).toMatchObject({
                 store_id: STORE_ID,
+                store_code: STORE_CODE,
                 store_state_id: 'ACTIVE',
                 introduction: null,
                 store_detail: {parking: true},

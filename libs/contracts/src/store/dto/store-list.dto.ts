@@ -33,6 +33,9 @@ export class StoreListItemResultDto {
     @ApiProperty({description: '업체 ID'})
     store_id: string;
 
+    @ApiProperty({description: '업체코드 (매니저 로그인 · 매니저 화면 주소)'})
+    store_code: string;
+
     @ApiProperty({description: '업체 상태 (ACTIVE · SUSPEND · LEAVE)'})
     store_state_id: string;
 

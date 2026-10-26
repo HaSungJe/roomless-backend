@@ -1,7 +1,9 @@
-import {Body, Controller, Get, HttpCode, Param, Post} from '@nestjs/common';
-import {ClientIp} from '@app/common/internal/internal-request.decorator.js';
+import {Body, Controller, Get, HttpCode, Param, Post, Query} from '@nestjs/common';
+import {ClientIp, InternalActor} from '@app/common/internal/internal-request.decorator.js';
 import {ManagerAuthUserParamDto, ManagerAuthUserResultDto} from '@app/contracts/manager/dto/manager-auth-user.dto.js';
 import {ManagerLoginDto, ManagerLoginResultDto} from '@app/contracts/manager/dto/manager-login.dto.js';
+import {ManagerStaffDetailParamDto, ManagerStaffDetailResultDto} from '@app/contracts/manager/dto/manager-staff-detail.dto.js';
+import {ManagerStaffListDto, ManagerStaffListResultDto} from '@app/contracts/manager/dto/manager-staff-list.dto.js';
 import {ManagerTokenRefreshDto, ManagerTokenRefreshResultDto} from '@app/contracts/manager/dto/manager-token-refresh.dto.js';
 import {ManagerService} from '../manager.service.js';
 
@@ -41,5 +43,24 @@ export class ManagerController {
     @HttpCode(200)
     async authUser(@Param() param: ManagerAuthUserParamDto): Promise<ManagerAuthUserResultDto> {
         return this.managerService.getLoginManager(param.user_id);
+    }
+
+    /**
+     * 업체 관리자 목록 (업체 총관리자)
+     */
+    @Get('/staff')
+    @HttpCode(200)
+    async getStaffList(@InternalActor('user_id') user_id: string, @Query() query: ManagerStaffListDto): Promise<ManagerStaffListResultDto> {
+        const dto = new ManagerStaffListDto(query);
+        return this.managerService.getStaffList(user_id, dto);
+    }
+
+    /**
+     * 업체 관리자 상세 (업체 총관리자)
+     */
+    @Get('/staff/:user_id')
+    @HttpCode(200)
+    async getStaff(@InternalActor('user_id') user_id: string, @Param() param: ManagerStaffDetailParamDto): Promise<ManagerStaffDetailResultDto> {
+        return this.managerService.getStaff(user_id, param.user_id);
     }
 }

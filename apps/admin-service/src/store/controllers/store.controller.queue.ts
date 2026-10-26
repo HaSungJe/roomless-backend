@@ -71,7 +71,7 @@ export class StoreQueueController {
      * 입점 승인 — 총관리자
      *
      * @param command 명령 봉투 (payload = path param)
-     * @returns 업체 ID · 업체 총관리자 아이디
+     * @returns 업체 ID · 업체코드
      */
     @OnCommand(STORE_COMMAND.APPLICATION_APPROVE)
     async approveApplication(command: MessageEnvelope<StoreApplicationApproveParamDto>): Promise<StoreApplicationApproveResultDto> {

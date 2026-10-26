@@ -1,6 +1,5 @@
 import {ServiceUnavailableException} from '@nestjs/common';
 import type {TestingModule} from '@nestjs/testing';
-import {In} from 'typeorm';
 import {STORE_COMMAND} from '@app/contracts/store/store.commands.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
 import {
@@ -47,7 +46,7 @@ describe('admin.store.application-cancel — 입점 신청 취소 (큐 경로)',
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_CANCEL, payload: PAYLOAD, actor: USER_ACTOR});
 
             expect(result).toEqual({result: null, error: null});
-            expect(repo.findApplication).toHaveBeenCalledWith({store_application_id: APPLICATION_ID, user_id: USER_ACTOR.user_id, store_application_state_id: In(['WAIT', 'REJECTED'])});
+            expect(repo.findApplication).toHaveBeenCalledWith({store_application_id: APPLICATION_ID, user_id: USER_ACTOR.user_id});
             expect(repo.findApplicationFileRows).toHaveBeenCalledWith(APPLICATION_ID);
             expect(repo.deleteApplicationFiles).toHaveBeenCalledWith(APPLICATION_ID);
             expect(repo.deleteApplication).toHaveBeenCalledWith({store_application_id: APPLICATION_ID, user_id: USER_ACTOR.user_id, store_application_state_id: 'WAIT'});
@@ -70,7 +69,7 @@ describe('admin.store.application-cancel — 입점 신청 취소 (큐 경로)',
     });
 
     describe('[FAIL:service]', () => {
-        it('남의 신청 · 승인 신청(조건에 걸리지 않음)은 failed 404, 삭제 없음', async () => {
+        it('남의 신청(조건에 걸리지 않음)은 failed 404, 삭제 없음', async () => {
             repo.findApplication.mockResolvedValueOnce(null);
 
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_CANCEL, payload: PAYLOAD, actor: USER_ACTOR});
@@ -81,8 +80,8 @@ describe('admin.store.application-cancel — 입점 신청 취소 (큐 경로)',
             expect(storage.remove).not.toHaveBeenCalled();
         });
 
-        it('반려 신청은 failed 400, 삭제 없음', async () => {
-            repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: 'REJECTED'}));
+        it.each(['REJECTED', 'APPROVED'])('%s 신청은 failed 400, 삭제 없음', async (state) => {
+            repo.findApplication.mockResolvedValueOnce(applicationRow({store_application_state_id: state}));
 
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_CANCEL, payload: PAYLOAD, actor: USER_ACTOR});
 

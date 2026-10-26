@@ -120,7 +120,7 @@ export class StoreQueueController {
     }
 
     /**
-     * 입점 승인 (총관리자) — 업체 등록 + 업체 총관리자 계정 + 안내 SMS. done 의 data 는 업체 ID · 아이디.
+     * 입점 승인 (총관리자) — 업체 등록(업체코드) + 업체 총관리자 계정(신청 때 정한 아이디 · 비밀번호) + 승인 알림 SMS. done 의 data 는 업체 ID · 업체코드.
      */
     @Patch('/application/:store_application_id/approve')
     @UseGuards(PassportJwtAdminAuthGuard)

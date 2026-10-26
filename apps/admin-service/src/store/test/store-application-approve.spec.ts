@@ -36,8 +36,6 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
         repo.findApplication.mockResolvedValue(applicationRow());
         repo.countStoreFiles.mockResolvedValue(1);
         repo.findApplicant.mockResolvedValue({user_id: 'u'.repeat(32), gender: 'F', birth: '1990-01-01'});
-        repo.countManagers.mockResolvedValue(0);
-        vi.mocked(getBcrypt).mockResolvedValue('hashed-temp-password');
         ({dispatcher, module} = await bootCommandPath(repo, createStorageGatewayMock(), sms));
     });
 
@@ -47,7 +45,7 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
     });
 
     describe('[SUCCESS]', () => {
-        it('업체(활성 · 영업준비) → 파일을 업체로 → 업체 총관리자(= 대표자) → 신청 승인(대기 조건) → 안내 SMS(마지막)', async () => {
+        it('업체(활성 · 영업준비 · 업체코드) → 파일을 업체로 → 업체 총관리자(신청 때 정한 아이디 · 비밀번호) → 신청 승인(대기 조건) → 승인 알림 SMS(마지막)', async () => {
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
 
             // 업체
@@ -55,6 +53,8 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
             const store = repo.insertStore.mock.calls[0][0] as StoreEntity;
             expect(store).toBeInstanceOf(StoreEntity);
             expect(store.store_id).toMatch(/^[a-f0-9]{32}$/);
+            expect(store.store_code).toMatch(/^[a-f0-9]{32}$/);
+            expect(store.store_code).not.toBe(store.store_id);
             expect(store).toMatchObject({
                 store_state_id: 'ACTIVE',
                 store_name: '룸리스 강남점',
@@ -76,11 +76,7 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
             // 파일 → 업체
             expect(repo.assignStoreFiles).toHaveBeenCalledWith(APPLICATION_ID, store.store_id);
 
-            // 업체 총관리자
-            const login_id = repo.countManagers.mock.calls[0][0].login_id as string;
-            expect(login_id).toMatch(/^m\d{8}$/);
-            expect(repo.countManagers).toHaveBeenCalledWith({login_id, login_scope: 'MANAGER'});
-            const temporaryPassword = vi.mocked(getBcrypt).mock.calls[0][0];
+            // 업체 총관리자 — 신청의 아이디 · 해시를 그대로, 변경 필요 없음
             const manager = repo.insertHeadManager.mock.calls[0][0] as UserEntity;
             expect(manager).toBeInstanceOf(UserEntity);
             expect(manager).toMatchObject({
@@ -88,16 +84,17 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
                 login_scope: 'MANAGER',
                 state_id: 'ACTIVE',
                 store_id: store.store_id,
-                login_id,
-                login_pw: 'hashed-temp-password',
+                login_id: 'owner01',
+                login_pw: 'hashed-owner-password',
                 name: '홍길동',
                 nickname: '홍길동',
                 gender: 'F',
                 birth: '1990-01-01',
                 phone: '01012345678',
                 sns_id: null,
-                is_password_change_required: 1,
+                is_password_change_required: 0,
             });
+            expect(getBcrypt).not.toHaveBeenCalled();
 
             // 신청 승인 — 대기 조건
             const [where, approved] = repo.updateApplication.mock.calls[0] as [unknown, StoreApplicationEntity];
@@ -106,20 +103,11 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
             expect(approved).toMatchObject({store_application_state_id: 'APPROVED', store_id: store.store_id});
             expect(approved.reviewed_at).toBeInstanceOf(Date);
 
-            // 안내 SMS (마지막)
-            expect(sms.send).toHaveBeenCalledWith({to: '01012345678', text: storeApprovedText('룸리스 강남점', login_id, temporaryPassword)});
+            // 승인 알림 SMS (마지막) — 자격증명 · 업체코드 없음
+            expect(sms.send).toHaveBeenCalledWith({to: '01012345678', text: storeApprovedText('룸리스 강남점')});
+            expect(storeApprovedText('룸리스 강남점')).toBe('[roomless] 룸리스 강남점 입점이 승인되었습니다.');
             expect(repo.updateApplication.mock.invocationCallOrder[0]).toBeLessThan(sms.send.mock.invocationCallOrder[0]);
-            expect(result).toEqual({result: {store_id: store.store_id, login_id}, error: null});
-        });
-
-        it('아이디가 매니저 그룹에서 겹치면 다시 만든다', async () => {
-            repo.countManagers.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
-
-            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
-
-            expect(repo.countManagers).toHaveBeenCalledTimes(2);
-            expect(repo.insertHeadManager.mock.calls[0][0].login_id).toBe(repo.countManagers.mock.calls[1][0].login_id);
-            expect(result?.result).toEqual({store_id: expect.stringMatching(/^[a-f0-9]{32}$/), login_id: repo.countManagers.mock.calls[1][0].login_id});
+            expect(result).toEqual({result: {store_id: store.store_id, store_code: store.store_code}, error: null});
         });
     });
 
@@ -164,17 +152,6 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
 
             expect(result?.error).toEqual({status_code: 400, body: {message: '이미 신청 · 등록된 사업자등록번호입니다.', validation_errors: null}});
             expect(repo.assignStoreFiles).not.toHaveBeenCalled();
-            expect(repo.insertHeadManager).not.toHaveBeenCalled();
-        });
-
-        it('아이디를 5번 모두 못 만들면 500 — 마지막 전달이면 dead + failed 500, 계정 등록 없음', async () => {
-            repo.countManagers.mockResolvedValue(1);
-
-            const {decision, result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR, delivery_count: 3});
-
-            expect(repo.countManagers).toHaveBeenCalledTimes(5);
-            expect(decision.action).toBe('dead');
-            expect(result?.error).toEqual({status_code: 500, body: {message: '업체 총관리자 아이디를 만들지 못했습니다. 다시 시도해주세요.', validation_errors: null}});
             expect(repo.insertHeadManager).not.toHaveBeenCalled();
         });
     });

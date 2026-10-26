@@ -1,4 +1,4 @@
-import {BeforeInsert, BeforeUpdate, Column, Entity, JoinColumn, ManyToOne, PrimaryColumn, Unique} from 'typeorm';
+import {BeforeInsert, BeforeUpdate, Column, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, Unique} from 'typeorm';
 import {StoreEntity} from '../store/store.entity.js';
 import {AuthEntity} from './auth.entity.js';
 import {SnsEntity} from './sns.entity.js';
@@ -10,10 +10,14 @@ import {StateEntity} from './state.entity.js';
  * (관계 속성을 엔티티 타입으로 두지 않는다 — ESM 의 순환 import 와 데코레이터 메타데이터 문제를 피하기 위해)
  */
 @Entity({name: 't_user', comment: '사용자 정보'})
-@Unique('UK_User_LoginIdLoginScope', ['login_id', 'login_scope'])
 @Unique('UK_User_UserSearchCode', ['user_search_code'])
 @Unique('UK_User_SnsSnsUserId', ['sns_id', 'sns_user_id'])
-@Unique('UK_User_PhoneLoginScope', ['phone', 'login_scope'])
+// 아이디 · 휴대폰 번호 유일성 — 업체가 없는 계정(이용자 · 총관리자 · 관리자)은 로그인 그룹 안에서, 업체 소속 계정(매니저 그룹)은 그 업체 안에서.
+// TypeORM 은 NULLS NOT DISTINCT 가 없고 미인증 이용자의 phone 은 NULL 이라 store_id 로 나눈 부분 유니크 인덱스 둘로 둔다.
+@Index('UK_User_LoginIdLoginScope', ['login_id', 'login_scope'], {unique: true, where: '"store_id" IS NULL'})
+@Index('UK_User_LoginIdLoginScopeStoreId', ['login_id', 'login_scope', 'store_id'], {unique: true, where: '"store_id" IS NOT NULL'})
+@Index('UK_User_PhoneLoginScope', ['phone', 'login_scope'], {unique: true, where: '"store_id" IS NULL'})
+@Index('UK_User_PhoneLoginScopeStoreId', ['phone', 'login_scope', 'store_id'], {unique: true, where: '"store_id" IS NOT NULL'})
 export class UserEntity {
     @PrimaryColumn({name: 'user_id', length: 32, comment: '사용자 ID', primaryKeyConstraintName: 'PK_User'})
     user_id: string;
