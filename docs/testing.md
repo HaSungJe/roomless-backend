@@ -67,6 +67,7 @@ expect(repo.insertUser.mock.calls[0][0]).toEqual({...입력 데이터 전체});
 
 - 실패: `result.error` 를 `{status_code, body: {message, validation_errors}}` 로 단언. 5xx 는 `delivery_count` 0 → `{action: 'requeue', result: null}`, 3 → dead + attempt 4 + failed(500). 커밋해야 하는 실패(반환된 예외)는 상태 코드와 무관하게 `ack` + failed.
 - 로그인 필요 명령(`requireActor()`)은 `actor: null` 로 401 을 단언한다.
+- **큐 경로의 입력 검증** — 서비스 큐 컨트롤러는 재검증하지 않으므로 큐 DTO 는 게이트웨이에서만 검증된다. 중첩 · 배열 DTO 처럼 검증 자체가 동작인 경우, 그 service spec 의 `[FAIL:validation]` 은 도우미 `validateBody(DTO, 본문)`(게이트웨이와 같은 `ValidationPipe` 설정 + `validationExceptionFactory` — store.test-helper.ts)로 DTO 를 직접 통과시켜 실패 본문(점 경로)을 단언한다 — store-mine-profile · store-mine-hours · store-mine-breaks · store-mine-unavailable-period. 제약이 하나만 걸리는 입력으로 고른다(여러 제약이 걸리면 첫 메시지가 데코레이터 등록 순서에 달린다).
 - 정리: `afterEach` 에서 `vi.clearAllMocks()` + `module.close()`.
 
 ## 스타일 ② — 동기 경로 (서비스 내부 HTTP)
@@ -95,7 +96,7 @@ repository 를 mock 하는 service spec 은 **쿼리 매핑 자체**(조인 조�
   expect(sql.replace(/\s+/g, ' ')).toBe('SELECT ...');               // SQL 전체 고정
   ```
   raw select 는 select 별칭 목록이 결과 행 타입의 키와 같은지도 비교한다.
-- 현재 적용: [user.repository.spec.ts](../apps/user-service/src/user/test/user.repository.spec.ts) `buildLoginUserQuery` · `buildConsumeSmsVerificationAttemptQuery`, [manager.repository.spec.ts](../apps/admin-service/src/manager/test/manager.repository.spec.ts) `buildLoginManagerQuery` · `buildConsumeSmsVerificationAttemptQuery` · `buildStaffListQuery`(관계 필드 정렬 · ILike · 배열 OR), [admin.repository.spec.ts](../apps/admin-service/src/admin/test/admin.repository.spec.ts) `buildLoginAdminQuery`, [store.repository.spec.ts](../apps/admin-service/src/store/test/store.repository.spec.ts) `buildApplicationListQuery` · `buildStoreListQuery`(ILike · 배열 OR) · `buildStoreFileRowsQuery`(용도 조인 · raw 별칭) · `buildAssignStoreFilesQuery` · `buildDeleteApplicationFilesQuery` · `buildUpdateStoreManagersQuery`, [scheduler user.repository.spec.ts](../apps/scheduler/src/user/test/user.repository.spec.ts) `buildUsersQuery`.
+- 현재 적용: [user.repository.spec.ts](../apps/user-service/src/user/test/user.repository.spec.ts) `buildLoginUserQuery` · `buildConsumeSmsVerificationAttemptQuery`, [manager.repository.spec.ts](../apps/admin-service/src/manager/test/manager.repository.spec.ts) `buildLoginManagerQuery` · `buildConsumeSmsVerificationAttemptQuery` · `buildStaffListQuery`(관계 필드 정렬 · ILike · 배열 OR), [admin.repository.spec.ts](../apps/admin-service/src/admin/test/admin.repository.spec.ts) `buildLoginAdminQuery`, [store.repository.spec.ts](../apps/admin-service/src/store/test/store.repository.spec.ts) `buildApplicationListQuery` · `buildStoreListQuery`(ILike · 배열 OR) · `buildStoreFileRowsQuery`(용도 조인 · raw 별칭) · `buildAssignStoreFilesQuery` · `buildDeleteApplicationFilesQuery` · `buildUpdateStoreManagersQuery` · `buildStoreByManagerQuery`(t_user 조인 · 탈퇴 제외 · `FOR UPDATE OF s`) · `buildStoreHoursQuery` · `buildStoreBreaksQuery`(관계 필드 where · 정렬) · `buildUnavailablePeriodListQuery`(목록 `MoreThan` · 겹침 `LessThan` + `MoreThan`), [scheduler user.repository.spec.ts](../apps/scheduler/src/user/test/user.repository.spec.ts) `buildUsersQuery`.
 
 ## mock 규칙
 

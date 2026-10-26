@@ -4,19 +4,22 @@ import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapte
 import type {DeleteQueryBuilder, FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
+import {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import {StoreFilePurposeEntity} from '@app/database/entities/store/store-file-purpose.entity.js';
 import {StoreFileEntity} from '@app/database/entities/store/store-file.entity.js';
+import {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js';
+import {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {StoreFileRow, StoreRepositoryInterface} from '../interfaces/store.repository.interface.js';
-import {STORE_BUSINESS_NUMBER_TAKEN_MESSAGE} from '../store.constants.js';
+import {STORE_BUSINESS_NUMBER_TAKEN_MESSAGE, STORE_STATE} from '../store.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
 
 /**
- * store repository (아웃바운드 어댑터) — t_store_application · t_store · t_store_file · t_store_file_purpose 와
+ * store repository (아웃바운드 어댑터) — t_store_application · t_store · t_store_file · t_store_file_purpose · t_store_hour · t_store_break · t_store_unavailable_period 와
  * 공유 DB 의 t_user(신청자 · 업체 총관리자 · 업체 매니저)를 직접 다룬다. `txHost.tx` 는 `@Transactional()` 범위 안에서는 트랜잭션 EntityManager 다.
  */
 @Injectable()
@@ -49,6 +52,21 @@ export class StoreRepository implements StoreRepositoryInterface {
     /** t_user repository (현재 트랜잭션 기준) */
     private get users(): Repository<UserEntity> {
         return this.txHost.tx.getRepository(UserEntity);
+    }
+
+    /** t_store_hour repository (현재 트랜잭션 기준) */
+    private get storeHours(): Repository<StoreHourEntity> {
+        return this.txHost.tx.getRepository(StoreHourEntity);
+    }
+
+    /** t_store_break repository (현재 트랜잭션 기준) */
+    private get storeBreaks(): Repository<StoreBreakEntity> {
+        return this.txHost.tx.getRepository(StoreBreakEntity);
+    }
+
+    /** t_store_unavailable_period repository (현재 트랜잭션 기준) */
+    private get unavailablePeriods(): Repository<StoreUnavailablePeriodEntity> {
+        return this.txHost.tx.getRepository(StoreUnavailablePeriodEntity);
     }
 
     /**
@@ -279,6 +297,20 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
+     * 업체 정보 파일 수정 — 업체 사진 정렬 순서
+     *
+     * @param where 수정 조건
+     * @param entity 바꿀 필드만 할당한 엔티티
+     */
+    async updateStoreFile(where: FindOptionsWhere<StoreFileEntity>, entity: StoreFileEntity): Promise<void> {
+        try {
+            await this.storeFiles.update(where, entity);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
      * 신청의 업체 정보 파일 삭제 — 신청 취소. 아직 업체에 붙지 않은(store_id 없음) 파일만 지운다 — 그 사이 승인된 신청의 파일은 남는다.
      *
      * @param store_application_id 입점 신청 ID
@@ -484,5 +516,209 @@ export class StoreRepository implements StoreRepositoryInterface {
             .set({state_id, block_comment, updated_at: () => 'CURRENT_TIMESTAMP'})
             .where('store_id = :store_id', {store_id})
             .andWhere('login_scope = :login_scope', {login_scope: LOGIN_SCOPE.MANAGER});
+    }
+
+    /**
+     * 매니저의 소속 업체 — 매니저 그룹 회원의 store_id 로 찾는다. 탈퇴 업체는 없는 것과 같다.
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param lock true 면 업체 행을 잠근다(FOR UPDATE — 같은 업체의 설정 쓰기를 한 번에 하나로). 트랜잭션 안에서만
+     * @returns 업체 또는 null
+     */
+    async findStoreByManager(user_id: string, lock: boolean): Promise<StoreEntity | null> {
+        try {
+            return await this.buildStoreByManagerQuery(user_id, lock).getOne();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 매니저의 소속 업체 쿼리 — 매핑 민감(t_user 조인 · 관계 컬럼 · 잠금)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param lock true 면 업체 행만 잠근다(FOR UPDATE OF s — 매니저 행은 잠그지 않는다)
+     * @returns 쿼리 빌더
+     */
+    buildStoreByManagerQuery(user_id: string, lock: boolean): SelectQueryBuilder<StoreEntity> {
+        const query = this.stores
+            .createQueryBuilder('s')
+            .innerJoin(UserEntity, 'u', 'u.store_id = s.store_id')
+            .where('u.user_id = :user_id', {user_id})
+            .andWhere('u.login_scope = :login_scope', {login_scope: LOGIN_SCOPE.MANAGER})
+            .andWhere('s.store_state_id <> :leave', {leave: STORE_STATE.LEAVE})
+            .loadAllRelationIds();
+        return lock ? query.setLock('pessimistic_write', undefined, ['s']) : query;
+    }
+
+    /**
+     * 업체의 요일별 영업시간
+     *
+     * @param store_id 업체 ID
+     * @returns 요일 순
+     */
+    async findStoreHours(store_id: string): Promise<StoreHourEntity[]> {
+        try {
+            return await this.buildStoreHoursQuery(store_id).getMany();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 요일별 영업시간 쿼리 — 매핑 민감(관계 필드 where · 정렬)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param store_id 업체 ID
+     * @returns 쿼리 빌더
+     */
+    buildStoreHoursQuery(store_id: string): SelectQueryBuilder<StoreHourEntity> {
+        return this.storeHours.createQueryBuilder('h').setFindOptions({where: {store_id}, order: {day_of_week: 'ASC'}, loadRelationIds: true});
+    }
+
+    /**
+     * 요일별 영업시간 삭제 — 교체
+     *
+     * @param where 삭제 조건
+     */
+    async deleteStoreHours(where: FindOptionsWhere<StoreHourEntity>): Promise<void> {
+        try {
+            await this.storeHours.delete(where);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 요일별 영업시간 등록 — 교체. 요일 UK · 시각 CHECK 는 service 가 먼저 막으므로 위반은 통일 500
+     *
+     * @param entities new StoreHourEntity() + 할당 (요일마다 1개)
+     */
+    async insertStoreHours(entities: StoreHourEntity[]): Promise<void> {
+        try {
+            await this.storeHours.insert(entities);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 업체의 브레이크타임
+     *
+     * @param store_id 업체 ID
+     * @returns 시작 시각 순
+     */
+    async findStoreBreaks(store_id: string): Promise<StoreBreakEntity[]> {
+        try {
+            return await this.buildStoreBreaksQuery(store_id).getMany();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 브레이크타임 쿼리 — 매핑 민감(관계 필드 where · 정렬)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param store_id 업체 ID
+     * @returns 쿼리 빌더
+     */
+    buildStoreBreaksQuery(store_id: string): SelectQueryBuilder<StoreBreakEntity> {
+        return this.storeBreaks.createQueryBuilder('b').setFindOptions({where: {store_id}, order: {start_time: 'ASC'}, loadRelationIds: true});
+    }
+
+    /**
+     * 브레이크타임 삭제 — 교체
+     *
+     * @param where 삭제 조건
+     */
+    async deleteStoreBreaks(where: FindOptionsWhere<StoreBreakEntity>): Promise<void> {
+        try {
+            await this.storeBreaks.delete(where);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 브레이크타임 등록 — 교체
+     *
+     * @param entities new StoreBreakEntity() + 할당
+     */
+    async insertStoreBreaks(entities: StoreBreakEntity[]): Promise<void> {
+        try {
+            await this.storeBreaks.insert(entities);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 일시 예약불가 개수
+     *
+     * @param where 조회 조건 (목록 — 끝나지 않은 것, 겹침 — buildUnavailablePeriodOverlapWhere)
+     * @returns 개수
+     */
+    async countUnavailablePeriods(where: FindOptionsWhere<StoreUnavailablePeriodEntity>): Promise<number> {
+        try {
+            return await this.unavailablePeriods.count({where});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 일시 예약불가 목록
+     *
+     * @param where 조회 조건
+     * @param limit 개수
+     * @param offset 건너뛸 개수
+     * @returns 시작 순
+     */
+    async findUnavailablePeriodList(where: FindOptionsWhere<StoreUnavailablePeriodEntity>, limit: number, offset: number): Promise<StoreUnavailablePeriodEntity[]> {
+        try {
+            return await this.buildUnavailablePeriodListQuery(where, limit, offset).getMany();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 일시 예약불가 목록 쿼리 — 매핑 민감(관계 필드 where · MoreThan · LessThan 시각 비교)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 겹침 조건(count)도 같은 FindOptions where 경로라 Smoke 는 두 조건을 모두 이 빌더로 고정한다.
+     *
+     * @param where 조회 조건
+     * @param limit 개수
+     * @param offset 건너뛸 개수
+     * @returns 쿼리 빌더
+     */
+    buildUnavailablePeriodListQuery(where: FindOptionsWhere<StoreUnavailablePeriodEntity>, limit: number, offset: number): SelectQueryBuilder<StoreUnavailablePeriodEntity> {
+        return this.unavailablePeriods.createQueryBuilder('p').setFindOptions({where, order: {starts_at: 'ASC'}, take: limit, skip: offset, loadRelationIds: true});
+    }
+
+    /**
+     * 일시 예약불가 등록 — 시작 < 종료(CHECK)는 service 가 먼저 막으므로 위반은 통일 500
+     *
+     * @param entity new StoreUnavailablePeriodEntity() + 할당
+     */
+    async insertUnavailablePeriod(entity: StoreUnavailablePeriodEntity): Promise<void> {
+        try {
+            await this.unavailablePeriods.insert(entity);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 일시 예약불가 삭제 — 업체를 조건에 넣으면 남의 업체 것은 0건이다.
+     *
+     * @param where 삭제 조건
+     * @returns 지웠으면 true, 조건에 맞는 행이 없으면 false
+     */
+    async deleteUnavailablePeriod(where: FindOptionsWhere<StoreUnavailablePeriodEntity>): Promise<boolean> {
+        try {
+            const result = await this.unavailablePeriods.delete(where);
+            return result.affected === 1;
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
     }
 }

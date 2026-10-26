@@ -1,17 +1,20 @@
 import {BadRequestException, InternalServerErrorException} from '@nestjs/common';
 import type {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import {DataSource, In, QueryFailedError} from 'typeorm';
+import {DataSource, In, MoreThan, QueryFailedError} from 'typeorm';
 import {StoreApplicationListDto} from '@app/contracts/store/dto/store-application-list.dto.js';
 import {StoreListDto} from '@app/contracts/store/dto/store-list.dto.js';
 import {ENTITIES} from '@app/database/entities.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
+import {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import {StoreFilePurposeEntity} from '@app/database/entities/store/store-file-purpose.entity.js';
 import {StoreFileEntity} from '@app/database/entities/store/store-file.entity.js';
+import {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js';
+import {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {StoreRepository} from '../repositories/store.repository.js';
-import {buildApplicationListWhere, buildStoreListWhere} from '../store.util.js';
+import {buildApplicationListWhere, buildStoreListWhere, buildUnavailablePeriodOverlapWhere} from '../store.util.js';
 
 /**
  * PostgreSQL 드라이버가 던지는 것과 같은 모양의 제약 위반 오류.
@@ -37,6 +40,9 @@ function makeRepository() {
         [StoreFileEntity, fake()],
         [StoreEntity, fake()],
         [UserEntity, fake()],
+        [StoreHourEntity, fake()],
+        [StoreBreakEntity, fake()],
+        [StoreUnavailablePeriodEntity, fake()],
     ]);
     const txHost = {tx: {getRepository: (entity: unknown) => repos.get(entity)}} as unknown as TransactionHost<TransactionalAdapterTypeOrm>;
     return {
@@ -46,6 +52,9 @@ function makeRepository() {
         file: repos.get(StoreFileEntity)!,
         store: repos.get(StoreEntity)!,
         user: repos.get(UserEntity)!,
+        hour: repos.get(StoreHourEntity)!,
+        break: repos.get(StoreBreakEntity)!,
+        period: repos.get(StoreUnavailablePeriodEntity)!,
     };
 }
 
@@ -124,6 +133,29 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     });
 
     it.each([
+        [1, true],
+        [0, false],
+    ])('deleteUnavailablePeriod — affected %s → %s, 넘긴 조건 그대로(그 업체 것만)', async (affected, expected) => {
+        const {repository, period} = makeRepository();
+        period.delete.mockResolvedValueOnce({affected});
+
+        await expect(repository.deleteUnavailablePeriod({store_unavailable_period_id: 'p1', store_id: 's1'})).resolves.toBe(expected);
+        expect(period.delete).toHaveBeenCalledWith({store_unavailable_period_id: 'p1', store_id: 's1'});
+    });
+
+    it('insertStoreHours · insertStoreBreaks 는 받은 엔티티 배열을 한 번에 insert 한다', async () => {
+        const {repository, hour, break: breaks} = makeRepository();
+        const hours = [new StoreHourEntity(), new StoreHourEntity()];
+        const items = [new StoreBreakEntity()];
+
+        await repository.insertStoreHours(hours);
+        await repository.insertStoreBreaks(items);
+
+        expect(hour.insert).toHaveBeenCalledWith(hours);
+        expect(breaks.insert).toHaveBeenCalledWith(items);
+    });
+
+    it.each([
         ['findApplication', 'application', 'findOne'],
         ['countApplications', 'application', 'count'],
         ['insertApplication', 'application', 'insert'],
@@ -141,6 +173,14 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         ['updateStore', 'store', 'update'],
         ['findApplicant', 'user', 'findOne'],
         ['insertHeadManager', 'user', 'insert'],
+        ['updateStoreFile', 'file', 'update'],
+        ['deleteStoreHours', 'hour', 'delete'],
+        ['insertStoreHours', 'hour', 'insert'],
+        ['deleteStoreBreaks', 'break', 'delete'],
+        ['insertStoreBreaks', 'break', 'insert'],
+        ['countUnavailablePeriods', 'period', 'count'],
+        ['insertUnavailablePeriod', 'period', 'insert'],
+        ['deleteUnavailablePeriod', 'period', 'delete'],
     ] as const)('%s 실패는 통일 500', async (method, repo, fn) => {
         const fakes = makeRepository();
         fakes[repo][fn].mockRejectedValueOnce(new Error('db'));
@@ -149,13 +189,13 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     });
 });
 
-describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 · 신청 파일 삭제 · 매니저 상태 쿼리 — DB 연결 없이 SQL 빌드', () => {
+describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 · 신청 파일 삭제 · 매니저 상태 · 소속 업체 · 영업시간 · 브레이크타임 · 일시 예약불가 쿼리 — DB 연결 없이 SQL 빌드', () => {
     let dataSource: DataSource;
     let repository: StoreRepository;
 
     const APPLICATION_SELECT =
         'SELECT "a"."store_application_id" AS "a_store_application_id", "a"."user_id" AS "a_user_id", "a"."store_name" AS "a_store_name", "a"."business_number" AS "a_business_number", ' +
-        '"a"."owner_name" AS "a_owner_name", "a"."owner_phone" AS "a_owner_phone", "a"."phone" AS "a_phone", "a"."address" AS "a_address", "a"."address_detail" AS "a_address_detail", ' +
+        '"a"."owner_name" AS "a_owner_name", "a"."owner_phone" AS "a_owner_phone", "a"."head_manager_login_id" AS "a_head_manager_login_id", "a"."head_manager_login_pw" AS "a_head_manager_login_pw", "a"."phone" AS "a_phone", "a"."address" AS "a_address", "a"."address_detail" AS "a_address_detail", ' +
         '"a"."latitude" AS "a_latitude", "a"."longitude" AS "a_longitude", "a"."application_comment" AS "a_application_comment", "a"."reject_comment" AS "a_reject_comment", ' +
         '"a"."reviewed_at" AS "a_reviewed_at", "a"."created_at" AS "a_created_at", "a"."updated_at" AS "a_updated_at", "a"."store_application_state_id" AS "a_store_application_state_id", ' +
         '"a"."store_id" AS "a_store_id" FROM "t_store_application" "a"';
@@ -166,6 +206,17 @@ describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 ·
         '"f"."created_at" AS "created_at", "p"."is_private" AS "is_private" FROM "t_store_file" "f" INNER JOIN "t_store_file_purpose" "p" ON "p"."store_file_purpose_id" = "f"."store_file_purpose_id"';
 
     const FILE_ORDER = 'ORDER BY "f"."store_file_purpose_id" ASC, "f"."sort_order" ASC, "f"."created_at" ASC';
+
+    const STORE_SELECT =
+        'SELECT "s"."store_id" AS "s_store_id", "s"."store_code" AS "s_store_code", "s"."store_name" AS "s_store_name", "s"."business_number" AS "s_business_number", ' +
+        '"s"."owner_name" AS "s_owner_name", "s"."phone" AS "s_phone", "s"."address" AS "s_address", "s"."address_detail" AS "s_address_detail", "s"."latitude" AS "s_latitude", ' +
+        '"s"."longitude" AS "s_longitude", "s"."introduction" AS "s_introduction", "s"."store_detail" AS "s_store_detail", "s"."is_always_open" AS "s_is_always_open", ' +
+        '"s"."is_open" AS "s_is_open", "s"."maintenance_minutes" AS "s_maintenance_minutes", "s"."is_deleted" AS "s_is_deleted", "s"."delete_backup" AS "s_delete_backup", ' +
+        '"s"."created_at" AS "s_created_at", "s"."updated_at" AS "s_updated_at", "s"."store_state_id" AS "s_store_state_id" FROM "t_store" "s"';
+
+    const PERIOD_SELECT =
+        'SELECT "p"."store_unavailable_period_id" AS "p_store_unavailable_period_id", "p"."starts_at" AS "p_starts_at", "p"."ends_at" AS "p_ends_at", "p"."memo" AS "p_memo", ' +
+        '"p"."created_at" AS "p_created_at", "p"."updated_at" AS "p_updated_at", "p"."store_id" AS "p_store_id" FROM "t_store_unavailable_period" "p"';
 
     beforeAll(async () => {
         // 접속하지 않는다 — 엔티티 메타데이터만 만들어 QueryBuilder 가 SQL 을 조립하게 한다
@@ -198,11 +249,7 @@ describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 ·
 
         expect(parameters).toEqual(['ACTIVE', '%a\\_b%', 'ACTIVE', '%a\\_b%', 'ACTIVE', '%a\\_b%']);
         expect(sql.replace(/\s+/g, ' ')).toBe(
-            'SELECT "s"."store_id" AS "s_store_id", "s"."store_name" AS "s_store_name", "s"."business_number" AS "s_business_number", "s"."owner_name" AS "s_owner_name", ' +
-                '"s"."phone" AS "s_phone", "s"."address" AS "s_address", "s"."address_detail" AS "s_address_detail", "s"."latitude" AS "s_latitude", "s"."longitude" AS "s_longitude", ' +
-                '"s"."introduction" AS "s_introduction", "s"."store_detail" AS "s_store_detail", "s"."is_always_open" AS "s_is_always_open", "s"."is_open" AS "s_is_open", ' +
-                '"s"."maintenance_minutes" AS "s_maintenance_minutes", "s"."is_deleted" AS "s_is_deleted", "s"."delete_backup" AS "s_delete_backup", "s"."created_at" AS "s_created_at", ' +
-                '"s"."updated_at" AS "s_updated_at", "s"."store_state_id" AS "s_store_state_id" FROM "t_store" "s" ' +
+            `${STORE_SELECT} ` +
                 'WHERE (((("s"."store_state_id" = $1) AND ("s"."store_name" ILIKE $2))) OR ((("s"."store_state_id" = $3) AND ("s"."business_number" ILIKE $4))) OR ((("s"."store_state_id" = $5) AND ("s"."owner_name" ILIKE $6)))) ' +
                 'ORDER BY "s"."created_at" DESC LIMIT 10 OFFSET 20',
         );
@@ -244,5 +291,57 @@ describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 ·
 
         expect(parameters).toEqual(['BLOCK', '사유', 's1', 'MANAGER']);
         expect(sql).toBe('UPDATE "t_user" SET "state_id" = $1, "block_comment" = $2, "updated_at" = CURRENT_TIMESTAMP WHERE "store_id" = $3 AND "login_scope" = $4');
+    });
+
+    it.each([
+        [false, ''],
+        [true, ' FOR UPDATE OF s'],
+    ])('매니저의 소속 업체 (잠금 %s) — t_user 매니저 그룹 조인 · 탈퇴 업체 제외, 잠금이면 업체 행만', (lock, lockClause) => {
+        const [sql, parameters] = repository.buildStoreByManagerQuery('u1', lock).getQueryAndParameters();
+
+        expect(parameters).toEqual(['u1', 'MANAGER', 'LEAVE']);
+        expect(sql.replace(/\s+/g, ' ')).toBe(
+            `${STORE_SELECT} INNER JOIN "t_user" "u" ON "u"."store_id" = "s"."store_id" WHERE "u"."user_id" = $1 AND "u"."login_scope" = $2 AND "s"."store_state_id" <> $3${lockClause}`,
+        );
+    });
+
+    it('요일별 영업시간 — 업체 · 요일 순', () => {
+        const [sql, parameters] = repository.buildStoreHoursQuery('s1').getQueryAndParameters();
+
+        expect(parameters).toEqual(['s1']);
+        expect(sql.replace(/\s+/g, ' ')).toBe(
+            'SELECT "h"."store_hour_id" AS "h_store_hour_id", "h"."day_of_week" AS "h_day_of_week", "h"."is_closed" AS "h_is_closed", "h"."open_time" AS "h_open_time", ' +
+                '"h"."close_time" AS "h_close_time", "h"."created_at" AS "h_created_at", "h"."updated_at" AS "h_updated_at", "h"."store_id" AS "h_store_id" FROM "t_store_hour" "h" ' +
+                'WHERE (("h"."store_id" = $1)) ORDER BY "h"."day_of_week" ASC',
+        );
+    });
+
+    it('브레이크타임 — 업체 · 시작 시각 순, 요일 컬럼 없음', () => {
+        const [sql, parameters] = repository.buildStoreBreaksQuery('s1').getQueryAndParameters();
+
+        expect(parameters).toEqual(['s1']);
+        expect(sql.replace(/\s+/g, ' ')).toBe(
+            'SELECT "b"."store_break_id" AS "b_store_break_id", "b"."start_time" AS "b_start_time", "b"."end_time" AS "b_end_time", "b"."created_at" AS "b_created_at", ' +
+                '"b"."updated_at" AS "b_updated_at", "b"."store_id" AS "b_store_id" FROM "t_store_break" "b" WHERE (("b"."store_id" = $1)) ORDER BY "b"."start_time" ASC',
+        );
+    });
+
+    it('일시 예약불가 목록 — 끝나지 않은 것(종료 > 지금), 시작 순 · 페이지', () => {
+        const now = new Date('2026-11-01T00:00:00.000Z');
+
+        const [sql, parameters] = repository.buildUnavailablePeriodListQuery({store_id: 's1', ends_at: MoreThan(now)}, 20, 0).getQueryAndParameters();
+
+        expect(parameters).toEqual(['s1', now]);
+        expect(sql.replace(/\s+/g, ' ')).toBe(`${PERIOD_SELECT} WHERE (("p"."store_id" = $1) AND ("p"."ends_at" > $2)) ORDER BY "p"."starts_at" ASC LIMIT 20 OFFSET 0`);
+    });
+
+    it('일시 예약불가 겹침 — 다른 범위의 시작 < 새 종료 그리고 종료 > 새 시작', () => {
+        const startsAt = new Date('2026-11-02T00:00:00.000Z');
+        const endsAt = new Date('2026-11-02T09:00:00.000Z');
+
+        const [sql, parameters] = repository.buildUnavailablePeriodListQuery(buildUnavailablePeriodOverlapWhere('s1', startsAt, endsAt), 1, 0).getQueryAndParameters();
+
+        expect(parameters).toEqual(['s1', endsAt, startsAt]);
+        expect(sql.replace(/\s+/g, ' ')).toBe(`${PERIOD_SELECT} WHERE (("p"."store_id" = $1) AND ("p"."starts_at" < $2) AND ("p"."ends_at" > $3)) ORDER BY "p"."starts_at" ASC LIMIT 1 OFFSET 0`);
     });
 });

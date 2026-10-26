@@ -1,4 +1,4 @@
-import {INestApplication, ValidationPipe} from '@nestjs/common';
+import {BadRequestException, INestApplication, Type, ValidationPipe} from '@nestjs/common';
 import {APP_GUARD, APP_INTERCEPTOR, DiscoveryModule} from '@nestjs/core';
 import {Test, TestingModule} from '@nestjs/testing';
 import type {Mock} from 'vitest';
@@ -33,6 +33,9 @@ export const USER_ACTOR: Actor = {user_id: 'u'.repeat(32), auth_id: 'USER'};
 
 /** 총관리자 */
 export const ADMIN_ACTOR: Actor = {user_id: 'm'.repeat(32), auth_id: 'SUPER_ADMIN'};
+
+/** 업체 관리자 (매니저 그룹 — 업체 총관리자 · 업체 관리자 모두 같은 경로) */
+export const MANAGER_ACTOR: Actor = {user_id: 'h'.repeat(32), auth_id: 'MANAGER'};
 
 /** 입점 신청 ID */
 export const APPLICATION_ID = 'a'.repeat(32);
@@ -83,6 +86,18 @@ export function createStoreRepositoryMock(): StoreRepositoryMock {
         findApplicant: vi.fn(),
         insertHeadManager: vi.fn(),
         updateStoreManagers: vi.fn(),
+        updateStoreFile: vi.fn(),
+        findStoreByManager: vi.fn(),
+        findStoreHours: vi.fn().mockResolvedValue([]),
+        deleteStoreHours: vi.fn(),
+        insertStoreHours: vi.fn(),
+        findStoreBreaks: vi.fn().mockResolvedValue([]),
+        deleteStoreBreaks: vi.fn(),
+        insertStoreBreaks: vi.fn(),
+        countUnavailablePeriods: vi.fn(),
+        findUnavailablePeriodList: vi.fn(),
+        insertUnavailablePeriod: vi.fn(),
+        deleteUnavailablePeriod: vi.fn().mockResolvedValue(true),
     };
 }
 
@@ -279,6 +294,90 @@ export function storeRow(override: Record<string, unknown> = {}): Record<string,
         maintenance_minutes: 0,
         is_deleted: 0,
         delete_backup: null,
+        created_at: FIXED_TIME,
+        updated_at: FIXED_TIME,
+        ...override,
+    };
+}
+
+/**
+ * 게이트웨이와 같은 ValidationPipe 설정으로 본문을 검증한다 — 큐 경로 DTO 는 게이트웨이에서만 검증되므로(서비스 큐 컨트롤러는 재검증하지 않는다) 중첩 검증 · 점 경로를 여기서 확인한다.
+ *
+ * @param metatype 본문 DTO 클래스
+ * @param body 요청 본문
+ * @returns 실패 본문 또는 null(통과)
+ */
+export async function validateBody(metatype: Type<unknown>, body: unknown): Promise<Record<string, unknown> | null> {
+    const pipe = new ValidationPipe({transform: true, forbidNonWhitelisted: true, exceptionFactory: validationExceptionFactory});
+    try {
+        await pipe.transform(body, {type: 'body', metatype});
+        return null;
+    } catch (error) {
+        return (error as BadRequestException).getResponse() as Record<string, unknown>;
+    }
+}
+
+/**
+ * 업체 사진 행 (공개 · 업체에 붙음)
+ *
+ * @param override 바꿀 필드
+ * @returns 파일 행
+ */
+export function imageRow(override: Partial<StoreFileRow> = {}): StoreFileRow {
+    return fileRow({
+        store_file_purpose_id: 'STORE_IMAGE',
+        store_application_id: null,
+        store_id: STORE_ID,
+        file_key: `store/${STORE_ID}/${'2'.repeat(32)}.jpg`,
+        file_name: '사진.jpg',
+        is_private: 0,
+        ...override,
+    });
+}
+
+/**
+ * 요일 영업시간 행 (time 컬럼은 'HH:mm:ss' 로 온다)
+ *
+ * @param override 바꿀 필드
+ * @returns 영업시간 행
+ */
+export function hourRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        store_hour_id: 'd'.repeat(32),
+        store_id: STORE_ID,
+        day_of_week: 1,
+        is_closed: 0,
+        open_time: '09:00:00',
+        close_time: '18:00:00',
+        created_at: FIXED_TIME,
+        updated_at: FIXED_TIME,
+        ...override,
+    };
+}
+
+/**
+ * 브레이크타임 행
+ *
+ * @param override 바꿀 필드
+ * @returns 브레이크타임 행
+ */
+export function breakRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {store_break_id: 'e'.repeat(32), store_id: STORE_ID, start_time: '12:00:00', end_time: '13:00:00', created_at: FIXED_TIME, updated_at: FIXED_TIME, ...override};
+}
+
+/**
+ * 일시 예약불가 행
+ *
+ * @param override 바꿀 필드
+ * @returns 일시 예약불가 행
+ */
+export function periodRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        store_unavailable_period_id: '9'.repeat(32),
+        store_id: STORE_ID,
+        starts_at: new Date('2026-11-02T00:00:00.000Z'),
+        ends_at: new Date('2026-11-02T09:00:00.000Z'),
+        memo: null,
         created_at: FIXED_TIME,
         updated_at: FIXED_TIME,
         ...override,

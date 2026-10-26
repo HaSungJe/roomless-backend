@@ -34,7 +34,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | lib | 내용 | 쓰는 곳 |
 |---|---|---|
 | `libs/account` | 계정 공통 — `issueAccessAndRefresh`(utils/token) · SMS 인증번호 생성 · 상태 검사 · 기록 엔티티 · 본문 · 하루 한도(utils/sms-verification) · 임시 비밀번호(utils/password) · `account.constants.ts`(SMS 용도 · 한도 · 공통 메시지) | user-service · admin-service |
-| `libs/common` | `ApiFailResultDto` · `toFailResult` · `CustomErrorFilter` · `validationExceptionFactory` · `PaginationDto`/`PaginationResultDto` · 순수 util(bcrypt/hash/cipher/jwt/validation/fail-result/retry/pagination/env/id/kst) · `InternalAuthGuard` · `@ClientIp` · `@InternalActor`(정의만, 사용 0) | 모든 앱 |
+| `libs/common` | `ApiFailResultDto` · `toFailResult` · `CustomErrorFilter` · `validationExceptionFactory` · `PaginationDto`/`PaginationResultDto` · 순수 util(bcrypt/hash/cipher/jwt/validation/fail-result/retry/pagination/env/id/dayjs/search) · `InternalAuthGuard` · `@ClientIp` · `@InternalActor`(정의만, 사용 0) | 모든 앱 |
 | `libs/contracts` | 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type · 큐 이름 · 내부 경로 상수, 메시지 봉투, `Actor`, 내부 헤더, SSE 이벤트 이름 | 모든 앱 |
 | `libs/database` | `entities/<domain>/` · `entities.ts`(ENTITIES) · `migrations/` · `migrations.ts`(MIGRATIONS) · `typeorm.config.ts` · `DatabaseModule`(TypeORM + 트랜잭션, 전역) · `JobLockService`(`job-lock/`) · `isUniqueViolation`/`isForeignKeyViolation` · seeder · `data-source`(마이그레이션 실행용) | DB 소유 서비스 |
 | `libs/integration` | 외부 연동 포트 `SMS_SENDER`(Amazon SNS) · `STORAGE_GATEWAY`(Amazon S3, presigned URL) · `SmsModule` · `StorageModule`(전역) — [integration.md](integration.md) · [guides/aws-setup.md](guides/aws-setup.md) | 포트를 쓰는 서비스(SMS: user-service 휴대폰 인증 · 아이디 찾기, admin-service 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내 / 파일: admin-service 업체 정보 파일) |

@@ -33,7 +33,7 @@ async login(@Body() dto: UserLoginDto, @Ip() ip: string): Promise<UserLoginResul
 ```
 
 - 실측 순서(인증 없는 핸들러 — 그룹별 로그인 · 재발급 6개): **HTTP verb → `@HttpCode(200)` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse` 또는 `@ApiForbiddenResponse` → `@ApiNotFoundResponse` → `@ApiServiceUnavailableResponse` → `@ApiInternalServerErrorResponse`**.
-- 인증이 붙는 동기 핸들러(store 조회 · 업로드 주소 — store.controller.ts): HTTP verb → `@UseGuards`(그 그룹의 가드, 그룹 안 권한이면 `RolesGuard` 를 뒤에) → `@Roles`(그룹 안 권한 시 — 업체 관리자 목록 · 상세) → `@HttpCode(200)` → `@ApiBearerAuth()` → `@ApiOperation` → `@ApiBody`(입력 시) → `@ApiOkResponse` → 에러 응답들.
+- 인증이 붙는 동기 핸들러(store 조회 · 업로드 주소 · 내 업체 — store.controller.ts): HTTP verb → `@UseGuards`(그 그룹의 가드 — 내 업체 `/mine…` 은 매니저 가드, 그룹 안 권한이면 `RolesGuard` 를 뒤에) → `@Roles`(그룹 안 권한 시 — 업체 관리자 목록 · 상세) → `@HttpCode(200)` → `@ApiBearerAuth()` → `@ApiOperation` → `@ApiBody`(입력 시) → `@ApiOkResponse` → 에러 응답들.
 - **목록(GET + `@Query()`)** — 컨트롤러가 Query DTO 를 `new` 로 만들어 `query` 옵션으로 넘긴다([conventions.md](conventions.md) "Query DTO"). `InternalHttpClient` 는 undefined · null 값을 빼고 쿼리 문자열로 붙인다. 파라미터가 있는 경로는 contracts 의 경로 함수를 쓴다.
 
 ```ts
@@ -72,8 +72,9 @@ async leave(@PassportActor() actor: Actor, @Body() dto: UserLeaveDto, @Ip() ip: 
 }
 ```
 
-- 순서: HTTP verb → `@UseGuards`(인증 시, 그 그룹의 가드) → `@Roles`(그룹 안 권한 시 — 사례 없음) → `@ApiBearerAuth()`(인증 시) → `@ApiOperation` → `@ApiBody`(입력 있을 때) → `@ApiProduces('text/event-stream')` → `@ApiOkResponse` → 에러 응답들(`@ApiForbiddenResponse` 는 `@ApiUnauthorizedResponse` 뒤).
+- 순서: HTTP verb → `@UseGuards`(인증 시, 그 그룹의 가드) → `@Roles`(그룹 안 권한 시 — 업체 관리자 staff 라우트, manager.controller.queue.ts) → `@ApiBearerAuth()`(인증 시) → `@ApiOperation` → `@ApiBody`(입력 있을 때) → `@ApiProduces('text/event-stream')` → `@ApiOkResponse` → 에러 응답들(`@ApiForbiddenResponse` 는 `@ApiUnauthorizedResponse` 뒤).
 - `@HttpCode` 없음(스트림이 200 을 직접 연다). `@ApiProduces('text/event-stream')` 필수.
+- 메서드: 통째로 교체하는 쓰기는 `PUT`(내 업체 영업시간 · 브레이크타임 · 사진 순서 — 요청 본문이 그 설정 전체다), 일부만 바꾸는 쓰기는 `PATCH`, 하위 자원 추가는 `POST`, 삭제는 `DELETE`.
 - `@ApiOkResponse({type: X})` 는 **done 이벤트의 data** 를 뜻한다. 결과가 void 면 생략.
 - 에러 응답 데코레이터는 스트림이 열리기 전의 실패(400 검증 · 401 · 503)와 failed 이벤트의 `status_code` 를 함께 나타낸다.
 - 시그니처 세 형태(인증 + 입력 / 비인증 `actor: null` / 입력 없음 `payload: {}`) — [conventions.md](conventions.md). 본문은 `dispatch` 한 줄.

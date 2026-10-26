@@ -1,8 +1,9 @@
 import {BadRequestException, Inject, Injectable, NotFoundException} from '@nestjs/common';
 import {Transactional} from '@nestjs-cls/transactional';
-import {In} from 'typeorm';
+import {In, MoreThan} from 'typeorm';
 import type {FindOptionsWhere} from 'typeorm';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
+import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import {generateId} from '@app/common/utils/id.js';
 import {Pagination} from '@app/common/utils/pagination.js';
 import {createValidationError} from '@app/common/utils/validation.js';
@@ -16,12 +17,26 @@ import type {StoreApplicationRejectDto} from '@app/contracts/store/dto/store-app
 import type {StoreApplicationDto, StoreApplicationResultDto} from '@app/contracts/store/dto/store-application.dto.js';
 import type {StoreDetailFileResultDto, StoreDetailResultDto} from '@app/contracts/store/dto/store-detail.dto.js';
 import type {StoreListDto, StoreListResultDto} from '@app/contracts/store/dto/store-list.dto.js';
+import type {StoreMineBreaksDto} from '@app/contracts/store/dto/store-mine-breaks.dto.js';
+import type {StoreMineFileOrderDto} from '@app/contracts/store/dto/store-mine-file-order.dto.js';
+import type {StoreMineFileUploadUrlDto, StoreMineFileUploadUrlResultDto} from '@app/contracts/store/dto/store-mine-file-upload-url.dto.js';
+import type {StoreMineFileDto, StoreMineFileResultDto} from '@app/contracts/store/dto/store-mine-file.dto.js';
+import type {StoreMineHoursDto} from '@app/contracts/store/dto/store-mine-hours.dto.js';
+import type {StoreMineMaintenanceDto} from '@app/contracts/store/dto/store-mine-maintenance.dto.js';
+import type {StoreMineOpenDto} from '@app/contracts/store/dto/store-mine-open.dto.js';
+import type {StoreMineProfileDto} from '@app/contracts/store/dto/store-mine-profile.dto.js';
+import type {StoreMineUnavailablePeriodListDto, StoreMineUnavailablePeriodListResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period-list.dto.js';
+import type {StoreMineUnavailablePeriodDto, StoreMineUnavailablePeriodResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period.dto.js';
+import type {StoreMineFileItemResultDto, StoreMineResultDto} from '@app/contracts/store/dto/store-mine.dto.js';
 import type {StoreMyApplicationListDto, StoreMyApplicationListResultDto} from '@app/contracts/store/dto/store-my-application-list.dto.js';
 import type {StoreMyApplicationFileResultDto, StoreMyApplicationResultDto} from '@app/contracts/store/dto/store-my-application.dto.js';
 import type {StoreStateDto} from '@app/contracts/store/dto/store-state.dto.js';
 import type {StoreUpdateDto} from '@app/contracts/store/dto/store-update.dto.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
+import {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import {StoreFileEntity} from '@app/database/entities/store/store-file.entity.js';
+import {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js';
+import {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {SMS_SENDER, STORAGE_GATEWAY} from '@app/integration/integration.symbols.js';
@@ -32,38 +47,60 @@ import {
     STORE_APPLICATION_NOT_WAITING_MESSAGE,
     STORE_APPLICATION_STATE,
     STORE_BUSINESS_NUMBER_TAKEN_MESSAGE,
+    STORE_DATETIME_FORMAT,
+    STORE_FILE_KEY_INVALID_MESSAGE,
     STORE_FILE_LIMIT,
     STORE_FILE_LIMIT_MESSAGE,
+    STORE_FILE_NOT_FOUND_MESSAGE,
+    STORE_FILE_NOT_UPLOADED_MESSAGE,
     STORE_FILE_PURPOSE,
     STORE_FILE_PURPOSE_INVALID_MESSAGE,
     STORE_LEAVE_BLOCK_COMMENT,
     STORE_LEAVE_LOCKED_MESSAGE,
+    STORE_MANAGER_STORE_NOT_FOUND_MESSAGE,
     STORE_NOT_FOUND_MESSAGE,
+    STORE_SAME_STATE_MESSAGE,
     STORE_STATE,
 } from './store.constants.js';
 import {STORE_REPOSITORY} from './store.symbols.js';
 import {
     buildApplicationFileKey,
     buildApplicationListWhere,
+    buildStoreDetail,
+    buildStoreFileKey,
     buildStoreListWhere,
+    buildUnavailablePeriodOverlapWhere,
+    filterStoreImages,
+    hasEveryDayOnce,
+    hasOverlappingBreaks,
     isApplicationFileKey,
+    isSameIdSet,
+    isSameTimeOfDay,
+    isStoreFileKey,
+    nextSortOrder,
     storeApprovedText,
     toApplicant,
     toApplicationDetail,
     toApplicationDetailFile,
     toApplicationListItem,
+    toMineBreakItem,
+    toMineDetail,
+    toMineFileItem,
+    toMineHourItem,
     toMyApplicationDetail,
     toMyApplicationFile,
     toMyApplicationItem,
     toStoreDetail,
     toStoreDetailFile,
     toStoreListItem,
+    toUnavailablePeriodItem,
 } from './store.util.js';
 
 /**
- * store 도메인 비즈니스 로직 (헥사고날의 안쪽) — 입점 신청(이용자) · 신청 관리 · 업체 관리(총관리자).
+ * store 도메인 비즈니스 로직 (헥사고날의 안쪽) — 입점 신청(이용자) · 신청 관리 · 업체 관리(총관리자) · 내 업체 설정(업체 관리자).
  * 내부 HTTP 컨트롤러와 RabbitMQ 핸들러가 같은 메서드를 호출한다. public 메서드 1개 = API 1개.
- * 로그인 그룹(이용자 · 관리자)은 게이트웨이 가드가 가른다 — 이 service 는 actor 의 user_id 만 받는다.
+ * 로그인 그룹(이용자 · 매니저 · 관리자)은 게이트웨이 가드가 가른다 — 이 service 는 actor 의 user_id 만 받는다.
+ * 내 업체 설정은 actor 로 소속 업체를 찾고(findStoreByManager), 쓰기는 업체 행을 잠가 같은 업체의 설정 쓰기를 한 번에 하나로 한다.
  * 업체 정보 파일의 열람 주소는 용도의 is_private 로 고른다 — 1 이면 서명된 열람 주소, 0 이면 CDN 공개 주소.
  */
 @Injectable()
@@ -237,7 +274,7 @@ export class StoreService {
 
         // 3. 키 모양 — 그 신청 · 용도 · 형식으로 발급한 키만
         if (!isApplicationFileKey(dto.file_key, purpose.is_private, store_application_id, dto.content_type)) {
-            throw new BadRequestException({message: '업로드 주소로 받은 저장 키가 아닙니다.', validation_errors: createValidationError('file_key', '업로드 주소로 받은 저장 키가 아닙니다.')});
+            throw new BadRequestException({message: STORE_FILE_KEY_INVALID_MESSAGE, validation_errors: createValidationError('file_key', STORE_FILE_KEY_INVALID_MESSAGE)});
         }
 
         // 4. 용도별 한도
@@ -249,7 +286,7 @@ export class StoreService {
         // 5. 실제로 올라갔는지
         const uploaded = await this.storageGateway.exists(dto.file_key);
         if (!uploaded) {
-            throw new BadRequestException({message: '파일이 아직 올라가지 않았습니다. 업로드 후 다시 시도해주세요.'});
+            throw new BadRequestException({message: STORE_FILE_NOT_UPLOADED_MESSAGE});
         }
 
         // 6. 파일 등록 — 신청에 붙인다(업체는 승인 때). 정렬 순서 = 지금 개수
@@ -287,7 +324,7 @@ export class StoreService {
         // 2. 그 신청의 파일
         const file = await this.storeRepository.findStoreFile({store_file_id, store_application_id});
         if (!file) {
-            throw new NotFoundException({message: '파일을 찾을 수 없습니다.'});
+            throw new NotFoundException({message: STORE_FILE_NOT_FOUND_MESSAGE});
         }
 
         // 3. 행 삭제 → 저장소 파일 삭제(마지막)
@@ -572,7 +609,7 @@ export class StoreService {
             throw new BadRequestException({message: STORE_LEAVE_LOCKED_MESSAGE});
         }
         if (store.store_state_id === dto.store_state_id) {
-            throw new BadRequestException({message: '이미 같은 상태입니다.'});
+            throw new BadRequestException({message: STORE_SAME_STATE_MESSAGE});
         }
 
         // 2. 탈퇴 — 매니저 정지 · 사업자번호 마스킹
@@ -586,5 +623,427 @@ export class StoreService {
 
         // 3. 업체 상태
         await this.storeRepository.updateStore({store_id}, storeEntity);
+    }
+
+    /**
+     * 내 업체 상세 (업체 관리자) — 업체 정보 · 업체코드 · 영업 설정 · 요일별 영업시간 · 브레이크타임 · 업체 정보 파일 열람 주소. (내부 HTTP: GET /internal/v1/admin-service/store/mine)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @returns 내 업체 상세
+     */
+    async getMyStore(user_id: string): Promise<StoreMineResultDto> {
+        const store = await this.storeRepository.findStoreByManager(user_id, false);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        const hours = await this.storeRepository.findStoreHours(store.store_id);
+        const breaks = await this.storeRepository.findStoreBreaks(store.store_id);
+        const rows = await this.storeRepository.findStoreFileRows(store.store_id);
+        const files: StoreMineFileItemResultDto[] = [];
+        for (const row of rows) {
+            const file_url = Number(row.is_private) === 1 ? (await this.storageGateway.createDownloadUrl(row.file_key)).download_url : this.storageGateway.getPublicUrl(row.file_key);
+            files.push(toMineFileItem(row, file_url));
+        }
+        return toMineDetail(store, hours.map(toMineHourItem), breaks.map(toMineBreakItem), files);
+    }
+
+    /**
+     * 내 업체 소개 수정 (업체 관리자) — 소개 · 연락처 · 편의시설. 편의시설은 보낸 항목으로 통째로 바꾼다(알려진 항목만). (RabbitMQ: admin.store.mine-profile)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 소개 · 연락처 · 편의시설
+     */
+    @Transactional()
+    async updateMyStoreProfile(user_id: string, dto: StoreMineProfileDto): Promise<void> {
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        const storeEntity = new StoreEntity();
+        storeEntity.introduction = dto.introduction ?? null;
+        storeEntity.phone = dto.phone;
+        storeEntity.store_detail = buildStoreDetail(dto.store_detail);
+        await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
+    }
+
+    /**
+     * 내 업체 사진 업로드 주소 (업체 관리자) — 업체 사진 한도(승인 때 넘어온 사진 포함) 안에서만. 키는 서버가 용도의 비공개 여부로 만든다. (내부 HTTP: POST /internal/v1/admin-service/store/mine/file/upload-url)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto MIME 타입
+     * @returns 저장 키 · 업로드 주소 · 만료 시각
+     */
+    async createMyStoreFileUploadUrl(user_id: string, dto: StoreMineFileUploadUrlDto): Promise<StoreMineFileUploadUrlResultDto> {
+        // 1. 내 업체
+        const store = await this.storeRepository.findStoreByManager(user_id, false);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 업체 사진 용도 (비공개 여부)
+        const purpose = await this.storeRepository.findStoreFilePurpose(STORE_FILE_PURPOSE.STORE_IMAGE);
+        if (!purpose) {
+            throw new BadRequestException({message: STORE_FILE_PURPOSE_INVALID_MESSAGE});
+        }
+
+        // 3. 한도
+        const count = await this.storeRepository.countStoreFiles({store_id: store.store_id, store_file_purpose_id: STORE_FILE_PURPOSE.STORE_IMAGE});
+        if (count >= STORE_FILE_LIMIT[STORE_FILE_PURPOSE.STORE_IMAGE]) {
+            throw new BadRequestException({message: STORE_FILE_LIMIT_MESSAGE});
+        }
+
+        // 4. 키 → 업로드 주소
+        const file_key = buildStoreFileKey(purpose.is_private, store.store_id, dto.content_type);
+        const upload = await this.storageGateway.createUploadUrl({key: file_key, content_type: dto.content_type});
+        return {file_key, upload_url: upload.upload_url, expires_at: upload.expires_at.toISOString()};
+    }
+
+    /**
+     * 내 업체 사진 등록 (업체 관리자) — 업로드 주소로 올린 사진의 키를 업체에 붙인다(신청 없음). (RabbitMQ: admin.store.mine-file)
+     * - 키 모양(그 업체 · 용도의 비공개 여부 · 형식) · 한도 · 실제 업로드(exists) 확인
+     * - 정렬 순서는 지금 사진의 가장 큰 순서 + 1 — 삭제로 빈 번호가 있어도 마지막에 붙는다
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 키 · 파일명 · MIME 타입
+     * @returns 업체 정보 파일 ID
+     */
+    @Transactional()
+    async addMyStoreFile(user_id: string, dto: StoreMineFileDto): Promise<StoreMineFileResultDto> {
+        // 1. 내 업체 (잠금 — 한도 확인 · 등록을 한 번에 하나)
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 업체 사진 용도 (비공개 여부)
+        const purpose = await this.storeRepository.findStoreFilePurpose(STORE_FILE_PURPOSE.STORE_IMAGE);
+        if (!purpose) {
+            throw new BadRequestException({message: STORE_FILE_PURPOSE_INVALID_MESSAGE});
+        }
+
+        // 3. 키 모양 — 그 업체 · 용도 · 형식으로 발급한 키만
+        if (!isStoreFileKey(dto.file_key, purpose.is_private, store.store_id, dto.content_type)) {
+            throw new BadRequestException({message: STORE_FILE_KEY_INVALID_MESSAGE, validation_errors: createValidationError('file_key', STORE_FILE_KEY_INVALID_MESSAGE)});
+        }
+
+        // 4. 한도
+        const images = filterStoreImages(await this.storeRepository.findStoreFileRows(store.store_id));
+        if (images.length >= STORE_FILE_LIMIT[STORE_FILE_PURPOSE.STORE_IMAGE]) {
+            throw new BadRequestException({message: STORE_FILE_LIMIT_MESSAGE});
+        }
+
+        // 5. 실제로 올라갔는지
+        const uploaded = await this.storageGateway.exists(dto.file_key);
+        if (!uploaded) {
+            throw new BadRequestException({message: STORE_FILE_NOT_UPLOADED_MESSAGE});
+        }
+
+        // 6. 사진 등록 — 업체에만 붙는다, 마지막 순서
+        const file = new StoreFileEntity();
+        file.store_file_id = generateId();
+        file.store_file_purpose_id = STORE_FILE_PURPOSE.STORE_IMAGE;
+        file.store_application_id = null;
+        file.store_id = store.store_id;
+        file.file_key = dto.file_key;
+        file.file_name = dto.file_name;
+        file.content_type = dto.content_type;
+        file.sort_order = nextSortOrder(images);
+        await this.storeRepository.insertStoreFile(file);
+        return {store_file_id: file.store_file_id};
+    }
+
+    /**
+     * 내 업체 사진 삭제 (업체 관리자) — 그 업체의 업체 사진만(사업자등록증은 지울 수 없어 없는 파일과 같은 404). 행을 지운 뒤 저장소 파일을 지운다(마지막). 남은 사진의 순서 번호는 그대로. (RabbitMQ: admin.store.mine-file-delete)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param store_file_id 업체 정보 파일 ID
+     */
+    @Transactional()
+    async removeMyStoreFile(user_id: string, store_file_id: string): Promise<void> {
+        // 1. 내 업체 (잠금)
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 그 업체의 업체 사진
+        const file = await this.storeRepository.findStoreFile({store_file_id, store_id: store.store_id, store_file_purpose_id: STORE_FILE_PURPOSE.STORE_IMAGE});
+        if (!file) {
+            throw new NotFoundException({message: STORE_FILE_NOT_FOUND_MESSAGE});
+        }
+
+        // 3. 행 삭제 → 저장소 파일 삭제(마지막)
+        await this.storeRepository.deleteStoreFile({store_file_id});
+        await this.storageGateway.remove(file.file_key);
+    }
+
+    /**
+     * 내 업체 사진 순서 변경 (업체 관리자) — 지금 업체 사진 ID 전부를 원하는 순서로 받아 0 부터 다시 매긴다(가장 앞이 대표). (RabbitMQ: admin.store.mine-file-order)
+     * - 빠지거나 남거나 겹치면 400 (validation_errors.store_file_ids)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 업체 사진 ID 순서
+     */
+    @Transactional()
+    async reorderMyStoreFiles(user_id: string, dto: StoreMineFileOrderDto): Promise<void> {
+        // 1. 내 업체 (잠금 — 등록 · 삭제와 엇갈리지 않게)
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 지금 업체 사진 전부를 한 번씩
+        const images = filterStoreImages(await this.storeRepository.findStoreFileRows(store.store_id));
+        if (
+            !isSameIdSet(
+                dto.store_file_ids,
+                images.map((row) => row.store_file_id),
+            )
+        ) {
+            throw new BadRequestException({
+                message: '업체 사진 전체를 한 번씩 원하는 순서로 보내주세요.',
+                validation_errors: createValidationError('store_file_ids', '업체 사진 전체를 한 번씩 원하는 순서로 보내주세요.'),
+            });
+        }
+
+        // 3. 받은 순서대로 0 부터
+        for (const [index, store_file_id] of dto.store_file_ids.entries()) {
+            const file = new StoreFileEntity();
+            file.sort_order = index;
+            await this.storeRepository.updateStoreFile({store_file_id}, file);
+        }
+    }
+
+    /**
+     * 내 업체 영업시간 설정 (업체 관리자) — 연중무휴 여부 + 요일별 영업시간을 통째로 교체한다(요일 행을 지우고 다시 넣는다). (RabbitMQ: admin.store.mine-hours)
+     * - 연중무휴 1 → 요일 행을 모두 지운다(hours 가 비어 있지 않으면 400). 연중무휴 0 → 일 ~ 토 7개가 한 번씩(아니면 400)
+     * - 휴무가 아닌 요일은 시작 · 마감 둘 다(DTO 짝 필드), 휴무면 둘 다 NULL 로 저장한다(CHK_StoreHour_OpenCloseTime)
+     * - 시작 = 마감은 400 — 24시간은 연중무휴로만(사용자 결정 2026-10-27). 마감이 시작보다 이르면 다음 날 마감
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 연중무휴 여부 · 요일별 영업시간
+     */
+    @Transactional()
+    async replaceMyStoreHours(user_id: string, dto: StoreMineHoursDto): Promise<void> {
+        // 1. 내 업체 (잠금 — 교체 두 건이 엇갈리지 않게)
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 연중무휴 ↔ 요일별 영업시간
+        if (dto.is_always_open === 1 && dto.hours.length > 0) {
+            throw new BadRequestException({
+                message: '24시간 연중무휴면 요일별 영업시간을 비워주세요.',
+                validation_errors: createValidationError('hours', '24시간 연중무휴면 요일별 영업시간을 비워주세요.'),
+            });
+        }
+        if (dto.is_always_open === 0 && !hasEveryDayOnce(dto.hours)) {
+            throw new BadRequestException({
+                message: '일 ~ 토 7개 요일의 영업시간을 한 번씩 입력해주세요.',
+                validation_errors: createValidationError('hours', '일 ~ 토 7개 요일의 영업시간을 한 번씩 입력해주세요.'),
+            });
+        }
+
+        // 3. 영업하는 요일의 시작 = 마감
+        const sameIndex = dto.hours.findIndex((hour) => hour.is_closed !== 1 && hour.open_time !== undefined && hour.close_time !== undefined && isSameTimeOfDay(hour.open_time, hour.close_time));
+        if (sameIndex >= 0) {
+            throw new BadRequestException({
+                message: '영업 시작과 마감 시각이 같을 수 없습니다. 24시간 영업은 연중무휴로 설정해주세요.',
+                validation_errors: createValidationError(`hours.${sameIndex}.close_time`, '영업 시작과 마감 시각이 같을 수 없습니다. 24시간 영업은 연중무휴로 설정해주세요.'),
+            });
+        }
+
+        // 4. 교체 — 요일 행 삭제 → 다시 넣기(연중무휴면 넣지 않는다) → 연중무휴 여부
+        await this.storeRepository.deleteStoreHours({store_id: store.store_id});
+        const entities: StoreHourEntity[] = [];
+        for (const hour of dto.hours) {
+            const entity = new StoreHourEntity();
+            entity.store_hour_id = generateId();
+            entity.store_id = store.store_id;
+            entity.day_of_week = hour.day_of_week;
+            entity.is_closed = hour.is_closed;
+            entity.open_time = hour.is_closed === 1 ? null : (hour.open_time ?? null);
+            entity.close_time = hour.is_closed === 1 ? null : (hour.close_time ?? null);
+            entities.push(entity);
+        }
+        if (entities.length > 0) {
+            await this.storeRepository.insertStoreHours(entities);
+        }
+        const storeEntity = new StoreEntity();
+        storeEntity.is_always_open = dto.is_always_open;
+        await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
+    }
+
+    /**
+     * 내 업체 브레이크타임 설정 (업체 관리자) — 매일 같은 브레이크타임 목록을 통째로 교체한다(빈 배열이면 모두 지운다). (RabbitMQ: admin.store.mine-breaks)
+     * - 시작 = 마감은 400. 마감이 시작보다 이르면 다음 날까지(23:30 ~ 00:00 · 23:00 ~ 02:00)
+     * - 서로 겹치면 400 — 반열린 구간이라 끝점이 맞닿는 것(09:00 ~ 09:30 + 09:30 ~ 10:00)은 된다(사용자 결정 2026-10-27)
+     * - 영업시간 밖이어도 막지 않는다 — 예약 가능 시간 계산(Phase 17)에서 빠질 뿐이다
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 브레이크타임 목록
+     */
+    @Transactional()
+    async replaceMyStoreBreaks(user_id: string, dto: StoreMineBreaksDto): Promise<void> {
+        // 1. 내 업체 (잠금 — 교체 두 건이 합쳐져 겹치지 않게)
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 시작 = 마감
+        const sameIndex = dto.breaks.findIndex((item) => isSameTimeOfDay(item.start_time, item.end_time));
+        if (sameIndex >= 0) {
+            throw new BadRequestException({
+                message: '브레이크타임의 시작과 마감 시각이 같을 수 없습니다.',
+                validation_errors: createValidationError(`breaks.${sameIndex}.end_time`, '브레이크타임의 시작과 마감 시각이 같을 수 없습니다.'),
+            });
+        }
+
+        // 3. 서로 겹침
+        if (hasOverlappingBreaks(dto.breaks)) {
+            throw new BadRequestException({message: '브레이크타임이 서로 겹칩니다.', validation_errors: createValidationError('breaks', '브레이크타임이 서로 겹칩니다.')});
+        }
+
+        // 4. 교체 — 삭제 → 다시 넣기
+        await this.storeRepository.deleteStoreBreaks({store_id: store.store_id});
+        const entities: StoreBreakEntity[] = [];
+        for (const item of dto.breaks) {
+            const entity = new StoreBreakEntity();
+            entity.store_break_id = generateId();
+            entity.store_id = store.store_id;
+            entity.start_time = item.start_time;
+            entity.end_time = item.end_time;
+            entities.push(entity);
+        }
+        if (entities.length > 0) {
+            await this.storeRepository.insertStoreBreaks(entities);
+        }
+    }
+
+    /**
+     * 내 업체 정비시간 설정 (업체 관리자) — 퇴실 후 다음 이용까지 호실을 막는 분. (RabbitMQ: admin.store.mine-maintenance)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 정비시간(분)
+     */
+    @Transactional()
+    async changeMyStoreMaintenance(user_id: string, dto: StoreMineMaintenanceDto): Promise<void> {
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        const storeEntity = new StoreEntity();
+        storeEntity.maintenance_minutes = dto.maintenance_minutes;
+        await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
+    }
+
+    /**
+     * 내 업체 영업중 여부 변경 (업체 관리자) — 0 이면 연중무휴 · 영업시간과 무관하게 영업중 아님. 같은 값이면 400. (RabbitMQ: admin.store.mine-open)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 영업중 여부
+     */
+    @Transactional()
+    async changeMyStoreOpen(user_id: string, dto: StoreMineOpenDto): Promise<void> {
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        if (store.is_open === dto.is_open) {
+            throw new BadRequestException({message: STORE_SAME_STATE_MESSAGE});
+        }
+        const storeEntity = new StoreEntity();
+        storeEntity.is_open = dto.is_open;
+        await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
+    }
+
+    /**
+     * 내 업체 일시 예약불가 목록 (업체 관리자) — 끝나지 않은 것(종료 일시가 지금 이후)만, 시작 순. (내부 HTTP: GET /internal/v1/admin-service/store/mine/unavailable-period)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 페이지
+     * @returns 목록 · 페이지 정보
+     */
+    async getMyStoreUnavailablePeriodList(user_id: string, dto: StoreMineUnavailablePeriodListDto): Promise<StoreMineUnavailablePeriodListResultDto> {
+        const store = await this.storeRepository.findStoreByManager(user_id, false);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        const where: FindOptionsWhere<StoreUnavailablePeriodEntity> = {store_id: store.store_id, ends_at: MoreThan(new Date())};
+        const total_count = await this.storeRepository.countUnavailablePeriods(where);
+        const pagination = new Pagination({...dto, total_count});
+        const periods = await this.storeRepository.findUnavailablePeriodList(where, pagination.limit, pagination.offset);
+        return {list: periods.map(toUnavailablePeriodItem), pagination: pagination.getPagination()};
+    }
+
+    /**
+     * 내 업체 일시 예약불가 등록 (업체 관리자) — 한국 시각 분 단위 시작 ~ 종료 일시 동안 예약을 받지 않는다. (RabbitMQ: admin.store.mine-unavailable-period)
+     * - 없는 날짜(02-30) · 시작 ≥ 종료 · 이미 끝난 범위(종료 ≤ 지금)는 400. 시작이 과거인 진행 중 범위는 된다
+     * - 그 업체의 다른 일시 예약불가와 겹치면 400 — 반열린 구간이라 맞닿는 것은 된다(사용자 결정 2026-10-27)
+     * - 걸리는 기존 예약은 취소하지 않고 특수 표시한다 — 예약 기능(Phase 17)이 생길 때
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 시작 · 종료 일시 · 메모
+     * @returns 일시 예약불가 ID
+     */
+    @Transactional()
+    async addMyStoreUnavailablePeriod(user_id: string, dto: StoreMineUnavailablePeriodDto): Promise<StoreMineUnavailablePeriodResultDto> {
+        // 1. 내 업체 (잠금 — 겹침 확인 · 등록을 한 번에 하나)
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 일시 — 한국 시각 분 단위. strict 파싱이라 없는 날짜 · 시각(02-30 · 13월)은 isValid() 가 false
+        if (!dayjs(dto.starts_at, STORE_DATETIME_FORMAT, true).isValid()) {
+            throw new BadRequestException({message: '없는 시작 일시입니다.', validation_errors: createValidationError('starts_at', '없는 시작 일시입니다.')});
+        }
+        if (!dayjs(dto.ends_at, STORE_DATETIME_FORMAT, true).isValid()) {
+            throw new BadRequestException({message: '없는 종료 일시입니다.', validation_errors: createValidationError('ends_at', '없는 종료 일시입니다.')});
+        }
+        const starts_at = dayjs.tz(dto.starts_at, STORE_DATETIME_FORMAT, KST_TIMEZONE);
+        const ends_at = dayjs.tz(dto.ends_at, STORE_DATETIME_FORMAT, KST_TIMEZONE);
+        if (!ends_at.isAfter(starts_at)) {
+            throw new BadRequestException({message: '종료 일시는 시작 일시보다 늦어야 합니다.', validation_errors: createValidationError('ends_at', '종료 일시는 시작 일시보다 늦어야 합니다.')});
+        }
+        if (!ends_at.isAfter(dayjs())) {
+            throw new BadRequestException({message: '이미 지난 기간은 등록할 수 없습니다.', validation_errors: createValidationError('ends_at', '이미 지난 기간은 등록할 수 없습니다.')});
+        }
+
+        // 3. 다른 일시 예약불가와 겹침
+        const overlapping = await this.storeRepository.countUnavailablePeriods(buildUnavailablePeriodOverlapWhere(store.store_id, starts_at.toDate(), ends_at.toDate()));
+        if (overlapping > 0) {
+            throw new BadRequestException({message: '다른 일시 예약불가와 겹칩니다.', validation_errors: createValidationError('starts_at', '다른 일시 예약불가와 겹칩니다.')});
+        }
+
+        // 4. 등록
+        const period = new StoreUnavailablePeriodEntity();
+        period.store_unavailable_period_id = generateId();
+        period.store_id = store.store_id;
+        period.starts_at = starts_at.toDate();
+        period.ends_at = ends_at.toDate();
+        period.memo = dto.memo ?? null;
+        await this.storeRepository.insertUnavailablePeriod(period);
+        return {store_unavailable_period_id: period.store_unavailable_period_id};
+    }
+
+    /**
+     * 내 업체 일시 예약불가 삭제 (업체 관리자) — 그 업체 것만, 없으면 404(남의 업체 것 포함). (RabbitMQ: admin.store.mine-unavailable-period-delete)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param store_unavailable_period_id 일시 예약불가 ID
+     */
+    @Transactional()
+    async removeMyStoreUnavailablePeriod(user_id: string, store_unavailable_period_id: string): Promise<void> {
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        const deleted = await this.storeRepository.deleteUnavailablePeriod({store_unavailable_period_id, store_id: store.store_id});
+        if (!deleted) {
+            throw new NotFoundException({message: '일시 예약불가를 찾을 수 없습니다.'});
+        }
     }
 }

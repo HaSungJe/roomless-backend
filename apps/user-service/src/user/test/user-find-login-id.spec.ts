@@ -4,7 +4,6 @@ import {sha256Hex} from '@app/common/utils/hash.js';
 import {USER_COMMAND} from '@app/contracts/user/user.commands.js';
 import type {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
-import {kstDayStart} from '@app/common/utils/kst.js';
 import {bootCommandPath, createJwtServiceMock, createSmsSenderMock, createUserRepositoryMock, FIXED_TIME, runCommand, SmsSenderMock, UserRepositoryMock} from './user.test-helper.js';
 
 vi.mock(import('@app/account/utils/sms-verification.js'), async (importOriginal) => ({...(await importOriginal()), generateVerificationCode: vi.fn(() => '123456')}));
@@ -62,7 +61,8 @@ describe('아이디 찾기 (큐 경로)', () => {
 
             expect(repo.findUser).toHaveBeenCalledTimes(1);
             expect(repo.findUser).toHaveBeenCalledWith({phone: PHONE, login_scope: 'USER', state_id: RECOVERY_STATES});
-            expect(repo.countSmsVerifications).toHaveBeenCalledWith({phone: PHONE, created_at: MoreThanOrEqual(kstDayStart(FIXED_TIME))});
+            // 하루 발송 수는 한국 날짜 0시부터 센다 — FIXED_TIME(2026-01-01)의 한국 0시 = 2025-12-31T15:00Z
+            expect(repo.countSmsVerifications).toHaveBeenCalledWith({phone: PHONE, created_at: MoreThanOrEqual(new Date('2025-12-31T15:00:00.000Z'))});
             const inserted = repo.insertSmsVerification.mock.calls[0][0];
             expect(inserted).toMatchObject({sms_purpose_id: 'FIND_LOGIN_ID', user_id: USER_ID, phone: PHONE, code_hash: sha256Hex('123456')});
             expect(sms.send).toHaveBeenCalledWith({to: PHONE, text: '[roomless] 인증번호 [123456] — 5분 안에 입력해주세요.'});

@@ -1,4 +1,5 @@
 import jsonwebtoken from 'jsonwebtoken';
+import {dayjs} from '@app/common/utils/dayjs.js';
 
 /**
  * JWT 문자열에서 exp(초)를 추출해 Date 로 변환한다(서명 검증 없음).
@@ -12,5 +13,5 @@ export function extractJwtExpiresAt(token: string): Date {
     if (!payload?.exp) {
         throw new Error('Invalid JWT: exp claim missing.');
     }
-    return new Date(payload.exp * 1000);
+    return dayjs.unix(payload.exp).toDate();
 }

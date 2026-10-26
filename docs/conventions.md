@@ -69,7 +69,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 - 공개(게이트웨이): `@Controller('/api/v1/<service>/<domain>')`(`/api/v1/user-service/user` · `/api/v1/admin-service/manager` · `/api/v1/admin-service/admin`). 내부(서비스): `@Controller('/internal/v1/<service>/<domain>')`(`/internal/v1/admin-service/manager/login`). 내부 경로 문자열은 contracts 의 `*_INTERNAL_PATH` 상수로만 쓴다.
 - 이후 기능도 같은 규칙이다 — 객실 관리(매니저)는 `/api/v1/admin-service/room`, 입점 승인(관리자)은 `/api/v1/admin-service/store`, 예약(이용자)은 `/api/v1/user-service/reservation`. 같은 도메인 안에서 그룹이 다른 라우트는 가드로 가른다.
 - 앞 `/` 필수, 다단어 kebab(`/token-refresh`), path param 은 snake_case(`/auth-user/:user_id`).
-- 같은 경로 다른 verb 가능(`DELETE /leave` · `PATCH /leave`).
+- 같은 경로 다른 verb 가능(`DELETE /leave` · `PATCH /leave`). 통째로 교체하는 쓰기는 `PUT`(`/mine/hours` · `/mine/breaks` · `/mine/file/order`), 일부만 바꾸는 쓰기는 `PATCH`.
 
 ## 컨트롤러 · 핸들러 입력
 
@@ -94,13 +94,16 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 ## Validation (class-validator)
 
-- **사용**: `@IsNotEmpty` · `@IsOptional` · `@IsIn` · `@Matches` · `@MaxLength` (+ 짝 필드 조건부 `@ValidateIf`) · 위경도 `@IsLatitude` · `@IsLongitude`(숫자 좌표는 위 데코레이터로 검증할 수 없다 — store-application.dto.ts · store-update.dto.ts, 문자열 · 숫자 모두 받으므로 service 가 `Number()` 로 바꾼다).
-- **미사용**(grep 0건): `@IsString` · `@IsNumber` · `@IsInt` · `@IsBoolean` · `@IsEnum` · `@MinLength` · `@Length` · `@Min` · `@Max` · `@Type` · `@Transform` — 존재 + 형식/길이 + enum 만 검증.
+- **사용**: `@IsNotEmpty` · `@IsOptional` · `@IsIn` · `@Matches` · `@MaxLength` (+ 짝 필드 조건부 `@ValidateIf`) · 위경도 `@IsLatitude` · `@IsLongitude`(숫자 좌표는 위 데코레이터로 검증할 수 없다 — store-application.dto.ts · store-update.dto.ts, 문자열 · 숫자 모두 받으므로 service 가 `Number()` 로 바꾼다) · 숫자 범위 `@IsInt` · `@Min` · `@Max`(정비시간 · 방 칸수) · 배열 `@IsArray` · `@ArrayMaxSize`(문자열 항목은 `@Matches(…, {each: true})` — 사진 순서) · 중첩 `@ValidateNested({each: true})` + `@Type(() => 항목 DTO)`(영업시간 · 브레이크타임 · 편의시설 — store-mine-hours.dto.ts · store-mine-breaks.dto.ts · store-mine-profile.dto.ts, 사용자 결정 2026-10-27).
+- **미사용**(grep 0건): `@IsString` · `@IsNumber` · `@IsBoolean` · `@IsEnum` · `@MinLength` · `@Length` · `@Transform`. `@Type` 은 중첩 항목에만 — class-transformer 가 중첩 객체를 그 DTO 인스턴스로 만들어야 `@ValidateNested` 가 항목을 검증한다. 숫자를 바꾸는 `@Type(() => Number)` 는 쓰지 않는다(쿼리 값은 문자열 그대로).
+- **중첩 오류의 대상 필드는 점 경로** — `validationExceptionFactory` 가 `children` 을 펼쳐 제약이 걸린 오류마다 1건(`hours.0.open_time` · `store_detail.room_count`)을 담는다. 배열 자체의 제약(`hours` 개수)은 그 필드명 그대로. service 가 항목에 귀속되는 비즈니스 오류를 낼 때도 같은 경로를 쓴다(`createValidationError('breaks.0.end_time', …)`).
+- **`@IsNotEmpty` 는 `''` · null · undefined 만 막는다** — 숫자 0 · 빈 배열 · `{}` 는 통과한다. 개수(영업시간 7개)는 service 가 본다.
 - **모든 제약에 `message: '<한국어 문자열>'` 리터럴 필수**. message 를 받지 않는 것은 `@IsOptional()` 과 `@ValidateIf(...)` 뿐.
 - **순서**:
   - 필수 `@ApiProperty` → 제약 → `@IsNotEmpty`(맨 마지막)
   - 선택 `@ApiProperty` → `@IsOptional()` → 제약
-  - 짝 필드 `@ApiProperty` → `@ValidateIf` → 제약 → `@IsNotEmpty` (user-login.dto.ts:17-20)
+  - 짝 필드 `@ApiProperty` → `@ValidateIf` → 제약 → `@IsNotEmpty` (user-login.dto.ts:17-20 · 영업시간 store-mine-hours.dto.ts)
+  - 중첩 `@ApiProperty({type: () => [X]})` → `@Type(() => X)` → `@ValidateNested({each: true, message})` → `@ArrayMaxSize` → `@IsArray` → `@IsNotEmpty` (store-mine-hours.dto.ts)
 - **입력 DTO(`@Query`/`@Body`/`@Param`)의 모든 필드는 검증 데코레이터를 최소 1개** — 제약이 없어도 `@IsOptional()`. `@ApiProperty` 는 Swagger 메타데이터라 계산에 안 들어가고, 검증 데코레이터가 0개인 필드는 `whitelist: true` 를 켜는 순간 조용히 사라진다(class-validator `ValidationExecutor`). 현재 whitelist 는 꺼져 있지만 선제적으로 붙인다. 응답 `ResultDto` 는 파이프를 타지 않으므로 대상이 아니다(검증 데코레이터 0개, `@ApiProperty({description})` 만).
 - **`@ApiProperty`** — 요청 DTO 는 `{description}`, 선택 필드는 `required: false`, enum 은 `@IsIn` 과 같은 배열을 인라인으로 반복. 응답 DTO 의 nullable 필드는 `{nullable: true, type: String}`.
 - **ValidationPipe 설정은 바꾸지 않는다** — 각 앱 main.ts 의 `{transform: true, forbidNonWhitelisted: true, exceptionFactory: validationExceptionFactory}` 그대로. `whitelist` 는 켜지 않는다(선언 안 된 필드는 걸러지지 않는다).
@@ -132,7 +135,7 @@ return this.storeService.getStoreList(dto);
 
 - **⚠️ 생성자 파라미터는 반드시 선택(`data?: Partial<T>`)** — `ValidationPipe({transform: true})` → class-transformer `plainToInstance` → `new targetType()` 을 **인자 없이** 호출한다. 파라미터를 필수로 두면 `data` 가 undefined 라 `data.page` 접근에서 **매 요청 500**. TypeScript 는 파이프의 리플렉션 호출을 못 보므로 컴파일에서 잡히지 않는다. 그래서 `data?.x ?? 기본값` 형태여야 파이프 경로와 컨트롤러 `new` 경로가 모두 산다.
 - 참고: 파이프 경로에서는 생성자 실행 뒤 **요청에 들어온 키만** 덮어쓴다. 쿼리가 비어도 `{}` 로 넘어와 생성자는 똑같이 실행된다.
-- **쿼리 값은 문자열로 들어온다** — `@Type`/`@Transform` 미사용 + `enableImplicitConversion` 미설정이라 `page: number` 로 선언해도 런타임 값은 `'2'`. service 에서 직접 산술하지 말고 `Pagination` 에 넘겨 `parseInt` 를 태운다.
+- **쿼리 값은 문자열로 들어온다** — `@Transform` · 숫자 변환 `@Type` 미사용 + `enableImplicitConversion` 미설정이라 `page: number` 로 선언해도 런타임 값은 `'2'`. service 에서 직접 산술하지 말고 `Pagination` 에 넘겨 `parseInt` 를 태운다.
 - **상속 시 부모 필드 재선언 금지** — tsconfig `target: ES2023` → `useDefineForClassFields` 기본 true. 하위 클래스 필드 선언은 `super()` 뒤 `Object.defineProperty` 로 실행되므로 부모 생성자가 넣은 기본값이 `undefined` 로 덮인다.
 - **`@Body()` · `@Param()` 에는 적용하지 않는다** — 생성자가 없어도 `new` 는 똑같이 실행되고, 다른 건 누락 처리다. Body 필수 필드는 누락이 곧 `@IsNotEmpty` 검증 실패(400)라 기본값이 낄 자리가 없고, path param 은 라우트가 성립하는 한 항상 존재한다. Query 의 `page`/`size` 만 누락이 정상 요청이다.
 - 인접 함정(Body 쪽): **수정 API 의 선택 필드는 `?? null`** — TypeORM `update()` 는 `undefined` 필드를 무시하므로 `entity.x = dto.x` 로 두면 사용자가 값을 비워 보내도 기존 컬럼이 그대로 남는다.
@@ -154,7 +157,8 @@ return this.storeService.getStoreList(dto);
 
 ## 공통 로직 분리
 
-- **순수 함수 → util** (named `function`, `@Injectable` 없음): 전역 `libs/common/src/utils/`(bcrypt · hash · cipher · jwt · validation · fail-result · retry · pagination · env · id · kst), 서비스 앱 여러 개가 쓰는 계정 로직 `libs/account/src/utils/`(token · sms-verification · password — 엔티티를 만드는 `buildSmsVerification` 도 여기라 `account` 는 `database` 를 import 한다), 도메인 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. 예외 — `Pagination` 은 계산 결과(`limit` · `offset` · `getPagination()`)를 들고 다니는 값 객체라 class 다.
+- **날짜 · 시각은 dayjs** — 파싱 · 비교 · 계산 · 시간대(한국 시각)를 직접 만들지 않는다(`getTime()` 비교 · `* 1000` 더하기 · 오프셋 계산 · 시각 문자열 자르기 ❌). 플러그인(`customParseFormat` · `utc` · `timezone`)을 붙인 `libs/common/src/utils/dayjs.ts` 의 `dayjs` · `Dayjs` · `KST_TIMEZONE` 만 import 한다(`'dayjs'` 직접 import ❌ — 플러그인이 빠진다). 예: 한국 날짜 0시 `dayjs(now).tz(KST_TIMEZONE).startOf('day')`, 만료 비교 `dayjs(x).isBefore(dayjs())`, 형식 지정 strict 파싱 `dayjs(값, 형식, true).isValid()`, 하루 안 시각은 기준일 위 `dayjs.utc('2000-01-01 ' + time)`(store.util.ts). 라이브러리로 되는 일은 util 로 다시 만들지 않고, 이미 있는 직접 계산은 dayjs 로 바꾸고 지운다(사용자 결정 2026-10-27). 그대로 두는 것 — 엔티티 훅 · 조건의 "지금" 값(`new Date()`), 메시지 봉투 `timestamp: Date.now()`(계산 · 비교가 아니다).
+- **순수 함수 → util** (named `function`, `@Injectable` 없음): 전역 `libs/common/src/utils/`(bcrypt · hash · cipher · jwt · validation · fail-result · retry · pagination · env · id · dayjs · search), 서비스 앱 여러 개가 쓰는 계정 로직 `libs/account/src/utils/`(token · sms-verification · password — 엔티티를 만드는 `buildSmsVerification` 도 여기라 `account` 는 `database` 를 import 한다), 도메인 `apps/<app>/src/<domain>/<domain>.util.ts`, 인프라 모듈 전용 `<module>.util.ts`. 예외 — `Pagination` 은 계산 결과(`limit` · `offset` · `getPagination()`)를 들고 다니는 값 객체라 class 다.
 - **DI · lifecycle · 외부연동 → `@Injectable`/`@Module`**: 여러 앱이 쓰면 libs, 한 앱만 쓰면 그 앱 안.
 - 파일 안에서만 쓰는 헬퍼 함수는 export 하지 않고 둘 수 있다 — 인프라 · util 파일에 한한다(cipher.ts `getKey`, internal-auth.guard.ts `safeEqual`, typeorm-error.ts `driverErrorOf`). service 에는 두지 않는다.
 - ID 는 하이픈 없는 UUID v4 32자 — 도메인은 `generateId()`(libs/common/src/utils/id.ts), 메시지는 `newMessageId()`(libs/messaging/src/messaging.util.ts:16). 구현이 같은 두 벌이다. <!-- TODO: newMessageId 를 generateId 로 합칠지 -->
@@ -180,7 +184,7 @@ return this.storeService.getStoreList(dto);
 | 회피 | 대신 |
 |---|---|
 | 확장자 없는 상대 import, `require` | `.js` 확장자 ESM import |
-| `@IsString`/`@IsNumber`/`@Type`/`@Transform` | 존재 + 형식/길이 + enum |
+| `@IsString`/`@IsNumber`/`@Transform`, 숫자 변환 `@Type(() => Number)` | 존재 + 형식/길이 + enum (`@Type` 은 중첩 항목에만) |
 | `@Param('key')`, `any` 입력 | DTO + `@PassportActor()` |
 | `ResponseDto` | `ResultDto` |
 | `index.ts` barrel, 다른 앱 코드 import | 직접 경로, libs 로 이동 |

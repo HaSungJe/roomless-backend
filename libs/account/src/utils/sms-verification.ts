@@ -1,4 +1,5 @@
 import {randomInt} from 'node:crypto';
+import {dayjs} from '@app/common/utils/dayjs.js';
 import {sha256Hex} from '@app/common/utils/hash.js';
 import {generateId} from '@app/common/utils/id.js';
 import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
@@ -48,7 +49,7 @@ export function checkSmsVerification(verification: SmsVerificationEntity, now: D
     if (verification.verified_at) {
         return 'USED';
     }
-    if (verification.expires_at.getTime() <= now.getTime()) {
+    if (!dayjs(verification.expires_at).isAfter(now)) {
         return 'EXPIRED';
     }
     return 'USABLE';
@@ -68,7 +69,7 @@ export function buildSmsVerification(input: SmsVerificationInput): SmsVerificati
     entity.phone = input.phone;
     entity.code_hash = sha256Hex(input.code);
     entity.attempt_count = 0;
-    entity.expires_at = new Date(input.now.getTime() + SMS_CODE_TTL_MINUTES * 60 * 1000);
+    entity.expires_at = dayjs(input.now).add(SMS_CODE_TTL_MINUTES, 'minute').toDate();
     entity.verified_at = null;
     entity.ip = input.ip || null;
     return entity;

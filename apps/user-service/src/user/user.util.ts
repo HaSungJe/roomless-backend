@@ -1,5 +1,4 @@
-import dayjs from 'dayjs';
-import {kstYear} from '@app/common/utils/kst.js';
+import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import {UserAuthUserResultDto} from '@app/contracts/user/dto/user-auth-user.dto.js';
 import type {LoginUserRow} from './interfaces/user.repository.interface.js';
 import {ADULT_AGE} from './user.constants.js';
@@ -12,7 +11,7 @@ import {ADULT_AGE} from './user.constants.js';
  * @returns 성인이면 true
  */
 export function isAdult(birth: string, now: Date = new Date()): boolean {
-    return kstYear(now) - Number(birth.slice(0, 4)) >= ADULT_AGE;
+    return dayjs(now).tz(KST_TIMEZONE).year() - dayjs(birth, 'YYYY-MM-DD').year() >= ADULT_AGE;
 }
 
 /**

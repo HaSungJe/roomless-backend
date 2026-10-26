@@ -23,7 +23,7 @@ flowchart LR
   P7 --> P9
   P8 --> P9
   P9 --> P10["Phase 10 · 업체 인력 (2)"]:::done
-  P10 --> P11["Phase 11 · 업체 운영 설정 (5)"]:::todo
+  P10 --> P11["Phase 11 · 업체 운영 설정 (5)"]:::inprog
   P8 --> P12["Phase 12 · room 스키마 (5)"]:::todo
   P11 --> P13["Phase 13 · 객실 관리 (5)"]:::todo
   P12 --> P13
@@ -63,7 +63,7 @@ flowchart LR
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · done
-- Phase 11 — 업체 운영 설정 · 유닛 5개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · todo
+- Phase 11 — 업체 운영 설정 · 유닛 5개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · in-progress
 - Phase 12 — room 스키마 · 유닛 5개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
 - Phase 13 — 객실 관리 · 유닛 5개 · 의존: Phase 11, 12 · 푼다: Phase 15, 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · todo
 - Phase 14 — device 기반 · 유닛 2개 · 의존: Phase 12 · 푼다: Phase 15 · 파일 집합: libs/database/src/entities/device, libs/database/src/migrations, apps/admin-service/src/device(포트) · todo
@@ -79,7 +79,7 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 11
+지금: Phase 11 진행 중 · Next up: Phase 11
 
 ## 지금 할 일
 Phase 11 업체 운영 설정 시작하기
@@ -298,11 +298,11 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 ### Phase 11 — 업체 운영 설정 (업체 관리자) · depends: Phase 10 (+ Phase 3)
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 44 | 내 업체 상세 | 업체 관리자 | — | 42 | todo |
-| 45 | 업체 소개 수정 | 소개 · 편의시설 · 연락처 · 사진 | — | 19, 35 | todo |
-| 46 | 영업시간 · 브레이크타임 설정 | 요일 반복 | 영업시간 변경 시 기존 예약 처리 | 36 | todo |
-| 47 | 정비시간 설정 | 퇴실 후 n분 | — | 34 | todo |
-| 94 | 영업중 여부 전환 | 업체 관리자가 영업중 · 영업중 아님을 바꾼다(`t_store.is_open`) — 0 이면 연중무휴 · 영업시간 안이어도 영업중 아님 | 영업중 아님으로 바꿀 때 기존 예약 처리(Open Decisions) | 34 | todo |
+| 44 | 내 업체 상세 | 업체 관리자 | — | 42 | in-progress |
+| 45 | 업체 소개 수정 | 소개 · 편의시설 · 연락처 · 사진 | — | 19, 35 | in-progress |
+| 46 | 영업시간 · 브레이크타임 설정 | 요일 반복 | 영업시간 변경 시 기존 예약 처리 | 36 | in-progress |
+| 47 | 정비시간 설정 | 퇴실 후 n분 | — | 34 | in-progress |
+| 94 | 영업중 여부 전환 | 업체 관리자가 영업중 · 영업중 아님을 바꾼다(`t_store.is_open`) — 0 이면 연중무휴 · 영업시간 안이어도 영업중 아님 | 영업중 아님으로 바꿀 때 기존 예약 처리(Open Decisions) | 34 | in-progress |
 
 **Expected APIs** (가칭, 매니저 가드): `GET /api/v1/admin-service/store/mine`(#44), `PATCH /api/v1/admin-service/store/mine/profile`(#45), `PUT /api/v1/admin-service/store/mine/hours` · `/breaks`(#46), `PATCH /api/v1/admin-service/store/mine/maintenance`(#47), `PATCH /api/v1/admin-service/store/mine/open`(#94).
 

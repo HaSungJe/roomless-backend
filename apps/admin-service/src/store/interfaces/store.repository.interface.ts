@@ -1,7 +1,10 @@
 import type {FindOptionsWhere} from 'typeorm';
 import type {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
+import type {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import type {StoreFilePurposeEntity} from '@app/database/entities/store/store-file-purpose.entity.js';
 import type {StoreFileEntity} from '@app/database/entities/store/store-file.entity.js';
+import type {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js';
+import type {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import type {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import type {UserEntity} from '@app/database/entities/user/user.entity.js';
 
@@ -20,7 +23,8 @@ export interface StoreFileRow {
 }
 
 /**
- * store repository 포트 — 입점 신청 · 업체 · 업체 정보 파일과, store 어휘로 다루는 t_user(신청자 · 업체 총관리자 · 업체 매니저)를 다룬다.
+ * store repository 포트 — 입점 신청 · 업체 · 업체 정보 파일 · 영업시간 · 브레이크타임 · 일시 예약불가와,
+ * store 어휘로 다루는 t_user(신청자 · 업체 총관리자 · 업체 매니저 · 업체 관리자의 소속 업체)를 다룬다.
  * WHERE 는 service · util 이 만들고(배열 = OR) repository 는 실행 + DB 오류 변환만 한다.
  * insert · update 의 엔티티는 호출자가 `new XEntity()` + 필드 할당으로 만든다(@BeforeInsert/@BeforeUpdate 트리거).
  */
@@ -51,6 +55,8 @@ export interface StoreRepositoryInterface {
     insertStoreFile(entity: StoreFileEntity): Promise<void>;
     /** 업체 정보 파일 삭제 */
     deleteStoreFile(where: FindOptionsWhere<StoreFileEntity>): Promise<void>;
+    /** 업체 정보 파일 수정 (업체 사진 정렬 순서) */
+    updateStoreFile(where: FindOptionsWhere<StoreFileEntity>, entity: StoreFileEntity): Promise<void>;
     /** 신청의 업체 정보 파일 삭제 (신청 취소) — 아직 업체에 붙지 않은 파일만 */
     deleteApplicationFiles(store_application_id: string): Promise<void>;
     /** 신청의 업체 정보 파일을 업체로 — 승인 때 store_id 를 채운다 */
@@ -73,4 +79,26 @@ export interface StoreRepositoryInterface {
     insertHeadManager(entity: UserEntity): Promise<void>;
     /** 그 업체 매니저 그룹 회원 상태 변경 (업체 탈퇴 → 정지) */
     updateStoreManagers(store_id: string, state_id: string, block_comment: string | null): Promise<void>;
+    /** 매니저의 소속 업체 (탈퇴 업체 제외) — lock 이면 업체 행을 잠근다(쓰기 트랜잭션 안에서만) */
+    findStoreByManager(user_id: string, lock: boolean): Promise<StoreEntity | null>;
+    /** 업체의 요일별 영업시간 — 요일 순 */
+    findStoreHours(store_id: string): Promise<StoreHourEntity[]>;
+    /** 요일별 영업시간 삭제 (교체) */
+    deleteStoreHours(where: FindOptionsWhere<StoreHourEntity>): Promise<void>;
+    /** 요일별 영업시간 등록 (교체) */
+    insertStoreHours(entities: StoreHourEntity[]): Promise<void>;
+    /** 업체의 브레이크타임 — 시작 시각 순 */
+    findStoreBreaks(store_id: string): Promise<StoreBreakEntity[]>;
+    /** 브레이크타임 삭제 (교체) */
+    deleteStoreBreaks(where: FindOptionsWhere<StoreBreakEntity>): Promise<void>;
+    /** 브레이크타임 등록 (교체) */
+    insertStoreBreaks(entities: StoreBreakEntity[]): Promise<void>;
+    /** 일시 예약불가 개수 — 목록 · 겹침 확인 */
+    countUnavailablePeriods(where: FindOptionsWhere<StoreUnavailablePeriodEntity>): Promise<number>;
+    /** 일시 예약불가 목록 — 시작 순 */
+    findUnavailablePeriodList(where: FindOptionsWhere<StoreUnavailablePeriodEntity>, limit: number, offset: number): Promise<StoreUnavailablePeriodEntity[]>;
+    /** 일시 예약불가 등록 */
+    insertUnavailablePeriod(entity: StoreUnavailablePeriodEntity): Promise<void>;
+    /** 일시 예약불가 삭제 — 조건에 맞는 행을 지웠으면 true */
+    deleteUnavailablePeriod(where: FindOptionsWhere<StoreUnavailablePeriodEntity>): Promise<boolean>;
 }

@@ -1,6 +1,7 @@
 import {DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client} from '@aws-sdk/client-s3';
 import {getSignedUrl} from '@aws-sdk/s3-request-presigner';
 import {Injectable, InternalServerErrorException, Logger, OnApplicationBootstrap, ServiceUnavailableException} from '@nestjs/common';
+import {dayjs} from '@app/common/utils/dayjs.js';
 import {STORAGE_DOWNLOAD_URL_TTL_SECONDS, STORAGE_PUBLIC_URL_MISSING_MESSAGE, STORAGE_UNAVAILABLE_MESSAGE, STORAGE_UPLOAD_URL_TTL_SECONDS} from '../integration.constants.js';
 import type {StorageDownloadResult, StorageGatewayInterface, StorageUploadInput, StorageUploadResult} from '../interfaces/integration.interface.js';
 
@@ -38,7 +39,7 @@ export class S3StorageGateway implements StorageGatewayInterface, OnApplicationB
                 expiresIn: STORAGE_UPLOAD_URL_TTL_SECONDS,
                 signableHeaders: new Set(['content-type']),
             });
-            return {upload_url: uploadUrl, expires_at: new Date(Date.now() + STORAGE_UPLOAD_URL_TTL_SECONDS * 1000)};
+            return {upload_url: uploadUrl, expires_at: dayjs().add(STORAGE_UPLOAD_URL_TTL_SECONDS, 'second').toDate()};
         } catch (error) {
             throw toUnavailable(this.logger, '업로드 주소 발급', error);
         }
@@ -89,7 +90,7 @@ export class S3StorageGateway implements StorageGatewayInterface, OnApplicationB
     async createDownloadUrl(key: string): Promise<StorageDownloadResult> {
         try {
             const downloadUrl = await getSignedUrl(this.client, new GetObjectCommand({Bucket: process.env.AWS_S3_BUCKET, Key: key}), {expiresIn: STORAGE_DOWNLOAD_URL_TTL_SECONDS});
-            return {download_url: downloadUrl, expires_at: new Date(Date.now() + STORAGE_DOWNLOAD_URL_TTL_SECONDS * 1000)};
+            return {download_url: downloadUrl, expires_at: dayjs().add(STORAGE_DOWNLOAD_URL_TTL_SECONDS, 'second').toDate()};
         } catch (error) {
             throw toUnavailable(this.logger, '열람 주소 발급', error);
         }

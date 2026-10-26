@@ -1,7 +1,6 @@
 import {BadRequestException, HttpException, HttpStatus, Inject, Injectable, NotFoundException, UnauthorizedException} from '@nestjs/common';
 import {JwtService} from '@nestjs/jwt';
 import {Transactional} from '@nestjs-cls/transactional';
-import dayjs from 'dayjs';
 import {In, MoreThanOrEqual} from 'typeorm';
 import {
     ACCOUNT_NOT_FOUND_MESSAGE,
@@ -22,9 +21,9 @@ import {buildSmsVerification, checkSmsVerification, generateVerificationCode, ge
 import {issueAccessAndRefresh} from '@app/account/utils/token.js';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
 import {encryptAesGcm} from '@app/common/utils/cipher.js';
+import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import {sha256Hex} from '@app/common/utils/hash.js';
 import {generateId} from '@app/common/utils/id.js';
-import {kstDayStart} from '@app/common/utils/kst.js';
 import {createValidationError} from '@app/common/utils/validation.js';
 import type {UserAuthUserResultDto} from '@app/contracts/user/dto/user-auth-user.dto.js';
 import type {UserFindLoginIdConfirmDto, UserFindLoginIdConfirmResultDto} from '@app/contracts/user/dto/user-find-login-id-confirm.dto.js';
@@ -240,7 +239,7 @@ export class UserService {
         if (!oldRefresh) {
             throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
-        if (oldRefresh.expires_at.getTime() < Date.now()) {
+        if (dayjs(oldRefresh.expires_at).isBefore(dayjs())) {
             throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 
@@ -379,7 +378,7 @@ export class UserService {
 
         // 3. 같은 번호 하루 발송 한도 (한국 날짜)
         const now = new Date();
-        const sentToday = await this.userRepository.countSmsVerifications({phone: dto.phone, created_at: MoreThanOrEqual(kstDayStart(now))});
+        const sentToday = await this.userRepository.countSmsVerifications({phone: dto.phone, created_at: MoreThanOrEqual(dayjs(now).tz(KST_TIMEZONE).startOf('day').toDate())});
         if (sentToday >= getSmsDailyLimit()) {
             throw new HttpException({message: SMS_DAILY_LIMIT_MESSAGE}, HttpStatus.TOO_MANY_REQUESTS);
         }
@@ -460,7 +459,7 @@ export class UserService {
 
         // 2. 같은 번호 하루 발송 한도 (한국 날짜)
         const now = new Date();
-        const sentToday = await this.userRepository.countSmsVerifications({phone: dto.phone, created_at: MoreThanOrEqual(kstDayStart(now))});
+        const sentToday = await this.userRepository.countSmsVerifications({phone: dto.phone, created_at: MoreThanOrEqual(dayjs(now).tz(KST_TIMEZONE).startOf('day').toDate())});
         if (sentToday >= getSmsDailyLimit()) {
             throw new HttpException({message: SMS_DAILY_LIMIT_MESSAGE}, HttpStatus.TOO_MANY_REQUESTS);
         }

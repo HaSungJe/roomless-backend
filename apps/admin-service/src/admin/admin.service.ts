@@ -1,12 +1,12 @@
 import {BadRequestException, HttpException, HttpStatus, Inject, Injectable, NotFoundException, UnauthorizedException} from '@nestjs/common';
 import {JwtService} from '@nestjs/jwt';
 import {Transactional} from '@nestjs-cls/transactional';
-import dayjs from 'dayjs';
 import {In} from 'typeorm';
 import {BLOCKED_ACCOUNT_MESSAGE, INVALID_LOGIN_MESSAGE, INVALID_TOKEN_MESSAGE, USER_NOT_FOUND_MESSAGE} from '@app/account/account.constants.js';
 import {issueAccessAndRefresh} from '@app/account/utils/token.js';
 import {getBcrypt, matchBcrypt} from '@app/common/utils/bcrypt.js';
 import {encryptAesGcm} from '@app/common/utils/cipher.js';
+import {dayjs} from '@app/common/utils/dayjs.js';
 import {sha256Hex} from '@app/common/utils/hash.js';
 import {generateId} from '@app/common/utils/id.js';
 import type {AdminAuthUserResultDto} from '@app/contracts/admin/dto/admin-auth-user.dto.js';
@@ -139,7 +139,7 @@ export class AdminService {
         if (!oldRefresh) {
             throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
-        if (oldRefresh.expires_at.getTime() < Date.now()) {
+        if (dayjs(oldRefresh.expires_at).isBefore(dayjs())) {
             throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 

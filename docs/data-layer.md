@@ -71,6 +71,9 @@ export class UserSettingEntity {
 - **컬럼 이름은 항상 명시** — `@Column({name: 'bio', ...})`.
 - **타입** — 문자열 `length: n`(nullable 이면 `type: 'varchar'` 명시), 긴 문자열 `text`, 시각 `timestamptz`, 하루 안 시각 `time`, 좌표 `double precision`, 플래그 `smallint`(0/1), 자동 증가 `bigint` + `@PrimaryGeneratedColumn`(값은 문자열로 온다), JSON `jsonb`.
   - **하루 안 시각 `time`** 은 영업시간 · 브레이크타임처럼 날짜 없이 반복되는 시각이다. 한국 시각, 분 단위(`HH:mm`, 초는 0)이고 값은 문자열(`'18:00:00'`)로 온다. **마감이 시작보다 이르면 다음 날**이다(18:00 ~ 06:00 · 23:00 ~ 02:00). 24시간 · 휴무는 시각이 아니라 플래그로 둔다(`t_store.is_always_open` · `t_store_hour.is_closed`) — store-hour.entity.ts · store-break.entity.ts.
+  - **영업시간은 휴무가 아니면 `open_time` · `close_time` 둘 다(세트)** — `t_store_hour` 에서 휴무가 아닌 요일(`is_closed = 0`)은 둘 다 채우고, 하나만 있는 행을 만들지 않는다. 휴무(`is_closed = 1`)면 둘 다 NULL. DB 는 CHECK `CHK_StoreHour_OpenCloseTime`, 입력 DTO 는 짝 필드(`@ValidateIf(휴무 아님)` → 제약 → `@IsNotEmpty` — store-mine-hours.dto.ts), service 는 휴무면 보낸 시각을 버리고 NULL 로 저장한다. 시드 · 테스트 데이터도 이 조합만 쓴다(사용자 결정 2026-10-24). 시작 = 마감은 두지 않는다 — 24시간은 `t_store.is_always_open`(사용자 결정 2026-10-27).
+  - **브레이크타임은 매일** — `t_store_break` 에 요일이 없다. 한 업체의 브레이크타임끼리 겹치지 않는다(반열린 구간 — 끝점 맞닿음은 허용. 기준일 위 dayjs 시각으로 놓고 자정을 넘는 범위는 다음 날 마감, 한쪽을 하루 앞 · 뒤로도 옮겨 비교 — store.util.ts `hasOverlappingBreaks`).
+  - **일시 범위는 `timestamptz` 두 개** — 일시 예약불가 `t_store_unavailable_period.starts_at` · `ends_at`(반열린 구간, CHECK `CHK_StoreUnavailablePeriod_StartsAtEndsAt`). 입력은 한국 시각 `YYYY-MM-DD HH:mm`(분 단위)을 dayjs 로 읽고(`dayjs(값, 형식, true).isValid()` 로 없는 날짜를 거른 뒤 `dayjs.tz(값, 형식, KST_TIMEZONE)` — store.service.ts), 겹침은 `starts_at < 새 종료 AND ends_at > 새 시작` 개수로 본다(store.util.ts `buildUnavailablePeriodOverlapWhere`).
   - **좌표 `double precision`** — 위도 · 경도(WGS84). JS number 로 온다(`numeric` 은 문자열로 온다). 지도 범위 조회용 `IDX_Store_LatitudeLongitude` — store.entity.ts.
   - **jsonb** 는 항목이 자주 바뀌는 상세정보에 쓴다 — 컬럼 하나 + 같은 엔티티 파일의 TS 인터페이스(항목은 모두 선택), `nullable: false` + `default: () => "'{}'"`. 예: `t_store.store_detail: StoreDetail`(`room_count` · `has_shower` · `has_tv` · `has_pc`, 플래그는 0/1 — store.entity.ts). 항목을 바꿀 때는 인터페이스만 고치고 마이그레이션이 없다.
   - 예외(기존 컬럼): `t_user.leave_reserved_at` 은 `varchar(40)` 에 dayjs `'YYYY-MM-DD HH:mm:ss'` 문자열을 넣고 문자열 비교로 경과를 판단한다(user.entity.ts:78, user-leave-cleanup.crontab.ts:43-44). 새 시각 컬럼은 `timestamptz`.
@@ -139,13 +142,14 @@ export class UserRepository implements UserRepositoryInterface {
 - `update(where, entity)` 의 `entity` 는 호출자가 `new XEntity()` + 바꿀 필드만 할당해 넘긴다(`@BeforeUpdate` 트리거). `undefined` 필드는 건드리지 않고 `null` 은 NULL 로 비운다 — 수정 API 의 선택 필드는 `?? null`.
 - **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery` · `buildStoreFileRowsQuery` — 용도 조인 + raw 별칭이 결과 행 타입 `StoreFileRow` 의 키와 같다)하고 repository spec 의 Data-Access Smoke 로 SQL 을 고정한다 — service spec 은 repository 를 mock 하므로 쿼리를 실행하지 않는다([testing.md](testing.md)).
 - 메서드명은 소유 도메인 어휘.
+- **같은 업체 설정은 업체 행을 잠그고 쓴다** — 교체(영업시간 · 브레이크타임 — 지우고 다시 넣기) · 겹침 검사(일시 예약불가) · 한도(업체 사진)는 동시에 온 두 요청이 같이 통과할 수 있다(교체 두 건이 합쳐져 겹치는 브레이크타임 등). store `findStoreByManager(user_id, true)` 가 `setLock('pessimistic_write', undefined, ['s'])` → `FOR UPDATE OF s` 로 업체 행만 잠가 같은 업체의 설정 쓰기를 한 번에 하나로 만든다. 잠금은 쓰기 트랜잭션(`@Transactional()`) 안에서만 — 밖에서는 TypeORM 이 `PessimisticLockTransactionRequiredError` 를 던진다(repository 가 500). 조회는 `false`.
 
 - **로그인 그룹 조건** — 회원 조회는 자기 도메인의 로그인 그룹(`login_scope`)을 WHERE 에 넣어 다른 그룹 계정을 없는 계정처럼 다룬다(`findManager({login_id, login_scope: LOGIN_SCOPE.MANAGER, state_id: In([...])})`). 휴대폰 번호 중복 확인도 같은 그룹 안에서 한다.
 - **다른 앱의 데이터(공유 DB)** — admin-service 의 manager · admin repository 는 t_user · t_session · t_session_refresh · t_sms_verification 을 같은 엔티티로 직접 다룬다(소유 도메인 어휘: `findManager` · `updateAdmin`). 오류 변환은 user.repository.ts 와 같다. 스키마 변경(마이그레이션)은 user-service 묶음 한 곳이다.
 
 ### 컬럼 이름 규칙
 
-- 시각은 `<과거분사>_at` 이다 — `created_at` · `updated_at` · `verified_at` · `phone_verified_at` · `leave_reserved_at`. 만료는 `expires_at` 이다.
+- 시각은 `<과거분사>_at` 이다 — `created_at` · `updated_at` · `verified_at` · `phone_verified_at` · `leave_reserved_at`. 앞으로 올 시각은 `expires_at` 꼴이다 — 만료 `expires_at`, 범위 `starts_at` · `ends_at`(일시 예약불가).
 - 여부 플래그는 `is_<형용사 · 과거분사>` 이다 — `is_deleted` · `is_login_allowed` · `is_password_change_required`.
 - 직전 값을 가리키는 컬럼은 `previous_<이름>` 이다 — `previous_refresh_hash` · `leave_previous_state_id`.
 - PK 는 `<t_ 를 뗀 테이블 이름>_id`, FK 는 가리키는 PK 와 같은 이름이다 — `api_log_id` · `user_id` · `sms_purpose_id`.

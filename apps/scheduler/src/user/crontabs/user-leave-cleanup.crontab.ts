@@ -1,7 +1,7 @@
 import {Inject, Injectable} from '@nestjs/common';
 import {Cron, CronExpression} from '@nestjs/schedule';
-import dayjs from 'dayjs';
 import {LessThanOrEqual} from 'typeorm';
+import {dayjs} from '@app/common/utils/dayjs.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {JobLockService} from '@app/database/job-lock/job-lock.service.js';
 import type {UserRepositoryInterface} from '../interfaces/user.repository.interface.js';

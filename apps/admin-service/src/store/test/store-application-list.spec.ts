@@ -47,6 +47,9 @@ describe('GET /internal/v1/admin-service/store/application — 입점 신청 목
         });
 
         it('상태 + 검색어는 상호명 · 사업자번호 OR 로 거르고 같은 WHERE 로 센다', async () => {
+            // 2페이지가 있어야 offset 10 이 된다(총 개수로 페이지를 바로잡는다)
+            repo.countApplications.mockResolvedValueOnce(30);
+
             const res = await request(app.getHttpServer())
                 .get(`${PATH}?store_application_state_id=WAIT&keyword=${encodeURIComponent('룸')}&page=2&size=10`)
                 .set(internalHeaders(ADMIN_ACTOR));

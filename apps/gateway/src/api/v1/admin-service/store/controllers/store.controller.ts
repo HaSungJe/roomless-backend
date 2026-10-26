@@ -18,18 +18,22 @@ import {StoreApplicationFileUploadUrlDto, StoreApplicationFileUploadUrlParamDto,
 import {StoreApplicationListDto, StoreApplicationListResultDto} from '@app/contracts/store/dto/store-application-list.dto.js';
 import {StoreDetailParamDto, StoreDetailResultDto} from '@app/contracts/store/dto/store-detail.dto.js';
 import {StoreListDto, StoreListResultDto} from '@app/contracts/store/dto/store-list.dto.js';
+import {StoreMineFileUploadUrlDto, StoreMineFileUploadUrlResultDto} from '@app/contracts/store/dto/store-mine-file-upload-url.dto.js';
+import {StoreMineUnavailablePeriodListDto, StoreMineUnavailablePeriodListResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period-list.dto.js';
+import {StoreMineResultDto} from '@app/contracts/store/dto/store-mine.dto.js';
 import {StoreMyApplicationListDto, StoreMyApplicationListResultDto} from '@app/contracts/store/dto/store-my-application-list.dto.js';
 import {StoreMyApplicationParamDto, StoreMyApplicationResultDto} from '@app/contracts/store/dto/store-my-application.dto.js';
 import {STORE_INTERNAL_PATH} from '@app/contracts/store/store.commands.js';
 import {PassportJwtAdminAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.admin.guard.js';
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
 import {PassportJwtAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
+import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
 import {InternalHttpClient} from '../../../../../modules/transport/internal-http.client.js';
 
 /**
  * 업체 공개 API — 동기 경로(내부 HTTP → admin-service store 도메인). 조회 · 업로드 주소.
- * 신청자 라우트(/application/mine…)는 이용자 가드, 나머지는 관리자 가드. `/application…` 를 `/:store_id` 보다 먼저 선언한다.
- * 큐 경로(신청 · 파일 · 승인 · 반려 · 수정 · 상태)는 같은 경로 접두의 store.controller.queue.ts(StoreQueueController)에 둔다.
+ * 내 업체 라우트(/mine…)는 매니저 가드, 신청자 라우트(/application/mine…)는 이용자 가드, 나머지는 관리자 가드. `/mine…` · `/application…` 를 `/:store_id` 보다 먼저 선언한다.
+ * 큐 경로(신청 · 파일 · 승인 · 반려 · 수정 · 상태 · 내 업체 설정)는 같은 경로 접두의 store.controller.queue.ts(StoreQueueController)에 둔다.
  */
 @ApiTags('업체')
 @Controller('/api/v1/admin-service/store')
@@ -38,6 +42,61 @@ export class StoreController {
      * @param internalHttp 동기 경로 — admin-service 내부 HTTP
      */
     constructor(private readonly internalHttp: InternalHttpClient) {}
+
+    /**
+     * 내 업체 상세 (업체 관리자) — 업체 정보 · 업체코드 · 영업 설정 · 요일별 영업시간 · 브레이크타임 · 업체 정보 파일 열람 주소
+     */
+    @Get('/mine')
+    @UseGuards(PassportJwtManagerAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '내 업체 상세'})
+    @ApiOkResponse({type: StoreMineResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getMyStore(@PassportActor() actor: Actor): Promise<StoreMineResultDto> {
+        return this.internalHttp.request<StoreMineResultDto>('admin', 'GET', STORE_INTERNAL_PATH.MINE, {actor});
+    }
+
+    /**
+     * 내 업체 사진 업로드 주소 (업체 관리자) — 받은 주소로 같은 Content-Type 헤더로 PUT 한 뒤 file_key 로 사진을 등록한다
+     */
+    @Post('/mine/file/upload-url')
+    @UseGuards(PassportJwtManagerAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '내 업체 사진 업로드 주소'})
+    @ApiBody({type: StoreMineFileUploadUrlDto})
+    @ApiOkResponse({type: StoreMineFileUploadUrlResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async createMyStoreFileUploadUrl(@PassportActor() actor: Actor, @Body() dto: StoreMineFileUploadUrlDto): Promise<StoreMineFileUploadUrlResultDto> {
+        return this.internalHttp.request<StoreMineFileUploadUrlResultDto>('admin', 'POST', STORE_INTERNAL_PATH.MINE_FILE_UPLOAD_URL, {actor, body: dto});
+    }
+
+    /**
+     * 내 업체 일시 예약불가 목록 (업체 관리자) — 끝나지 않은 것만, 시작 순
+     */
+    @Get('/mine/unavailable-period')
+    @UseGuards(PassportJwtManagerAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '내 업체 일시 예약불가 목록'})
+    @ApiOkResponse({type: StoreMineUnavailablePeriodListResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getMyStoreUnavailablePeriodList(@PassportActor() actor: Actor, @Query() query: StoreMineUnavailablePeriodListDto): Promise<StoreMineUnavailablePeriodListResultDto> {
+        const dto = new StoreMineUnavailablePeriodListDto(query);
+        return this.internalHttp.request<StoreMineUnavailablePeriodListResultDto>('admin', 'GET', STORE_INTERNAL_PATH.MINE_UNAVAILABLE_PERIOD_LIST, {actor, query: dto});
+    }
 
     /**
      * 내 입점 신청 목록 — 대기 · 반려 · 승인 모두(승인 신청은 업체코드 포함)

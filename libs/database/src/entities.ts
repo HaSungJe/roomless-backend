@@ -6,6 +6,7 @@ import {StoreFilePurposeEntity} from './entities/store/store-file-purpose.entity
 import {StoreFileEntity} from './entities/store/store-file.entity.js';
 import {StoreHourEntity} from './entities/store/store-hour.entity.js';
 import {StoreStateEntity} from './entities/store/store-state.entity.js';
+import {StoreUnavailablePeriodEntity} from './entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from './entities/store/store.entity.js';
 import {AuthEntity} from './entities/user/auth.entity.js';
 import {SessionRefreshEntity} from './entities/user/session-refresh.entity.js';
@@ -34,6 +35,7 @@ export const ENTITIES = [
     StoreFileEntity,
     StoreHourEntity,
     StoreBreakEntity,
+    StoreUnavailablePeriodEntity,
     UserEntity,
     UserSettingEntity,
     SessionEntity,
