@@ -23,7 +23,7 @@ flowchart LR
   P7 --> P9
   P8 --> P9
   P9 --> P10["Phase 10 · 업체 인력 (2)"]:::done
-  P10 --> P11["Phase 11 · 업체 운영 설정 (6)"]:::done
+  P10 --> P11["Phase 11 · 업체 운영 설정 (9)"]:::done
   P8 --> P12["Phase 12 · room 스키마 (5)"]:::todo
   P11 --> P13["Phase 13 · 객실 관리 (5)"]:::todo
   P12 --> P13
@@ -63,7 +63,7 @@ flowchart LR
 - Phase 8 — store 스키마 · 유닛 5개 · 의존: Phase 1 · 푼다: Phase 9, 12 · 파일 집합: libs/database/src/entities/store, libs/database/src/seeder, libs/database/src/migrations · done
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · done
-- Phase 11 — 업체 운영 설정 · 유닛 6개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
+- Phase 11 — 업체 운영 설정 · 유닛 9개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 12 — room 스키마 · 유닛 5개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
 - Phase 13 — 객실 관리 · 유닛 5개 · 의존: Phase 11, 12 · 푼다: Phase 15, 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · todo
 - Phase 14 — device 기반 · 유닛 2개 · 의존: Phase 12 · 푼다: Phase 15 · 파일 집합: libs/database/src/entities/device, libs/database/src/migrations, apps/admin-service/src/device(포트) · todo
@@ -89,6 +89,7 @@ Phase 12 room 스키마 시작하기
 - #51 t_room_group_plan
 - #52 t_room_group_plan_price
 - ok → 다음
+- 사용자 — 마이그레이션 `StoreReservationPolicy` 적용(`StoreOperation` 뒤 — 기존 업체에 예약 가능 72시간 · 환불 기준 1시간이 들어가고 정지 사유 컬럼이 생긴다)
 - 사용자 — 마이그레이션 `StoreOperation` 적용(`StoreCodeManagerScope` 뒤 — `t_store_break` 의 요일이 지워져 기존 브레이크 행은 매일로 남고, 일시 예약불가 테이블이 생긴다)
 - 사용자 — 마이그레이션 `StoreCodeManagerScope` 적용(`StoreFile` 뒤 — 기존 업체 행에 업체코드가 채워지고, 매니저 아이디 · 휴대폰 UK 가 업체 단위 부분 인덱스로 바뀐다. 이미 있던 입점 신청은 업체 총관리자 아이디 · 비밀번호가 비어 있어 반려 후 다시 신청)
 - 사용자 — 마이그레이션 `StoreFile` 적용(`npm run db:migrate` 또는 Docker migrate 컨테이너 — `t_store_image` 삭제 · `head_manager_phone` → `owner_phone` · 업체 정보 파일 테이블)
@@ -303,8 +304,11 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 | 47 | 정비시간 설정 | 퇴실 후 n분 | — | 34 | done(4fe12f0) |
 | 94 | 영업중 여부 전환 | 업체 관리자가 영업중 · 영업중 아님을 바꾼다(`t_store.is_open`) — 0 이면 연중무휴 · 영업시간 안이어도 영업중 아님 | 영업중 아님으로 바꿀 때 기존 예약 처리(Open Decisions) | 34 | done(4fe12f0) |
 | 98 | 일시 예약불가 | 시작 일시 ~ 종료 일시(분 단위) 동안 예약을 받지 않는다(`t_store_unavailable_period`) — 서로 겹침 금지 · 메모 30자, 요일별 휴무와 별개 | 걸리는 기존 예약은 취소하지 않고 특수 표시(Phase 17) | 44 | done(4fe12f0) |
+| 99 | 예약 · 환불 규정 | 업체가 정한다 — 이용 시작 n시간 전부터 예약(`booking_open_hours`, 기본 72), n시간 전까지 100% 환불 · 이후 환불 신청 불가(`refund_deadline_hours`, 기본 1) | 적용 · 예약 때 기준 저장은 Phase 17 | 44 | done(c4003ff) |
+| 100 | 관리자 영업중 여부 전환 | 총관리자 · 관리자가 업체의 영업중 여부를 바꾼다 — 관리자가 바꾸는 운영 설정은 이것 하나 | — | 41 | done(c4003ff) |
+| 101 | 영업중지 정지 사유 | 관리자가 영업중지로 바꿀 때 사유를 남기고 업체 관리자에게 보인다(`suspend_comment`) | — | 41 | done(c4003ff) |
 
-**APIs** (구현 — store-operation-spec.md, 매니저 가드): `GET /api/v1/admin-service/store/mine`(#44), `PATCH /mine/profile` · `POST /mine/file/upload-url` · `POST /mine/file` · `DELETE /mine/file/:store_file_id` · `PUT /mine/file/order`(#45), `PUT /mine/hours` · `/mine/breaks`(#46), `PATCH /mine/maintenance`(#47), `PATCH /mine/open`(#94), `GET · POST /mine/unavailable-period` · `DELETE /mine/unavailable-period/:store_unavailable_period_id`(#98).
+**APIs** (구현 — store-operation-spec.md, 매니저 가드): `GET /api/v1/admin-service/store/mine`(#44), `PATCH /mine/profile` · `POST /mine/file/upload-url` · `POST /mine/file` · `DELETE /mine/file/:store_file_id` · `PUT /mine/file/order`(#45), `PUT /mine/hours` · `/mine/breaks`(#46), `PATCH /mine/maintenance`(#47), `PATCH /mine/open`(#94), `GET · POST /mine/unavailable-period` · `DELETE /mine/unavailable-period/:store_unavailable_period_id`(#98), `PATCH /mine/reservation-policy`(#99), 관리자 가드 `PATCH /api/v1/admin-service/store/:store_id/open`(#100) · `PATCH /:store_id/state` 의 `suspend_comment`(#101 — 리비전 261029-1).
 
 메모: 브레이크타임은 요일 없이 매일 · 서로 겹침 금지, 영업시간 시작 = 마감 불가(24시간은 연중무휴), 같은 업체 설정 쓰기는 업체 행 잠금(사용자 결정 2026-10-27).
 같은 배치로 날짜 · 시각 처리를 dayjs 로 통일했다(`libs/common/src/utils/dayjs.ts` — kst.ts 삭제).
@@ -364,7 +368,7 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 | 67 | 가용성 · 가격 · 환불 util | 점유 구간 겹침 · 정비시간 · 브레이크타임 · 호실 상태 · 기간 가격 · 환불 규정 | 기간 가격 기준일 | 64 | todo |
 | 68 | 호실별 예약 가능 시간 조회 | 업체 · 날짜 · 상품 기준 (동기) | 객실 데이터 읽는 방법(Open Decisions) | 67 | todo |
 | 69 | 예약 생성 | 호실 · 상품 · 시작 시각, 결제 대기 홀드 (큐) | 결제 대기 유지 시간 | 66, 67 | todo |
-| 70 | 예약 취소 | 시작 1시간 전까지 100%, 이후 50% (큐) | 시작 이후 · 노쇼 취소 | 69 | todo |
+| 70 | 예약 취소 | 업체 환불 기준(예약 때 저장한 n시간) 전까지 환불 신청 → 100% 환불을 백그라운드에서 토스페이먼츠로, 기준이 지나면 환불 신청 불가 (큐) | 기준 뒤 환불 없는 취소를 받을지 | 69 | todo |
 | 71 | 내 예약 목록 · 상세 | 동기 | — | 69 | todo |
 | 72 | 업체 예약 현황 | 호실별 시간표 | — | 69 | todo |
 | 73 | 업체 측 예약 취소 · 호실 이동 | 100% 환불 · 이용자 SMS 필수 (큐) | 호실 이동 범위(같은 그룹만) | 17, 69 | todo |
@@ -444,7 +448,7 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 54/97 units done (11/23 phases)
+**Progress**: 57/100 units done (11/23 phases)
 **Next up**: Phase 12 room 스키마 — 의존(Phase 8) 모두 완료
 
 함께 시작할 수 있는 것: room 스키마(Phase 12)와 api-log(Phase 22)도 의존이 끝났다. 둘 다 Phase 9 와 파일이 겹치지 않아 함께 돌릴 수 있지만, 서로는 마이그레이션 등록 파일이 겹쳐 동시에 돌리지 않는다.
@@ -462,10 +466,10 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 - **연령 제한** — 성인만 가입한다(청소년보호법 — 만 19세가 되는 해의 1월 1일부터, SNS 가입의 생년월일로 판정). 이용자는 SNS 로만 가입한다 (결정 2026-10-22)
 - **휴대폰 인증** — 이용자는 가입 후 SMS 인증(발송 → 인증 ID + 인증번호 확인)을 마쳐야 그 번호가 회원정보에 저장되고 서비스를 이용할 수 있다. 로그인 그룹 안에서 번호 1개 = 계정 1개. 인증번호 6자리 · 5분 · 3회, 같은 번호 하루(한국 날짜) 10번(`SMS_VERIFICATION_DAILY_LIMIT`). 인증 전 회원을 막는 가드는 회원 전용 기능이 생길 때
 - **객실 모델** — 객실 그룹 단위로 상품(이름 · 이용시간 · 가격)을 정하고 그룹 안 호실은 같은 상품을 쓴다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 업체가 그룹 상품마다 기간 가격(성수기 등)을 따로 정한다
-- **이용 단위 · 사전 예약** — 항상 시간 기반(숙박도 긴 상품). 6개월 앞 예약까지 받는다
+- **이용 단위 · 사전 예약** — 항상 시간 기반(숙박도 긴 상품). 업체마다 이용 시작 n시간 전부터 예약을 받는다(`t_store.booking_open_hours`, 1 ~ 4,320 — 최대 6개월, 기본 72 · 사용자 결정 2026-10-29)
 - **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 업체 영업중(`is_open = 1`) + 점유 구간 겹침 없음 + 영업시간 내(연중무휴면 생략) · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 스탠바이도). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
 - **호실 선택** — 이용자가 호실을 직접 고른다
-- **취소 · 환불** — 업체 취소 100%, 이용자는 시작 1시간 전까지 100%, 그 이후 50%
+- **취소 · 환불** — 업체 취소 100%. 이용자는 업체가 정한 n시간 전까지 환불 신청하면 100%(`t_store.refund_deadline_hours`, 0 ~ 168, 기본 1), 그 뒤에는 환불 신청 자체가 안 된다(50% 구간 없음). 예약할 때의 기준을 예약에 저장하고, 환불은 신청 뒤 백그라운드에서 토스페이먼츠로 처리한다(사용자 결정 2026-10-29)
 - **체크인 · 연장** — 시작 5분 전 SMS로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 같은 상품 단위로 이어서 예약
 - **업체 측 예약 변경** — 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 SMS
 - **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
@@ -479,11 +483,12 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 - [ ] **예약 · 조회가 객실 데이터를 읽는 방법** — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
 - [ ] **입장 QR 확인 수단** — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 14 · 19)
-- [ ] **취소 규정의 끝** — 시작 이후 · 노쇼 취소를 받을지. (Phase 17)
+- [x] **취소 규정의 끝** — 업체 환불 기준(n시간 전)이 지나면 환불 신청 자체가 안 된다 — 시작 이후 · 노쇼 환불 없음. 기준 뒤 환불 없는 취소를 받을지는 Phase 17 #70 기획 때. (사용자 결정 2026-10-29)
 - [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 특수 표시한다. 예약 기능(Phase 17)에서 구현. (사용자 결정 2026-10-27 · #98)
 - [ ] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지, 일시 예약불가처럼 특수 표시로 둘지. (Phase 9 · 11 → Phase 17 기획 때 — #41 · #46 · #94)
 - [ ] **통계 정의** — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 21)
-- [ ] **결제 대기 유지 시간 · 결제 수단** — 추천: 10분, 토스페이먼츠 테스트 키로 개발. (Phase 17)
+- [x] **결제 수단** — 토스페이먼츠로 결제 · 환불을 모두 처리한다(개발은 테스트 키). (사용자 결정 2026-10-29)
+- [ ] **결제 대기 유지 시간** — 추천: 10분. (Phase 17)
 - [x] **공개 · 내부 경로 규칙** — 서비스 이름으로 시작한다: 공개 `/api/v1/<service>/<domain>/<action>`, 내부 `/internal/v1/<service>/<domain>/<action>`(`/api/v1/user-service/user/login` · `/api/v1/admin-service/manager/login`). 로그인 그룹은 가드로만 가른다. (결정 2026-10-23 · Phase 6 리비전 261023-2)
 - [x] **업체 계정 생성 위치 · admin-service 데이터 접근** — admin-service 가 공유 DB 의 `t_user` · 세션 · SMS 기록을 같은 엔티티로 직접 쓴다(scheduler 와 같은 방식). 입점 승인(#39) · 업체 관리자 관리(#42)의 계정 생성도 admin-service 매니저 도메인이 직접 한다. 마이그레이션 · 시드는 user-service 묶음 한 곳. (결정 2026-10-23 · Phase 6 리비전)
 - [x] **로그인 그룹 = 도메인 · 서버 배치** — user · manager · admin 도메인을 게이트웨이 · contracts · 서비스 전 레이어에서 나누고, 매니저 · 관리자는 admin-service(Phase 7 을 함께)에 둔다. 공통 계정 로직은 새 lib `libs/account`, 명령은 `admin.manager.*` · `admin.admin.*`(큐 `q.admin.cmd`), 게이트웨이 토큰 확인은 그룹별 서비스(전략 · 가드 3쌍). (결정 2026-10-23)
