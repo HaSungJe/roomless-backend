@@ -25,11 +25,13 @@ import type {StoreMineHoursDto} from '@app/contracts/store/dto/store-mine-hours.
 import type {StoreMineMaintenanceDto} from '@app/contracts/store/dto/store-mine-maintenance.dto.js';
 import type {StoreMineOpenDto} from '@app/contracts/store/dto/store-mine-open.dto.js';
 import type {StoreMineProfileDto} from '@app/contracts/store/dto/store-mine-profile.dto.js';
+import type {StoreMineReservationPolicyDto} from '@app/contracts/store/dto/store-mine-reservation-policy.dto.js';
 import type {StoreMineUnavailablePeriodListDto, StoreMineUnavailablePeriodListResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period-list.dto.js';
 import type {StoreMineUnavailablePeriodDto, StoreMineUnavailablePeriodResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period.dto.js';
 import type {StoreMineFileItemResultDto, StoreMineResultDto} from '@app/contracts/store/dto/store-mine.dto.js';
 import type {StoreMyApplicationListDto, StoreMyApplicationListResultDto} from '@app/contracts/store/dto/store-my-application-list.dto.js';
 import type {StoreMyApplicationFileResultDto, StoreMyApplicationResultDto} from '@app/contracts/store/dto/store-my-application.dto.js';
+import type {StoreOpenDto} from '@app/contracts/store/dto/store-open.dto.js';
 import type {StoreStateDto} from '@app/contracts/store/dto/store-state.dto.js';
 import type {StoreUpdateDto} from '@app/contracts/store/dto/store-update.dto.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
@@ -46,6 +48,7 @@ import {
     STORE_APPLICATION_NOT_FOUND_MESSAGE,
     STORE_APPLICATION_NOT_WAITING_MESSAGE,
     STORE_APPLICATION_STATE,
+    STORE_BOOKING_OPEN_HOURS_DEFAULT,
     STORE_BUSINESS_NUMBER_TAKEN_MESSAGE,
     STORE_DATETIME_FORMAT,
     STORE_FILE_KEY_INVALID_MESSAGE,
@@ -59,6 +62,7 @@ import {
     STORE_LEAVE_LOCKED_MESSAGE,
     STORE_MANAGER_STORE_NOT_FOUND_MESSAGE,
     STORE_NOT_FOUND_MESSAGE,
+    STORE_REFUND_DEADLINE_HOURS_DEFAULT,
     STORE_SAME_STATE_MESSAGE,
     STORE_STATE,
 } from './store.constants.js';
@@ -454,6 +458,9 @@ export class StoreService {
         store.is_always_open = 0;
         store.is_open = 0;
         store.maintenance_minutes = 0;
+        store.booking_open_hours = STORE_BOOKING_OPEN_HOURS_DEFAULT;
+        store.refund_deadline_hours = STORE_REFUND_DEADLINE_HOURS_DEFAULT;
+        store.suspend_comment = null;
         store.is_deleted = 0;
         store.delete_backup = null;
         await this.storeRepository.insertStore(store);
@@ -593,7 +600,7 @@ export class StoreService {
     /**
      * 업체 상태 변경 (총관리자) — 활성 · 영업중지 · 탈퇴. 같은 상태 · 탈퇴 업체는 400. (RabbitMQ: admin.store.state)
      * 탈퇴로 바꾸면 그 업체 매니저 계정을 정지(BLOCK)하고, 사업자번호를 DELETE_<store_id> 로 마스킹(원래 값은 delete_backup)해 같은 번호로 다시 입점 신청할 수 있게 한다.
-     * 영업중지는 매니저 계정을 그대로 둔다.
+     * 영업중지는 매니저 계정을 그대로 두고 정지 사유를 남긴다(선택). 활성 · 탈퇴로 바꾸면 정지 사유를 비운다.
      *
      * @param store_id 업체 ID
      * @param dto 바꿀 상태
@@ -612,16 +619,42 @@ export class StoreService {
             throw new BadRequestException({message: STORE_SAME_STATE_MESSAGE});
         }
 
-        // 2. 탈퇴 — 매니저 정지 · 사업자번호 마스킹
+        // 2. 상태 · 정지 사유 — 영업중지일 때만 사유가 남는다
         const storeEntity = new StoreEntity();
         storeEntity.store_state_id = dto.store_state_id;
+        storeEntity.suspend_comment = dto.store_state_id === STORE_STATE.SUSPEND ? (dto.suspend_comment ?? null) : null;
+
+        // 3. 탈퇴 — 매니저 정지 · 사업자번호 마스킹
         if (dto.store_state_id === STORE_STATE.LEAVE) {
             await this.storeRepository.updateStoreManagers(store_id, 'BLOCK', STORE_LEAVE_BLOCK_COMMENT);
             storeEntity.business_number = `DELETE_${store_id}`;
             storeEntity.delete_backup = JSON.stringify({business_number: store.business_number});
         }
 
-        // 3. 업체 상태
+        // 4. 업체 상태
+        await this.storeRepository.updateStore({store_id}, storeEntity);
+    }
+
+    /**
+     * 업체 영업중 여부 변경 (총관리자 · 관리자) — 0 이면 연중무휴 · 영업시간과 무관하게 영업중 아님. 탈퇴 업체 · 같은 값은 400. (RabbitMQ: admin.store.open)
+     *
+     * @param store_id 업체 ID
+     * @param dto 영업중 여부
+     */
+    @Transactional()
+    async changeStoreOpen(store_id: string, dto: StoreOpenDto): Promise<void> {
+        const store = await this.storeRepository.findStore({store_id});
+        if (!store) {
+            throw new NotFoundException({message: STORE_NOT_FOUND_MESSAGE});
+        }
+        if (store.store_state_id === STORE_STATE.LEAVE) {
+            throw new BadRequestException({message: STORE_LEAVE_LOCKED_MESSAGE});
+        }
+        if (store.is_open === dto.is_open) {
+            throw new BadRequestException({message: STORE_SAME_STATE_MESSAGE});
+        }
+        const storeEntity = new StoreEntity();
+        storeEntity.is_open = dto.is_open;
         await this.storeRepository.updateStore({store_id}, storeEntity);
     }
 
@@ -956,6 +989,24 @@ export class StoreService {
         }
         const storeEntity = new StoreEntity();
         storeEntity.is_open = dto.is_open;
+        await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
+    }
+
+    /**
+     * 내 업체 예약 · 환불 규정 설정 (업체 관리자) — 이용 시작 n시간 전부터 예약, n시간 전까지 환불 신청(100%). 적용은 예약 기능(Phase 17)이 한다. (RabbitMQ: admin.store.mine-reservation-policy)
+     *
+     * @param user_id 로그인 매니저 ID
+     * @param dto 예약 가능 시작 · 100% 환불 기준(시간)
+     */
+    @Transactional()
+    async changeMyStoreReservationPolicy(user_id: string, dto: StoreMineReservationPolicyDto): Promise<void> {
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        const storeEntity = new StoreEntity();
+        storeEntity.booking_open_hours = dto.booking_open_hours;
+        storeEntity.refund_deadline_hours = dto.refund_deadline_hours;
         await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
     }
 

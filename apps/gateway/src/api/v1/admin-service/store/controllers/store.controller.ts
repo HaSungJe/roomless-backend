@@ -33,7 +33,7 @@ import {InternalHttpClient} from '../../../../../modules/transport/internal-http
 /**
  * 업체 공개 API — 동기 경로(내부 HTTP → admin-service store 도메인). 조회 · 업로드 주소.
  * 내 업체 라우트(/mine…)는 매니저 가드, 신청자 라우트(/application/mine…)는 이용자 가드, 나머지는 관리자 가드. `/mine…` · `/application…` 를 `/:store_id` 보다 먼저 선언한다.
- * 큐 경로(신청 · 파일 · 승인 · 반려 · 수정 · 상태 · 내 업체 설정)는 같은 경로 접두의 store.controller.queue.ts(StoreQueueController)에 둔다.
+ * 큐 경로(신청 · 파일 · 승인 · 반려 · 수정 · 상태 · 영업중 여부 · 내 업체 설정)는 같은 경로 접두의 store.controller.queue.ts(StoreQueueController)에 둔다.
  */
 @ApiTags('업체')
 @Controller('/api/v1/admin-service/store')

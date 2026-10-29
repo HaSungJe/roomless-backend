@@ -72,6 +72,21 @@ export class StoreEntity {
     @Column({name: 'maintenance_minutes', type: 'smallint', nullable: false, default: 0, comment: '정비시간(분) — 퇴실 후 다음 이용까지 호실을 막는 시간'})
     maintenance_minutes: number;
 
+    @Column({name: 'booking_open_hours', type: 'smallint', nullable: false, default: 72, comment: '예약 가능 시작(시간) — 이용 시작 n시간 전부터 예약을 받는다(1 ~ 4,320)'})
+    booking_open_hours: number;
+
+    @Column({
+        name: 'refund_deadline_hours',
+        type: 'smallint',
+        nullable: false,
+        default: 1,
+        comment: '100% 환불 기준(시간) — 이용 시작 n시간 전까지 환불 신청을 받아 100% 환불, 이후 환불 신청 불가(0 ~ 168). 예약할 때 값을 예약에 저장한다',
+    })
+    refund_deadline_hours: number;
+
+    @Column({name: 'suspend_comment', type: 'varchar', length: 255, nullable: true, comment: '정지 사유 — 영업중지(SUSPEND)일 때만, 업체 관리자에게 보인다'})
+    suspend_comment: string | null;
+
     @Column({name: 'is_deleted', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제)'})
     is_deleted: number;
 

@@ -150,6 +150,7 @@ export class UserRepository implements UserRepositoryInterface {
 ### 컬럼 이름 규칙
 
 - 시각은 `<과거분사>_at` 이다 — `created_at` · `updated_at` · `verified_at` · `phone_verified_at` · `leave_reserved_at`. 앞으로 올 시각은 `expires_at` 꼴이다 — 만료 `expires_at`, 범위 `starts_at` · `ends_at`(일시 예약불가).
+- 기간 설정값은 단위를 이름 끝에 붙인 정수다 — `maintenance_minutes`(분) · `booking_open_hours` · `refund_deadline_hours`(시간). 업체별 예약 · 환불 규정(이용 시작 n시간 전부터 예약 · n시간 전까지 100% 환불, 이후 환불 신청 불가)은 `t_store` 에 두고, 예약할 때의 환불 기준은 예약에 함께 저장한다(Phase 17 — 사용자 결정 2026-10-29).
 - 여부 플래그는 `is_<형용사 · 과거분사>` 이다 — `is_deleted` · `is_login_allowed` · `is_password_change_required`.
 - 직전 값을 가리키는 컬럼은 `previous_<이름>` 이다 — `previous_refresh_hash` · `leave_previous_state_id`.
 - PK 는 `<t_ 를 뗀 테이블 이름>_id`, FK 는 가리키는 PK 와 같은 이름이다 — `api_log_id` · `user_id` · `sms_purpose_id`.

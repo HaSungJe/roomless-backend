@@ -92,6 +92,15 @@ export class StoreDetailResultDto {
     @ApiProperty({description: '정비시간(분)'})
     maintenance_minutes: number;
 
+    @ApiProperty({description: '예약 가능 시작(시간) — 이용 시작 n시간 전부터 예약'})
+    booking_open_hours: number;
+
+    @ApiProperty({description: '100% 환불 기준(시간) — 이용 시작 n시간 전까지 환불 신청, 이후 환불 불가'})
+    refund_deadline_hours: number;
+
+    @ApiProperty({description: '정지 사유 (영업중지일 때만)', nullable: true, type: String})
+    suspend_comment: string | null;
+
     @ApiProperty({description: '등록일시 (ISO 8601)'})
     created_at: string;
 

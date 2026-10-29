@@ -14,8 +14,10 @@ import type {StoreMineHoursDto} from '@app/contracts/store/dto/store-mine-hours.
 import type {StoreMineMaintenanceDto} from '@app/contracts/store/dto/store-mine-maintenance.dto.js';
 import type {StoreMineOpenDto} from '@app/contracts/store/dto/store-mine-open.dto.js';
 import type {StoreMineProfileDto} from '@app/contracts/store/dto/store-mine-profile.dto.js';
+import type {StoreMineReservationPolicyDto} from '@app/contracts/store/dto/store-mine-reservation-policy.dto.js';
 import type {StoreMineUnavailablePeriodDeleteParamDto} from '@app/contracts/store/dto/store-mine-unavailable-period-delete.dto.js';
 import type {StoreMineUnavailablePeriodDto, StoreMineUnavailablePeriodResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period.dto.js';
+import type {StoreOpenDto, StoreOpenParamDto} from '@app/contracts/store/dto/store-open.dto.js';
 import type {StoreStateDto, StoreStateParamDto} from '@app/contracts/store/dto/store-state.dto.js';
 import type {StoreUpdateDto, StoreUpdateParamDto} from '@app/contracts/store/dto/store-update.dto.js';
 import {STORE_COMMAND} from '@app/contracts/store/store.commands.js';
@@ -119,6 +121,16 @@ export class StoreQueueController {
     }
 
     /**
+     * 업체 영업중 여부 변경 — 총관리자 · 관리자
+     *
+     * @param command 명령 봉투 (payload = path param + 본문)
+     */
+    @OnCommand(STORE_COMMAND.OPEN)
+    async changeStoreOpen(command: MessageEnvelope<StoreOpenParamDto & StoreOpenDto>): Promise<void> {
+        return this.storeService.changeStoreOpen(command.payload.store_id, command.payload);
+    }
+
+    /**
      * 내 업체 소개 수정 — 업체 관리자
      *
      * @param command 명령 봉투 (actor 필수)
@@ -197,6 +209,16 @@ export class StoreQueueController {
     @OnCommand(STORE_COMMAND.MINE_OPEN)
     async changeMyStoreOpen(command: MessageEnvelope<StoreMineOpenDto>): Promise<void> {
         return this.storeService.changeMyStoreOpen(requireActor(command).user_id, command.payload);
+    }
+
+    /**
+     * 내 업체 예약 · 환불 규정 설정 — 업체 관리자
+     *
+     * @param command 명령 봉투 (actor 필수)
+     */
+    @OnCommand(STORE_COMMAND.MINE_RESERVATION_POLICY)
+    async changeMyStoreReservationPolicy(command: MessageEnvelope<StoreMineReservationPolicyDto>): Promise<void> {
+        return this.storeService.changeMyStoreReservationPolicy(requireActor(command).user_id, command.payload);
     }
 
     /**

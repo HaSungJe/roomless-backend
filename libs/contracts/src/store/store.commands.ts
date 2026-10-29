@@ -3,7 +3,7 @@ const STORE_INTERNAL_BASE = '/internal/v1/admin-service/store';
 
 /**
  * store 도메인(업체 · 입점 신청) RabbitMQ 명령 종류 (= 라우팅 키, admin-service 의 q.admin.cmd 가 `admin.#` 로 받는다).
- * 큐 경로 기준: 입점 신청 · 신청 취소 · 파일 등록 · 파일 삭제(이용자), 승인 · 반려 · 업체 수정 · 상태 변경(총관리자), 내 업체 설정(업체 관리자). 조회 · 업로드 주소는 내부 HTTP 동기 경로다.
+ * 큐 경로 기준: 입점 신청 · 신청 취소 · 파일 등록 · 파일 삭제(이용자), 승인 · 반려 · 업체 수정 · 상태 변경 · 영업중 여부(총관리자 · 관리자), 내 업체 설정(업체 관리자). 조회 · 업로드 주소는 내부 HTTP 동기 경로다.
  */
 export const STORE_COMMAND = {
     /** 입점 신청 (이용자) */
@@ -22,6 +22,8 @@ export const STORE_COMMAND = {
     UPDATE: 'admin.store.update',
     /** 업체 상태 변경 (총관리자) */
     STATE: 'admin.store.state',
+    /** 업체 영업중 여부 변경 (총관리자 · 관리자) */
+    OPEN: 'admin.store.open',
     /** 내 업체 소개 · 연락처 · 편의시설 수정 (업체 관리자) */
     MINE_PROFILE: 'admin.store.mine-profile',
     /** 내 업체 사진 등록 (업체 관리자) */
@@ -38,6 +40,8 @@ export const STORE_COMMAND = {
     MINE_MAINTENANCE: 'admin.store.mine-maintenance',
     /** 내 업체 영업중 여부 변경 (업체 관리자) */
     MINE_OPEN: 'admin.store.mine-open',
+    /** 내 업체 예약 · 환불 규정 설정 (업체 관리자) */
+    MINE_RESERVATION_POLICY: 'admin.store.mine-reservation-policy',
     /** 내 업체 일시 예약불가 등록 (업체 관리자) */
     MINE_UNAVAILABLE_PERIOD: 'admin.store.mine-unavailable-period',
     /** 내 업체 일시 예약불가 삭제 (업체 관리자) */

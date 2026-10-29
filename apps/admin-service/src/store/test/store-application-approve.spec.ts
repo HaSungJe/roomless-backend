@@ -69,6 +69,9 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
                 is_always_open: 0,
                 is_open: 0,
                 maintenance_minutes: 0,
+                booking_open_hours: 72,
+                refund_deadline_hours: 1,
+                suspend_comment: null,
                 is_deleted: 0,
                 delete_backup: null,
             });

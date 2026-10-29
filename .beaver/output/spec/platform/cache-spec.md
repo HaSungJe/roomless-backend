@@ -83,6 +83,8 @@ affected_data: ["Redis 키 auth-user:<login_scope>:<user_id> (로그인 회원 �
 | 내 업체 사진 등록 · 삭제 · 순서 변경(`addMyStoreFile` · `removeMyStoreFile` · `reorderMyStoreFiles`) | admin-service store (Phase 11) | 사진 · 대표 사진 | Phase 11 |
 | 영업시간 · 브레이크타임 교체 · 정비시간 · 영업중 여부(`replaceMyStoreHours` · `replaceMyStoreBreaks` · `changeMyStoreMaintenance` · `changeMyStoreOpen`) | admin-service store (Phase 11) | 영업 설정 — 목록의 영업중 표시 · 예약 가능 시간 | Phase 11 |
 | 일시 예약불가 등록 · 삭제(`addMyStoreUnavailablePeriod` · `removeMyStoreUnavailablePeriod`) | admin-service store (Phase 11) | 예약 가능 시간 | Phase 11 |
+| 관리자 영업중 여부 변경(`changeStoreOpen`) · 정지 사유(`changeStoreState`) | admin-service store (리비전 261029-1) | 영업중 표시 · 상태 | 리비전 |
+| 내 업체 예약 · 환불 규정(`changeMyStoreReservationPolicy`) | admin-service store (리비전 261029-1) | 예약 가능 시간 · 환불 규정 | 리비전 |
 
 ## 다시 생각한 문제 — 무효화
 

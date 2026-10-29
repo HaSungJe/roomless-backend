@@ -29,8 +29,10 @@ import {StoreMineHoursDto} from '@app/contracts/store/dto/store-mine-hours.dto.j
 import {StoreMineMaintenanceDto} from '@app/contracts/store/dto/store-mine-maintenance.dto.js';
 import {StoreMineOpenDto} from '@app/contracts/store/dto/store-mine-open.dto.js';
 import {StoreMineProfileDto} from '@app/contracts/store/dto/store-mine-profile.dto.js';
+import {StoreMineReservationPolicyDto} from '@app/contracts/store/dto/store-mine-reservation-policy.dto.js';
 import {StoreMineUnavailablePeriodDeleteParamDto} from '@app/contracts/store/dto/store-mine-unavailable-period-delete.dto.js';
 import {StoreMineUnavailablePeriodDto, StoreMineUnavailablePeriodResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period.dto.js';
+import {StoreOpenDto, StoreOpenParamDto} from '@app/contracts/store/dto/store-open.dto.js';
 import {StoreStateDto, StoreStateParamDto} from '@app/contracts/store/dto/store-state.dto.js';
 import {StoreUpdateDto, StoreUpdateParamDto} from '@app/contracts/store/dto/store-update.dto.js';
 import {STORE_COMMAND} from '@app/contracts/store/store.commands.js';
@@ -42,7 +44,7 @@ import {CommandStreamService} from '../../../../../modules/transport/command-str
 
 /**
  * 업체 공개 API — 큐 경로(RabbitMQ `admin.store.*` → admin-service + 요청 단위 SSE).
- * 내 업체 설정(매니저 가드 — 업체 총관리자 · 업체 관리자), 신청 · 신청 취소 · 업체 정보 파일 등록 · 삭제(이용자 가드), 승인 · 반려 · 업체 수정 · 상태 변경(관리자 가드). path param 은 payload 에 합쳐 보낸다.
+ * 내 업체 설정(매니저 가드 — 업체 총관리자 · 업체 관리자), 신청 · 신청 취소 · 업체 정보 파일 등록 · 삭제(이용자 가드), 승인 · 반려 · 업체 수정 · 상태 변경 · 영업중 여부(관리자 가드). path param 은 payload 에 합쳐 보낸다.
  * `/mine…` 을 `/:store_id` 보다 먼저 선언한다. 동기 경로(조회 · 업로드 주소)는 같은 경로 접두의 store.controller.ts(StoreController)에 둔다.
  */
 @ApiTags('업체')
@@ -195,6 +197,24 @@ export class StoreQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async changeMyStoreOpen(@PassportActor() actor: Actor, @Body() dto: StoreMineOpenDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: STORE_COMMAND.MINE_OPEN, actor, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 내 업체 예약 · 환불 규정 설정 (업체 관리자) — 이용 시작 n시간 전부터 예약, n시간 전까지 100% 환불(이후 환불 불가). done 의 data 는 null.
+     */
+    @Patch('/mine/reservation-policy')
+    @UseGuards(PassportJwtManagerAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '내 업체 예약 · 환불 규정 설정'})
+    @ApiBody({type: StoreMineReservationPolicyDto})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async changeMyStoreReservationPolicy(@PassportActor() actor: Actor, @Body() dto: StoreMineReservationPolicyDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: STORE_COMMAND.MINE_RESERVATION_POLICY, actor, payload: dto, client_ip: ip});
     }
 
     /**
@@ -386,5 +406,23 @@ export class StoreQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async changeStoreState(@PassportActor() actor: Actor, @Param() param: StoreStateParamDto, @Body() dto: StoreStateDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: STORE_COMMAND.STATE, actor, payload: {...param, ...dto}, client_ip: ip});
+    }
+
+    /**
+     * 업체 영업중 여부 변경 (총관리자 · 관리자) — 같은 값 · 탈퇴 업체는 400. done 의 data 는 null. `/mine/open` 이 앞에 있어 `mine` 이 업체 ID 로 잡히지 않는다.
+     */
+    @Patch('/:store_id/open')
+    @UseGuards(PassportJwtAdminAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 영업중 여부 변경'})
+    @ApiBody({type: StoreOpenDto})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async changeStoreOpen(@PassportActor() actor: Actor, @Param() param: StoreOpenParamDto, @Body() dto: StoreOpenDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: STORE_COMMAND.OPEN, actor, payload: {...param, ...dto}, client_ip: ip});
     }
 }

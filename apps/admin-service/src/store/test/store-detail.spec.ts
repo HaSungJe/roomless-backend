@@ -67,6 +67,9 @@ describe('GET /internal/v1/admin-service/store/:store_id — 업체 상세 (총�
                 is_always_open: 0,
                 is_open: 0,
                 maintenance_minutes: 0,
+                booking_open_hours: 72,
+                refund_deadline_hours: 1,
+                suspend_comment: null,
                 created_at: FIXED_TIME.toISOString(),
                 updated_at: FIXED_TIME.toISOString(),
             });

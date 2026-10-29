@@ -57,5 +57,11 @@ export const STORE_FILE_NOT_UPLOADED_MESSAGE = '파일이 아직 올라가지 �
 /** 바꾸려는 값이 지금과 같다 (업체 상태 · 영업중 여부) */
 export const STORE_SAME_STATE_MESSAGE = '이미 같은 상태입니다.';
 
+/** 예약 가능 시작 기본값(시간) — 입점 승인 때 · 기존 업체(DB 기본값) */
+export const STORE_BOOKING_OPEN_HOURS_DEFAULT = 72;
+
+/** 100% 환불 기준 기본값(시간) — 입점 승인 때 · 기존 업체(DB 기본값) */
+export const STORE_REFUND_DEADLINE_HOURS_DEFAULT = 1;
+
 /** 일시 예약불가 입력 형식 — 한국 시각 분 단위 (dayjs 형식 문자열) */
 export const STORE_DATETIME_FORMAT = 'YYYY-MM-DD HH:mm';

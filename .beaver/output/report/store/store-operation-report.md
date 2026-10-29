@@ -59,3 +59,41 @@
 - 사용자 몫(배포 때): 마이그레이션 `StoreOperation` 적용(`StoreCodeManagerScope` 뒤 — 기존 브레이크 행은 요일 없이 매일로 남는다).
 - 일시 예약불가 범위에 걸리는 기존 예약의 특수 표시는 예약 기능(Phase 17)에서 구현한다.
 - `/beaver:test` 에서 새 spec 을 처음 실행한다 — 특히 `validateBody` 의 첫 메시지 · 점 경로 단언과 dayjs 시간대 계산(테스트 머신 TZ 무관하게 고정값으로 단언).
+
+## Modification - 261029-1
+
+리비전: [store-operation-revision-261029-1.md](../../revision/store/store-operation-revision-261029-1.md)
+
+### Change summary
+- 관리자(총관리자 · 관리자) 영업중 여부 전환 `PATCH /api/v1/admin-service/store/:store_id/open`(큐 `admin.store.open`) — 탈퇴 업체 · 같은 값 400, 없는 업체 404. 관리자가 바꾸는 운영 설정은 이것 하나.
+- 영업중지 정지 사유 `t_store.suspend_comment` — 영업중지로 바꿀 때만 저장(선택 · 255자), 활성 · 탈퇴면 비운다. 관리자 업체 상세 · 내 업체 상세에 보인다.
+- 업체별 예약 · 환불 규정 `t_store.booking_open_hours`(이용 시작 n시간 전부터 예약, 1 ~ 4,320, 기본 72) · `refund_deadline_hours`(n시간 전까지 100% 환불 · 이후 환불 신청 불가, 0 ~ 168, 기본 1), 설정 `PATCH /mine/reservation-policy`(큐 `admin.store.mine-reservation-policy`). 적용(예약 · 환불 신청 차단 · 스냅샷 · 토스페이먼츠 백그라운드 환불)은 Phase 17.
+- 입점 승인 때 72 · 1 · null 을 넣는다. 마이그레이션 `StoreReservationPolicy`(기존 행은 DB 기본값).
+
+### Changed files
+| File | Change Type | Description |
+|------|-----------|------|
+| `libs/database/src/entities/store/store.entity.ts` | modified | 컬럼 3 |
+| `libs/database/src/migrations/1793260428802-StoreReservationPolicy.ts` · `migrations.ts` | created · modified | db:generate + down 의 불필요한 COMMENT 제거 · 설명 |
+| `libs/contracts/src/store/store.commands.ts` | modified | `OPEN` · `MINE_RESERVATION_POLICY` |
+| `libs/contracts/src/store/dto/store-open.dto.ts` · `store-mine-reservation-policy.dto.ts` | created | 입력 DTO |
+| `libs/contracts/src/store/dto/{store-state,store-detail,store-mine}.dto.ts` | modified | `suspend_comment?` 입력 · 결과 세 필드 |
+| `apps/admin-service/src/store/{store.constants,store.util,store.service}.ts` · `controllers/store.controller.queue.ts` | modified | 기본값 상수 · 변환 · 승인 기본값 · `changeStoreState` 사유 · `changeStoreOpen` · `changeMyStoreReservationPolicy` · `@OnCommand` 2 |
+| `apps/gateway/src/api/v1/admin-service/store/controllers/store.controller{,.queue}.ts` | modified | `PATCH /mine/reservation-policy`(매니저) · `PATCH /:store_id/open`(관리자, `/mine/open` 뒤) · 설명 |
+| `apps/admin-service/src/store/test/*` | created · modified | 새 spec 2 · 기존 spec 4 · 도우미 · Smoke 스냅샷 |
+| `docs/data-layer.md` · `README.md` · `.beaver/output/spec/platform/cache-spec.md` | modified | 기간 설정 컬럼 · 설명 · 무효화 지점 2행 |
+
+### Tests written
+- 새 spec: `store-open`(성공 · 없는 업체 404 · 탈퇴 400 · 같은 값 400 — 수정 미호출), `store-mine-reservation-policy`(잠금 인자 · 두 값만 수정 · 소속 업체 없음 404 · 범위 검증 3 · 경계 2 · actor 없음 401)
+- 고친 spec: `store-state`(사유 있음 · 없음 · 활성 복귀 비움 · 탈퇴 비움), `store-detail` · `store-mine`(응답 세 필드 — 내 업체는 영업중지 · 사유 행), `store-application-approve`(승인 기본값 72 · 1 · null), 도우미 `storeRow`, `store.repository.spec` `STORE_SELECT`(실제 SQL 로 확인)
+- 테스트 생략(위임형): 게이트웨이 라우트 · DTO 클래스 · 마이그레이션(PGlite 로 확인)
+
+### Verification
+- typecheck · lint · build(4개 앱) · db:check 통과(종료 코드 0), 바뀐 TS Prettier 통과. build 는 테스트를 돌리지 않았다 — 실행은 `/beaver:test`.
+- `STORE_SELECT` 스냅샷이 dist 로 뽑은 실제 SQL 과 같다(scratch).
+- PGlite: 직전 마이그레이션까지 적용한 DB 의 업체 행 → `StoreReservationPolicy` 적용 뒤 72 · 1 · NULL, 되돌리기 → 세 컬럼 없음, 다시 적용 OK.
+- 의도 확인(읽기): 관리자 라우트는 `/:store_id/state` 다음 · `/mine/open` 뒤라 `mine` 이 업체 ID 로 잡히지 않는다. 관리자 영업중 여부는 형제 관리자 쓰기처럼 잠금 없는 `findStore`, 규정 설정은 내 업체 쓰기라 업체 행 잠금.
+
+### Remaining issues
+- 사용자 몫(배포 때): 마이그레이션 `StoreReservationPolicy` 적용(`StoreOperation` 뒤).
+- 로드맵(ship): Phase 11 에 유닛(#99 예약 · 환불 규정 · #100 관리자 영업중 여부 · #101 정지 사유) 추가, 공통 규칙 "취소 · 환불" · "사전 예약" 갱신, Open Decision "취소 규정의 끝" · "결제 수단" 해결 표시, Phase 17 #67 · #69 · #70 메모. build 는 이미 done 인 Phase 11 유닛을 되돌리지 않으려고 상태 표시를 하지 않았다.
