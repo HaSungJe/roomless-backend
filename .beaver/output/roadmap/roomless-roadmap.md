@@ -24,8 +24,8 @@ flowchart LR
   P8 --> P9
   P9 --> P10["Phase 10 · 업체 인력 (2)"]:::done
   P10 --> P11["Phase 11 · 업체 운영 설정 (9)"]:::done
-  P8 --> P12["Phase 12 · room 스키마 (5)"]:::todo
-  P11 --> P13["Phase 13 · 객실 관리 (5)"]:::todo
+  P8 --> P12["Phase 12 · room 스키마 (7)"]:::done
+  P11 --> P13["Phase 13 · 객실 관리 (6)"]:::todo
   P12 --> P13
   P12 --> P14["Phase 14 · device 기반 (2)"]:::todo
   P13 --> P15["Phase 15 · 사물 관리 (3)"]:::todo
@@ -43,6 +43,8 @@ flowchart LR
   P19 --> P21
   P6 --> P23["Phase 23 · 캐시 Redis (3)"]:::todo
   P18 --> P23
+  P17 --> P24["Phase 24 · 스토리 테스트 (2)"]:::todo
+  P18 --> P24
   P6 -. 동시 가능 .- P7
   P6 -. 동시 가능 .- P8
   P13 -. 동시 가능 .- P14
@@ -64,8 +66,8 @@ flowchart LR
 - Phase 9 — 업체 입점·관리 · 유닛 5개 · 의존: Phase 3, 4, 7, 8 · 푼다: Phase 10 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · done
 - Phase 11 — 업체 운영 설정 · 유닛 9개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
-- Phase 12 — room 스키마 · 유닛 5개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room, libs/database/src/migrations · todo
-- Phase 13 — 객실 관리 · 유닛 5개 · 의존: Phase 11, 12 · 푼다: Phase 15, 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · todo
+- Phase 12 — room 스키마 · 유닛 7개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room · store, libs/database/src/migrations, libs/database/src/soft-delete.ts, apps/*/repositories · done
+- Phase 13 — 객실 관리 · 유닛 6개 · 의존: Phase 11, 12 · 푼다: Phase 15, 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · todo
 - Phase 14 — device 기반 · 유닛 2개 · 의존: Phase 12 · 푼다: Phase 15 · 파일 집합: libs/database/src/entities/device, libs/database/src/migrations, apps/admin-service/src/device(포트) · todo
 - Phase 15 — 사물 관리 · 유닛 3개 · 의존: Phase 13, 14 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/device, apps/gateway/src/api/v1/admin-service/device, libs/contracts/src/device · todo
 - Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/reservation, libs/database/src/migrations, apps/user-service/src/reservation(포트) · todo
@@ -76,19 +78,22 @@ flowchart LR
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats, apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats · todo
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 - Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, compose.redis.yml, docker/, .env.example, docs/guides, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
+- Phase 24 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18 · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 12
+지금: 진행 중 없음 · Next up: Phase 13
 
 ## 지금 할 일
-Phase 12 room 스키마 시작하기
-- #48 t_room_state 룩업 + 시드
-- #49 t_room_group · t_room_group_image
-- #50 t_room
-- #51 t_room_group_plan
-- #52 t_room_group_plan_price
+Phase 13 객실 관리 시작하기
+- #53 객실 그룹 등록 · 수정 · 삭제 · 목록
+- #54 호실 등록 · 수정 · 삭제 · 목록
+- #55 호실 상태 변경
+- #56 그룹 상품 수정 · 목록
+- #103 업체 상품 설정 조회 · 수정
+- #57 상품별 기간 가격 등록 · 수정 · 삭제 · 목록
 - ok → 다음
+- 사용자 — 마이그레이션 `RoomSchema` 적용(`StoreReservationPolicy` 뒤 — 적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한이 필요하다(RDS 13+ 는 DB 의 CREATE 권한). 기존 업체마다 업체 상품 설정 3행이 들어가고, 업체 편의시설(`store_detail`)은 사라지며, store 테이블 5개가 소프트 삭제로 바뀐다)
 - 사용자 — 마이그레이션 `StoreReservationPolicy` 적용(`StoreOperation` 뒤 — 기존 업체에 예약 가능 72시간 · 환불 기준 1시간이 들어가고 정지 사유 컬럼이 생긴다)
 - 사용자 — 마이그레이션 `StoreOperation` 적용(`StoreCodeManagerScope` 뒤 — `t_store_break` 의 요일이 지워져 기존 브레이크 행은 매일로 남고, 일시 예약불가 테이블이 생긴다)
 - 사용자 — 마이그레이션 `StoreCodeManagerScope` 적용(`StoreFile` 뒤 — 기존 업체 행에 업체코드가 채워지고, 매니저 아이디 · 휴대폰 UK 가 업체 단위 부분 인덱스로 바뀐다. 이미 있던 입점 신청은 업체 총관리자 아이디 · 비밀번호가 비어 있어 반려 후 다시 신청)
@@ -299,7 +304,7 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 44 | 내 업체 상세 | 업체 관리자 | — | 42 | done(4fe12f0) |
-| 45 | 업체 소개 수정 | 소개 · 편의시설 · 연락처 · 사진 | — | 19, 35 | done(4fe12f0) |
+| 45 | 업체 소개 수정 | 소개 · 연락처 · 사진 (편의시설은 Phase 12 에서 객실 그룹 상세정보로 옮겼다) | — | 19, 35 | done(4fe12f0) |
 | 46 | 영업시간 · 브레이크타임 설정 | 요일 반복 | 영업시간 변경 시 기존 예약 처리 | 36 | done(4fe12f0) |
 | 47 | 정비시간 설정 | 퇴실 후 n분 | — | 34 | done(4fe12f0) |
 | 94 | 영업중 여부 전환 | 업체 관리자가 영업중 · 영업중 아님을 바꾼다(`t_store.is_open`) — 0 이면 연중무휴 · 영업시간 안이어도 영업중 아님 | 영업중 아님으로 바꿀 때 기존 예약 처리(Open Decisions) | 34 | done(4fe12f0) |
@@ -316,24 +321,29 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 ### Phase 12 — room 스키마 (층 · 객실 그룹 · 호실 · 상품 · 기간 가격) · depends: Phase 8
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 48 | `t_room_state` 룩업 + 시드 | 스탠바이 · 이용중 · 정비중 · 사용중지 | — | — | todo |
-| 49 | `t_room_group` · `t_room_group_image` | 그룹 — 규격 · 수용인원 · 설명 · 사진 | — | 34 | todo |
-| 50 | `t_room` | 호실 — 그룹 · `floor`(정수) · 호실명 · 상태 | — | 48, 49 | todo |
-| 51 | `t_room_group_plan` | 그룹 상품 — 이름(대실 · 숙박) · 이용시간 · 가격 | 숙박 입실 가능 시각 범위 | 49 | todo |
-| 52 | `t_room_group_plan_price` | 상품별 기간 가격(성수기 등) | 기간 겹침을 막는 방법(배타 제약 · 서비스 검사) | 51 | todo |
+| 48 | `t_room_state` 룩업 + 시드 | 스탠바이 · 이용중 · 정비중 · 사용중지 | — | — | done(966649d) |
+| 49 | `t_room_group` · `t_room_group_image` | 그룹(객실 유형) — 그룹명 · 설명 · 상세정보 JSON(방 개수 · 샤워실 · TV · PC, 기본값 + 조회 뒤 채움) · 사진(공개, 소프트 삭제) | — | 34 | done(966649d) |
+| 50 | `t_room` | 호실 — 그룹 · `floor`(정수) · 호실명 · 상태 | — | 48, 49 | done(966649d) |
+| 51 | `t_room_plan_type` · `t_room_group_plan` | 상품 종류 룩업(HOURLY 시간 이용 · NIGHT 1박 · LONG 연박) + 그룹 상품(그룹 × 종류 반드시 1행 — 사용 여부 `is_used` · 요금) | 1박 · 연박은 입실 · 퇴실 시각 고정(업체 상품 설정) | 49 | done(966649d) |
+| 52 | `t_room_group_plan_price` | 상품별 기간 가격(성수기 등) | 기간 겹침을 막는 방법(배타 제약 · 서비스 검사) | 51 | done(966649d) |
+| 102 | `t_room_plan` 업체 상품 설정 | 업체 × 상품 종류 반드시 1행 — 사용 여부 · 예약 가능 요일(비트) · 이용 시간(시간 이용) · 입실 · 퇴실 시각(1박 · 연박), 입점 승인 · 기존 업체에 3행. 편의시설은 업체에서 객실 그룹으로(`t_store.store_detail` 삭제) | 종류별 컬럼 대신 종류별 행(사용자 결정 2026-10-31) | 34 | done(966649d) |
+| 106 | 소프트 삭제 전환 | 삭제는 항상 `is_deleted = 1`(DB 만 — 파일은 S3 객체만 실제 삭제), repository 가 `notDeleted` 로 `is_deleted = 0` 을 항상 붙인다 — 기존 store 실제 삭제 6곳 · t_store · t_session 조회 전환 | 조건을 붙이는 곳 = repository(사용자 결정 2026-10-31) | — | done(966649d) |
 
-**Expected data contract**: `t_room_state` · `t_room_group` · `t_room_group_image` · `t_room` · `t_room_group_plan` · `t_room_group_plan_price`.
+**Expected data contract**: `t_room_state` · `t_room_plan_type` · `t_room_plan` · `t_room_group` · `t_room_group_image` · `t_room` · `t_room_group_plan` · `t_room_group_plan_price`, `notDeleted`(libs/database/src/soft-delete.ts).
+
+report: `.beaver/output/report/room/room-schema-report.md` · review: `main-review-261031.md`. 마이그레이션 `RoomSchema`(btree_gist 확장 — 적용 계정 권한 필요).
 
 ### Phase 13 — 객실 관리 (업체 관리자) · depends: Phase 11, Phase 12
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 53 | 객실 그룹 등록 · 수정 · 삭제 · 목록 | 사진 포함 | 미래 예약이 있는 그룹 삭제 처리 | 49 | todo |
+| 53 | 객실 그룹 등록 · 수정 · 삭제 · 목록 | 사진 · 상세정보 JSON 포함, 그룹을 만들 때 그룹 상품 3행을 함께 만든다(소프트 삭제) | 미래 예약이 있는 그룹 삭제 처리 | 49 | todo |
 | 54 | 호실 등록 · 수정 · 삭제 · 목록 | 층 · 그룹 지정, 층별 목록 | 미래 예약이 있는 호실의 그룹 이동 | 50 | todo |
 | 55 | 호실 상태 변경 | 이용중 → 정비중 → 스탠바이, 사용중지 | 정비 완료 자동 전환 | 50 | todo |
-| 56 | 그룹별 이용상품 등록 · 수정 · 삭제 · 목록 | 대실 · 숙박 | — | 51 | todo |
+| 56 | 그룹 상품 수정 · 목록 | 그룹 × 종류(시간 이용 · 1박 · 연박)의 사용 여부 · 요금 — 행은 늘 3개라 등록 · 삭제 없음 | — | 51 | todo |
+| 103 | 업체 상품 설정 조회 · 수정 | 업체 × 종류의 사용 여부 · 예약 가능 요일 · 이용 시간 · 입실 · 퇴실 시각 (매니저 가드) | 입실 = 퇴실 · 요일 0 검증, 바꿀 때 기존 예약(Phase 17 Open Decision 과 같이) | 102 | todo |
 | 57 | 상품별 기간 가격 등록 · 수정 · 삭제 · 목록 | 성수기 등 | — | 52 | todo |
 
-**Expected APIs** (가칭, 매니저 가드): `/api/v1/admin-service/room/group`(#53), `/api/v1/admin-service/room` · `/:room_id/state`(#54 · #55), `/api/v1/admin-service/room/group/:room_group_id/plan`(#56), `/api/v1/admin-service/room/plan/:plan_id/price`(#57).
+**Expected APIs** (가칭, 매니저 가드): `/api/v1/admin-service/room/group`(#53), `/api/v1/admin-service/room` · `/:room_id/state`(#54 · #55), `/api/v1/admin-service/room/group/:room_group_id/plan`(#56), `/api/v1/admin-service/room/plan/:plan_id/price`(#57), `/api/v1/admin-service/store/mine/plan`(#103 — 업체 상품 설정, 가칭). 기간 가격 겹침은 service 선검사 + repository `isExclusionViolation`(23P01) 변환.
 
 ### Phase 14 — device 기반 (사물 스키마 · 기기 포트) · depends: Phase 12
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -365,7 +375,7 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 ### Phase 17 — 예약·결제 (가용성 · 예약 · 취소 · 업체 측 변경) · depends: Phase 13, Phase 16 (+ Phase 3, Phase 11)
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 67 | 가용성 · 가격 · 환불 util | 점유 구간 겹침 · 정비시간 · 브레이크타임 · 호실 상태 · 기간 가격 · 환불 규정 | 기간 가격 기준일 | 64 | todo |
+| 67 | 가용성 · 가격 · 환불 util | 점유 구간 겹침 · 정비시간 · 브레이크타임 · 호실 상태 · 업체 상품 설정(사용 여부 · 예약 가능 요일 · 입퇴실 시각) · 그룹 상품 사용 여부 · 기간 가격 · 환불 규정 | 기간 가격 · 요일 기준일(입실 날짜 · 연박 박마다 — 이용 날짜가 기간에 포함되면 기간 요금) | 64 | todo |
 | 68 | 호실별 예약 가능 시간 조회 | 업체 · 날짜 · 상품 기준 (동기) | 객실 데이터 읽는 방법(Open Decisions) | 67 | todo |
 | 69 | 예약 생성 | 호실 · 상품 · 시작 시각, 결제 대기 홀드 (큐) | 결제 대기 유지 시간 | 66, 67 | todo |
 | 70 | 예약 취소 | 업체 환불 기준(예약 때 저장한 n시간) 전까지 환불 신청 → 100% 환불을 백그라운드에서 토스페이먼츠로, 기준이 지나면 환불 신청 불가 (큐) | 기준 뒤 환불 없는 취소를 받을지 | 69 | todo |
@@ -400,7 +410,7 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 | 78 | 입장 QR 링크 발송 crontab | 이용 시작 5분 전 SMS로 (scheduler 서버 · 1분 주기 · `JobLockService`) | — | 17, 69, 88 | todo |
 | 79 | 체크인 = 첫 입장 | QR 확인 후 도어락 개방, 예약 체크인 · 호실 이용중 | 입장 QR 확인 수단 | 59, 78 | todo |
 | 80 | 이용 중 사물 제어 | 내 예약 구간 안에서만 | — | 61, 79 | todo |
-| 81 | 연장 | 같은 호실에서 같은 그룹 상품 단위로 이어서 예약(대실 → 대실), 정비시간은 마지막 연장 뒤로, 추가 결제 | — | 69 | todo |
+| 81 | 연장 | 같은 호실에서 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(단위 기본안: 시간 이용 단위), 정비시간은 마지막 연장 뒤로, 추가 결제 | 1박 · 연박 연장 단위 · 요금 | 69 | todo |
 | 82 | 체크아웃 | 호실 정비중 전이 | — | 79 | todo |
 | 83 | 이용 종료 자동 완료 crontab | 종료 경과 예약 완료 · 호실 정비중 (scheduler 서버) | 퇴실 지연 처리 | 79, 88 | todo |
 
@@ -439,6 +449,14 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 
 무효화 원칙은 `.beaver/memory/cache.md` 에 있다 — 캐시한 데이터를 바꾸는 쓰기(정지 · 탈퇴 · 수정 …)는 그 키도 함께 고친다. 캐싱 전략 초안(어떻게 캐시하나 · 무효화 문제 8가지 · 무효화 지점 표 · 열린 결정 7개)은 `.beaver/output/spec/platform/cache-spec.md` — Phase 23 기획은 이 spec 에서 출발한다.
 
+### Phase 24 — 스토리 테스트 (전체 흐름 시나리오 · 자동 실행) · depends: Phase 17, Phase 18
+| # | Unit | Goal | Key decision | Depends | Status |
+|---|------|------|--------------|---------|--------|
+| 104 | 스토리 시나리오 | 서비스 전체 흐름을 한 번에 따라가는 이야기 — ① 회원가입 → 입점 신청 → 총관리자 승인 ② 업체 로그인 → 객실 그룹 · 호실 · 상품(업체 상품 설정 · 그룹 상품 · 기간 가격) 등록 ③ 회원가입 → 객실 검색 → 예약. 단계마다 요청 · 기대 응답 · 다음 단계로 넘길 값(토큰 · ID)을 적는다 | 외부 연동 통과 방법(SNS 가입 · SMS 인증번호 · S3 업로드 · 토스 결제 — mock 어댑터 금지 규칙과 함께), 시나리오 형식(코드 · 문서) | 69, 77 | todo |
+| 105 | 스토리 자동 실행 | PostgreSQL 을 초기화하고 마이그레이션 + 시드만 넣은 상태에서 시작해, 게이트웨이 공개 API 로 시나리오를 순서대로 실행 · 단계별 판정(큐 경로는 SSE done · failed) · 결과 보고까지 명령 하나로 | 실행 도구(Vitest e2e · 별도 스크립트), DB 초기화 방식(전용 DB · compose 프로필), 실행 주체 = 사용자(서버 · 인프라 기동은 사용자 몫 — Claude 는 띄우지 않는다), CI 여부 | 104 | todo |
+
+**Expected entry points**: `npm run test:story`(가칭 — DB 초기화 → 시드 → 시나리오 실행 → 보고) · `test/story/`(시나리오 · 실행기) · `docs/guides/story-test.md`. 단위 spec(`npm test` — 실 DB · 브로커 · 외부 IO 금지)과는 따로 둔다(사용자 요청 2026-10-31).
+
 ### 후순위 (별도 기획 — 이 트랙 밖)
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
@@ -448,8 +466,8 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 57/100 units done (11/23 phases)
-**Next up**: Phase 12 room 스키마 — 의존(Phase 8) 모두 완료
+**Progress**: 64/105 units done (12/24 phases)
+**Next up**: Phase 13 객실 관리 — 의존(Phase 11) 모두 완료
 
 함께 시작할 수 있는 것: room 스키마(Phase 12)와 api-log(Phase 22)도 의존이 끝났다. 둘 다 Phase 9 와 파일이 겹치지 않아 함께 돌릴 수 있지만, 서로는 마이그레이션 등록 파일이 겹쳐 동시에 돌리지 않는다.
 
@@ -465,18 +483,19 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 - **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 `/api/v1/admin-service/admin/password` 로 변경. 업체 총관리자는 휴대폰 번호 필수. 매니저 그룹의 아이디 찾기 · 비밀번호 초기화는 등록된 번호로 SMS(초기화는 임시 비밀번호). 관리자 그룹은 비밀번호 변경만, 이용자는 비밀번호가 없다
 - **연령 제한** — 성인만 가입한다(청소년보호법 — 만 19세가 되는 해의 1월 1일부터, SNS 가입의 생년월일로 판정). 이용자는 SNS 로만 가입한다 (결정 2026-10-22)
 - **휴대폰 인증** — 이용자는 가입 후 SMS 인증(발송 → 인증 ID + 인증번호 확인)을 마쳐야 그 번호가 회원정보에 저장되고 서비스를 이용할 수 있다. 로그인 그룹 안에서 번호 1개 = 계정 1개. 인증번호 6자리 · 5분 · 3회, 같은 번호 하루(한국 날짜) 10번(`SMS_VERIFICATION_DAILY_LIMIT`). 인증 전 회원을 막는 가드는 회원 전용 기능이 생길 때
-- **객실 모델** — 객실 그룹 단위로 상품(이름 · 이용시간 · 가격)을 정하고 그룹 안 호실은 같은 상품을 쓴다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 업체가 그룹 상품마다 기간 가격(성수기 등)을 따로 정한다
-- **이용 단위 · 사전 예약** — 항상 시간 기반(숙박도 긴 상품). 업체마다 이용 시작 n시간 전부터 예약을 받는다(`t_store.booking_open_hours`, 1 ~ 4,320 — 최대 6개월, 기본 72 · 사용자 결정 2026-10-29)
+- **객실 모델** — 객실 그룹(객실 유형) 단위로 가격을 정하고 그룹 안 호실은 같은 상품을 쓴다. 상품 종류는 시간 이용(`HOURLY`) · 1박(`NIGHT`) · 연박(`LONG`) 셋 — 시간 규칙 · 판매 여부 · 예약 가능 요일은 업체 공통(`t_room_plan`, 업체 × 종류 1행), 사용 여부 · 요금은 그룹마다(`t_room_group_plan`, 그룹 × 종류 1행), 기간 가격(성수기 등)은 그룹 상품마다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 객실 상세정보(편의시설)는 그룹의 JSON(사용자 결정 2026-10-30 · 31)
+- **이용 단위 · 사전 예약** — 시간 이용은 업체가 정한 이용 시간만큼(시간 기반), 1박은 업체가 정한 입실 ~ 퇴실 시각 그대로(22:00 ~ 다음 날 09:00 기본), 연박은 첫날 입실 ~ 마지막 날 퇴실(15:00 ~ 11:00 기본, 1박부터). 업체마다 이용 시작 n시간 전부터 예약을 받는다(`t_store.booking_open_hours`, 1 ~ 4,320 — 최대 6개월, 기본 72 · 사용자 결정 2026-10-29 · 31)
 - **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 업체 영업중(`is_open = 1`) + 점유 구간 겹침 없음 + 영업시간 내(연중무휴면 생략) · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 스탠바이도). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
 - **호실 선택** — 이용자가 호실을 직접 고른다
 - **취소 · 환불** — 업체 취소 100%. 이용자는 업체가 정한 n시간 전까지 환불 신청하면 100%(`t_store.refund_deadline_hours`, 0 ~ 168, 기본 1), 그 뒤에는 환불 신청 자체가 안 된다(50% 구간 없음). 예약할 때의 기준을 예약에 저장하고, 환불은 신청 뒤 백그라운드에서 토스페이먼츠로 처리한다(사용자 결정 2026-10-29)
-- **체크인 · 연장** — 시작 5분 전 SMS로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 같은 상품 단위로 이어서 예약
+- **체크인 · 연장** — 시작 5분 전 SMS로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(Phase 19 #81)
 - **업체 측 예약 변경** — 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 SMS
 - **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
 - **발송 채널 · 외부 연동** — 발송은 SMS(AWS SNS) 하나 — 이메일 · 알림톡 · 푸시는 쓰지 않는다. 외부 연동은 mock 없이 실제 서비스에 붙이고 세팅 가이드(`docs/guides/`)를 남긴다 — SMS · 이미지 = AWS(Phase 3), 결제 = 토스(테스트 키), 기기 = Phase 14 에서 정한다
 - **목록 · 시드 · 규약** — 모든 목록 API 는 `PaginationDto`(Phase 3 이후). 룩업 기본 데이터는 seeder.targets.ts 한 곳. 규약은 [AGENTS.md](../../../AGENTS.md) 전면 준수
 - **영업시간 단위** — 요일 반복만(특정 날짜 임시휴무 · 특별영업은 후순위). 24시간 연중무휴는 업체 단위 `is_always_open`, 영업중 여부 `is_open`(0 이면 연중무휴여도 영업중 아님)
 - **캐시** — Redis(공유 캐시) 하나. 인스턴스 메모리 캐시는 두지 않는다(로드밸런싱 — 인스턴스 로컬 상태 금지). 룩업 테이블(`t_auth` · `t_state` · `t_store_state` …)은 캐싱하지 않는다 — ID 는 코드 상수, 이름은 같은 쿼리의 PK 조인. 캐시는 짧은 TTL + 상태가 바뀌는 쓰기에서 키 삭제, 대상은 `t_api_log.duration_ms` 로 느린 경로를 본 뒤 정한다 (결정 2026-10-24 · Phase 23)
+- **삭제 · 조회** — 삭제는 항상 소프트 삭제(`is_deleted = 1`, DB 만 — 파일은 S3 객체만 실제로 지운다). `is_deleted` 가 있는 테이블의 조회 · 개수 · 수정에는 repository 가 `notDeleted` 로 `is_deleted = 0` 을 항상 붙이고, 유일성 · 배타 제약도 지워지지 않은 행끼리다. 종류마다 반드시 있는 행(업체 상품 설정 · 그룹 상품)은 지우지 않고 `is_used` 로 판매 여부를 바꾼다 (사용자 결정 2026-10-31)
 
 ## Open Decisions (roadmap-level)
 
@@ -503,8 +522,9 @@ Phase 20 #85(총관리자의 업체 관리자 관리)는 이 업체 단위 계�
 
 ## Notes / Risks
 
+- **스토리 테스트(Phase 24)와 실행 규칙** — 실제 서버 · DB · 브로커를 띄워야 해서 단위 spec(실 DB · 외부 IO 금지)과 따로 두고, 실행은 사용자가 한다(AGENTS.md — 서버 · 인프라 기동은 사용자 몫). 외부 연동(SNS · SMS · S3 · 토스)을 mock 어댑터 없이 어떻게 통과시킬지가 기획의 핵심이다.
 - **마이그레이션 Phase 는 동시에 돌리지 않는다** — `libs/database/src/migrations.ts`(MIGRATIONS) · `entities.ts`(ENTITIES) 를 같이 고친다(Phase 4 · 8 · 12 · 14 · 16 · 22).
-- **배타 제약과 오프라인 검사** — `t_reservation` 의 (room_id, 점유 구간) 배타 제약은 PostgreSQL `btree_gist` 확장이 필요하다. `db:check` 가 쓰는 PGlite 에서 이 확장을 불러올 수 있는지 Phase 16 기획 때 먼저 확인한다.
+- **배타 제약과 오프라인 검사** — 풀렸다(Phase 12): PGlite 에 `btree_gist` contrib 를 실어 `db:check` · `db:generate` 가 돈다(기간 가격 `EXC_RoomGroupPlanPrice_…`). Phase 16 `t_reservation` 의 점유 구간 배타 제약도 같은 확장을 쓴다. 운영 DB 는 적용 계정에 확장 생성 권한이 필요하다.
 - **캐시와 회원 상태** — 로그인 회원 확인을 캐시하면 정지 · 탈퇴 회원이 TTL 동안 통과할 수 있다. 상태를 바꾸는 쓰기마다 키를 지우는 지점을 Phase 23 기획에서 빠짐없이 정한다. Redis 는 새 인프라(compose 묶음 · `.env` 접속정보 · 세팅 가이드)다.
 - **서비스별 DB 분리 전 단계** — 지금은 공유 DB 다. Open Decisions 의 "계정 생성 위치" · "객실 데이터 읽는 방법" 은 나중 DB 분리 비용을 정한다.
 - **6개월 사전 예약** — 날짜별 휴무 · 영업시간 변경의 영향이 커진다. 날짜별 휴무(후순위)를 앞당길지 Phase 17 전에 다시 본다.
