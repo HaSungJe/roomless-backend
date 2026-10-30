@@ -134,12 +134,20 @@ describe('ManagerRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         expect(user.update).toHaveBeenCalledWith({user_id: 'x'}, entity);
     });
 
-    it('findManagerStore 는 조건 그대로 업체를 loadRelationIds 로 조회한다(업체코드 · 업체 ID)', async () => {
+    it('findManagerStore 는 받은 조건에 is_deleted: 0 을 더해 업체를 loadRelationIds 로 조회한다(업체코드 · 업체 ID)', async () => {
         const {repository, store} = makeRepository();
 
         await repository.findManagerStore({store_code: 'c1'});
 
-        expect(store.findOne).toHaveBeenCalledWith({where: {store_code: 'c1'}, loadRelationIds: true});
+        expect(store.findOne).toHaveBeenCalledWith({where: {store_code: 'c1', is_deleted: 0}, loadRelationIds: true});
+    });
+
+    it('findSession 은 받은 조건에 is_deleted: 0 을 더해 loadRelationIds 로 조회한다(지워지지 않은 세션만)', async () => {
+        const {repository, session} = makeRepository();
+
+        await repository.findSession({session_id: 's1'});
+
+        expect(session.findOne).toHaveBeenCalledWith({where: {session_id: 's1', is_deleted: 0}, loadRelationIds: true});
     });
 
     it.each([

@@ -1,4 +1,5 @@
 import type {FindOptionsWhere} from 'typeorm';
+import type {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 import type {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
 import type {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import type {StoreFilePurposeEntity} from '@app/database/entities/store/store-file-purpose.entity.js';
@@ -39,7 +40,7 @@ export interface StoreRepositoryInterface {
     insertApplication(entity: StoreApplicationEntity): Promise<void>;
     /** 입점 신청 수정 (승인 · 반려) — 조건에 맞는 행을 바꿨으면 true */
     updateApplication(where: FindOptionsWhere<StoreApplicationEntity>, entity: StoreApplicationEntity): Promise<boolean>;
-    /** 입점 신청 삭제 (취소) — 조건에 맞는 행을 지웠으면 true */
+    /** 입점 신청 삭제 (취소) — 삭제 표시(소프트 삭제), 조건에 맞는 행을 지웠으면 true */
     deleteApplication(where: FindOptionsWhere<StoreApplicationEntity>): Promise<boolean>;
     /** 업체 정보 파일 용도 단건 (비공개 여부) */
     findStoreFilePurpose(store_file_purpose_id: string): Promise<StoreFilePurposeEntity | null>;
@@ -53,11 +54,11 @@ export interface StoreRepositoryInterface {
     findStoreFile(where: FindOptionsWhere<StoreFileEntity>): Promise<StoreFileEntity | null>;
     /** 업체 정보 파일 등록 — 같은 키 → 400 */
     insertStoreFile(entity: StoreFileEntity): Promise<void>;
-    /** 업체 정보 파일 삭제 */
+    /** 업체 정보 파일 삭제 — 삭제 표시(소프트 삭제, S3 객체는 service 가 지운다) */
     deleteStoreFile(where: FindOptionsWhere<StoreFileEntity>): Promise<void>;
     /** 업체 정보 파일 수정 (업체 사진 정렬 순서) */
     updateStoreFile(where: FindOptionsWhere<StoreFileEntity>, entity: StoreFileEntity): Promise<void>;
-    /** 신청의 업체 정보 파일 삭제 (신청 취소) — 아직 업체에 붙지 않은 파일만 */
+    /** 신청의 업체 정보 파일 삭제 (신청 취소) — 아직 업체에 붙지 않은 파일만 삭제 표시(소프트 삭제) */
     deleteApplicationFiles(store_application_id: string): Promise<void>;
     /** 신청의 업체 정보 파일을 업체로 — 승인 때 store_id 를 채운다 */
     assignStoreFiles(store_application_id: string, store_id: string): Promise<void>;
@@ -71,6 +72,8 @@ export interface StoreRepositoryInterface {
     findStoreList(where: FindOptionsWhere<StoreEntity> | FindOptionsWhere<StoreEntity>[], limit: number, offset: number): Promise<StoreEntity[]>;
     /** 업체 등록 — 사업자번호 UK → 400 */
     insertStore(entity: StoreEntity): Promise<void>;
+    /** 업체 상품 설정 등록 — 입점 승인 때 상품 종류마다 1행 */
+    insertStorePlans(entities: RoomPlanEntity[]): Promise<void>;
     /** 업체 수정 (정보 · 상태 · 탈퇴 마스킹) */
     updateStore(where: FindOptionsWhere<StoreEntity>, entity: StoreEntity): Promise<void>;
     /** 신청자 — t_user 이용자 그룹 */
@@ -83,13 +86,13 @@ export interface StoreRepositoryInterface {
     findStoreByManager(user_id: string, lock: boolean): Promise<StoreEntity | null>;
     /** 업체의 요일별 영업시간 — 요일 순 */
     findStoreHours(store_id: string): Promise<StoreHourEntity[]>;
-    /** 요일별 영업시간 삭제 (교체) */
+    /** 요일별 영업시간 삭제 (교체) — 기존 행 삭제 표시(소프트 삭제) */
     deleteStoreHours(where: FindOptionsWhere<StoreHourEntity>): Promise<void>;
     /** 요일별 영업시간 등록 (교체) */
     insertStoreHours(entities: StoreHourEntity[]): Promise<void>;
     /** 업체의 브레이크타임 — 시작 시각 순 */
     findStoreBreaks(store_id: string): Promise<StoreBreakEntity[]>;
-    /** 브레이크타임 삭제 (교체) */
+    /** 브레이크타임 삭제 (교체) — 기존 행 삭제 표시(소프트 삭제) */
     deleteStoreBreaks(where: FindOptionsWhere<StoreBreakEntity>): Promise<void>;
     /** 브레이크타임 등록 (교체) */
     insertStoreBreaks(entities: StoreBreakEntity[]): Promise<void>;
@@ -99,6 +102,6 @@ export interface StoreRepositoryInterface {
     findUnavailablePeriodList(where: FindOptionsWhere<StoreUnavailablePeriodEntity>, limit: number, offset: number): Promise<StoreUnavailablePeriodEntity[]>;
     /** 일시 예약불가 등록 */
     insertUnavailablePeriod(entity: StoreUnavailablePeriodEntity): Promise<void>;
-    /** 일시 예약불가 삭제 — 조건에 맞는 행을 지웠으면 true */
+    /** 일시 예약불가 삭제 — 삭제 표시(소프트 삭제), 조건에 맞는 행을 지웠으면 true */
     deleteUnavailablePeriod(where: FindOptionsWhere<StoreUnavailablePeriodEntity>): Promise<boolean>;
 }

@@ -8,6 +8,7 @@ import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.
 import {SessionEntity} from '@app/database/entities/user/session.entity.js';
 import {StateEntity} from '@app/database/entities/user/state.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
+import {notDeleted} from '@app/database/soft-delete.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginAdminRow, AdminRepositoryInterface} from '../interfaces/admin.repository.interface.js';
 
@@ -128,7 +129,7 @@ export class AdminRepository implements AdminRepositoryInterface {
      */
     async findSession(where: FindOptionsWhere<SessionEntity>): Promise<SessionEntity | null> {
         try {
-            return await this.sessions.findOne({where, loadRelationIds: true});
+            return await this.sessions.findOne({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }

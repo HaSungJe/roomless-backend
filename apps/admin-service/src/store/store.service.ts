@@ -34,6 +34,7 @@ import type {StoreMyApplicationFileResultDto, StoreMyApplicationResultDto} from 
 import type {StoreOpenDto} from '@app/contracts/store/dto/store-open.dto.js';
 import type {StoreStateDto} from '@app/contracts/store/dto/store-state.dto.js';
 import type {StoreUpdateDto} from '@app/contracts/store/dto/store-update.dto.js';
+import {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
 import {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import {StoreFileEntity} from '@app/database/entities/store/store-file.entity.js';
@@ -62,6 +63,8 @@ import {
     STORE_LEAVE_LOCKED_MESSAGE,
     STORE_MANAGER_STORE_NOT_FOUND_MESSAGE,
     STORE_NOT_FOUND_MESSAGE,
+    STORE_PLAN_DAYS_OF_WEEK_ALL,
+    STORE_PLAN_DEFAULTS,
     STORE_REFUND_DEADLINE_HOURS_DEFAULT,
     STORE_SAME_STATE_MESSAGE,
     STORE_STATE,
@@ -70,7 +73,6 @@ import {STORE_REPOSITORY} from './store.symbols.js';
 import {
     buildApplicationFileKey,
     buildApplicationListWhere,
-    buildStoreDetail,
     buildStoreFileKey,
     buildStoreListWhere,
     buildUnavailablePeriodOverlapWhere,
@@ -167,6 +169,7 @@ export class StoreService {
         application.application_comment = dto.application_comment ?? null;
         application.reject_comment = null;
         application.reviewed_at = null;
+        application.is_deleted = 0;
         await this.storeRepository.insertApplication(application);
         return {store_application_id: application.store_application_id};
     }
@@ -303,12 +306,13 @@ export class StoreService {
         file.file_name = dto.file_name;
         file.content_type = dto.content_type;
         file.sort_order = count;
+        file.is_deleted = 0;
         await this.storeRepository.insertStoreFile(file);
         return {store_file_id: file.store_file_id};
     }
 
     /**
-     * 업체 정보 파일 삭제 — 대기 중 내 신청의 파일만. 행을 지운 뒤 저장소 파일을 지운다(마지막). (RabbitMQ: admin.store.application-file-delete)
+     * 업체 정보 파일 삭제 — 대기 중 내 신청의 파일만. 행을 소프트 삭제(is_deleted = 1)한 뒤 저장소 파일을 실제로 지운다(마지막). (RabbitMQ: admin.store.application-file-delete)
      *
      * @param user_id 로그인 이용자 ID
      * @param store_application_id 입점 신청 ID
@@ -331,13 +335,13 @@ export class StoreService {
             throw new NotFoundException({message: STORE_FILE_NOT_FOUND_MESSAGE});
         }
 
-        // 3. 행 삭제 → 저장소 파일 삭제(마지막)
+        // 3. 행 소프트 삭제 → 저장소 파일 삭제(마지막)
         await this.storeRepository.deleteStoreFile({store_file_id});
         await this.storageGateway.remove(file.file_key);
     }
 
     /**
-     * 입점 신청 취소 — 대기 중 내 신청만. 신청 · 업체 정보 파일 행을 지우고(목록 · 상세에서 사라진다) 저장소 파일을 지운다(마지막). (RabbitMQ: admin.store.application-cancel)
+     * 입점 신청 취소 — 대기 중 내 신청만. 신청 · 업체 정보 파일 행을 소프트 삭제하고(is_deleted = 1 — 행은 남고 목록 · 상세에서 사라진다) 저장소 파일을 실제로 지운다(마지막). (RabbitMQ: admin.store.application-cancel)
      * - 그 사이 승인 · 반려된 신청은 삭제가 0건이라 400 — 트랜잭션 전체가 롤백된다(승인된 업체의 파일은 store_id 가 있어 지워지지 않는다)
      *
      * @param user_id 로그인 이용자 ID
@@ -357,7 +361,7 @@ export class StoreService {
         // 2. 지울 저장소 파일 키
         const rows = await this.storeRepository.findApplicationFileRows(store_application_id);
 
-        // 3. 파일 행 → 신청 행 (파일 FK 가 RESTRICT 라 파일 먼저). 대기 중일 때만 지운다
+        // 3. 파일 행 → 신청 행 소프트 삭제(is_deleted = 1). 대기 중일 때만
         await this.storeRepository.deleteApplicationFiles(store_application_id);
         const deleted = await this.storeRepository.deleteApplication({store_application_id, user_id, store_application_state_id: STORE_APPLICATION_STATE.WAIT});
         if (!deleted) {
@@ -454,7 +458,6 @@ export class StoreService {
         store.latitude = application.latitude;
         store.longitude = application.longitude;
         store.introduction = null;
-        store.store_detail = {};
         store.is_always_open = 0;
         store.is_open = 0;
         store.maintenance_minutes = 0;
@@ -465,10 +468,25 @@ export class StoreService {
         store.delete_backup = null;
         await this.storeRepository.insertStore(store);
 
-        // 5. 신청의 업체 정보 파일을 업체로 (같은 행에 store_id — 파일을 옮기지 않는다)
+        // 5. 업체 상품 설정 — 상품 종류마다 1행(판매 · 매일 · 기본 이용 시간 · 입실 · 퇴실 시각)
+        const plans = STORE_PLAN_DEFAULTS.map((defaults) => {
+            const plan = new RoomPlanEntity();
+            plan.room_plan_id = generateId();
+            plan.store_id = store_id;
+            plan.room_plan_type_id = defaults.room_plan_type_id;
+            plan.is_used = 1;
+            plan.days_of_week = STORE_PLAN_DAYS_OF_WEEK_ALL;
+            plan.usage_hours = defaults.usage_hours;
+            plan.check_in_time = defaults.check_in_time;
+            plan.check_out_time = defaults.check_out_time;
+            return plan;
+        });
+        await this.storeRepository.insertStorePlans(plans);
+
+        // 6. 신청의 업체 정보 파일을 업체로 (같은 행에 store_id — 파일을 옮기지 않는다)
         await this.storeRepository.assignStoreFiles(store_application_id, store_id);
 
-        // 6. 업체 총관리자 계정(= 대표자) — 신청 때 정한 아이디 · 비밀번호(이미 해시), 이름 · 닉네임 대표자명, 휴대폰 대표자 번호
+        // 7. 업체 총관리자 계정(= 대표자) — 신청 때 정한 아이디 · 비밀번호(이미 해시), 이름 · 닉네임 대표자명, 휴대폰 대표자 번호
         const manager = new UserEntity();
         manager.user_id = generateId();
         manager.user_search_code = generateId();
@@ -496,7 +514,7 @@ export class StoreService {
         manager.leave_backup = null;
         await this.storeRepository.insertHeadManager(manager);
 
-        // 7. 신청 승인 — 그 사이 취소 · 반려된 신청이면 0건이라 400 (위 쓰기가 모두 롤백된다)
+        // 8. 신청 승인 — 그 사이 취소 · 반려된 신청이면 0건이라 400 (위 쓰기가 모두 롤백된다)
         const approved = new StoreApplicationEntity();
         approved.store_application_state_id = STORE_APPLICATION_STATE.APPROVED;
         approved.store_id = store_id;
@@ -506,7 +524,7 @@ export class StoreService {
             throw new BadRequestException({message: STORE_APPLICATION_NOT_WAITING_MESSAGE});
         }
 
-        // 8. 승인 알림 SMS (마지막 — 실패 503 이면 위 쓰기가 모두 롤백되고 재시도된다)
+        // 9. 승인 알림 SMS (마지막 — 실패 503 이면 위 쓰기가 모두 롤백되고 재시도된다)
         await this.smsSender.send({to: application.owner_phone, text: storeApprovedText(application.store_name)});
         return {store_id, store_code};
     }
@@ -681,10 +699,10 @@ export class StoreService {
     }
 
     /**
-     * 내 업체 소개 수정 (업체 관리자) — 소개 · 연락처 · 편의시설. 편의시설은 보낸 항목으로 통째로 바꾼다(알려진 항목만). (RabbitMQ: admin.store.mine-profile)
+     * 내 업체 소개 수정 (업체 관리자) — 소개 · 연락처. (RabbitMQ: admin.store.mine-profile)
      *
      * @param user_id 로그인 매니저 ID
-     * @param dto 소개 · 연락처 · 편의시설
+     * @param dto 소개 · 연락처
      */
     @Transactional()
     async updateMyStoreProfile(user_id: string, dto: StoreMineProfileDto): Promise<void> {
@@ -695,7 +713,6 @@ export class StoreService {
         const storeEntity = new StoreEntity();
         storeEntity.introduction = dto.introduction ?? null;
         storeEntity.phone = dto.phone;
-        storeEntity.store_detail = buildStoreDetail(dto.store_detail);
         await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
     }
 
@@ -781,12 +798,13 @@ export class StoreService {
         file.file_name = dto.file_name;
         file.content_type = dto.content_type;
         file.sort_order = nextSortOrder(images);
+        file.is_deleted = 0;
         await this.storeRepository.insertStoreFile(file);
         return {store_file_id: file.store_file_id};
     }
 
     /**
-     * 내 업체 사진 삭제 (업체 관리자) — 그 업체의 업체 사진만(사업자등록증은 지울 수 없어 없는 파일과 같은 404). 행을 지운 뒤 저장소 파일을 지운다(마지막). 남은 사진의 순서 번호는 그대로. (RabbitMQ: admin.store.mine-file-delete)
+     * 내 업체 사진 삭제 (업체 관리자) — 그 업체의 업체 사진만(사업자등록증은 지울 수 없어 없는 파일과 같은 404). 행을 소프트 삭제(is_deleted = 1)한 뒤 저장소 파일을 실제로 지운다(마지막). 남은 사진의 순서 번호는 그대로. (RabbitMQ: admin.store.mine-file-delete)
      *
      * @param user_id 로그인 매니저 ID
      * @param store_file_id 업체 정보 파일 ID
@@ -805,7 +823,7 @@ export class StoreService {
             throw new NotFoundException({message: STORE_FILE_NOT_FOUND_MESSAGE});
         }
 
-        // 3. 행 삭제 → 저장소 파일 삭제(마지막)
+        // 3. 행 소프트 삭제 → 저장소 파일 삭제(마지막)
         await this.storeRepository.deleteStoreFile({store_file_id});
         await this.storageGateway.remove(file.file_key);
     }
@@ -848,8 +866,8 @@ export class StoreService {
     }
 
     /**
-     * 내 업체 영업시간 설정 (업체 관리자) — 연중무휴 여부 + 요일별 영업시간을 통째로 교체한다(요일 행을 지우고 다시 넣는다). (RabbitMQ: admin.store.mine-hours)
-     * - 연중무휴 1 → 요일 행을 모두 지운다(hours 가 비어 있지 않으면 400). 연중무휴 0 → 일 ~ 토 7개가 한 번씩(아니면 400)
+     * 내 업체 영업시간 설정 (업체 관리자) — 연중무휴 여부 + 요일별 영업시간을 통째로 교체한다(지금 요일 행을 소프트 삭제하고 다시 넣는다). (RabbitMQ: admin.store.mine-hours)
+     * - 연중무휴 1 → 요일 행을 모두 소프트 삭제한다(hours 가 비어 있지 않으면 400). 연중무휴 0 → 일 ~ 토 7개가 한 번씩(아니면 400)
      * - 휴무가 아닌 요일은 시작 · 마감 둘 다(DTO 짝 필드), 휴무면 둘 다 NULL 로 저장한다(CHK_StoreHour_OpenCloseTime)
      * - 시작 = 마감은 400 — 24시간은 연중무휴로만(사용자 결정 2026-10-27). 마감이 시작보다 이르면 다음 날 마감
      *
@@ -887,7 +905,7 @@ export class StoreService {
             });
         }
 
-        // 4. 교체 — 요일 행 삭제 → 다시 넣기(연중무휴면 넣지 않는다) → 연중무휴 여부
+        // 4. 교체 — 요일 행 소프트 삭제 → 다시 넣기(연중무휴면 넣지 않는다 — 요일 UK 는 지워지지 않은 행끼리) → 연중무휴 여부
         await this.storeRepository.deleteStoreHours({store_id: store.store_id});
         const entities: StoreHourEntity[] = [];
         for (const hour of dto.hours) {
@@ -898,6 +916,7 @@ export class StoreService {
             entity.is_closed = hour.is_closed;
             entity.open_time = hour.is_closed === 1 ? null : (hour.open_time ?? null);
             entity.close_time = hour.is_closed === 1 ? null : (hour.close_time ?? null);
+            entity.is_deleted = 0;
             entities.push(entity);
         }
         if (entities.length > 0) {
@@ -909,7 +928,7 @@ export class StoreService {
     }
 
     /**
-     * 내 업체 브레이크타임 설정 (업체 관리자) — 매일 같은 브레이크타임 목록을 통째로 교체한다(빈 배열이면 모두 지운다). (RabbitMQ: admin.store.mine-breaks)
+     * 내 업체 브레이크타임 설정 (업체 관리자) — 매일 같은 브레이크타임 목록을 통째로 교체한다(빈 배열이면 모두 소프트 삭제한다). (RabbitMQ: admin.store.mine-breaks)
      * - 시작 = 마감은 400. 마감이 시작보다 이르면 다음 날까지(23:30 ~ 00:00 · 23:00 ~ 02:00)
      * - 서로 겹치면 400 — 반열린 구간이라 끝점이 맞닿는 것(09:00 ~ 09:30 + 09:30 ~ 10:00)은 된다(사용자 결정 2026-10-27)
      * - 영업시간 밖이어도 막지 않는다 — 예약 가능 시간 계산(Phase 17)에서 빠질 뿐이다
@@ -939,7 +958,7 @@ export class StoreService {
             throw new BadRequestException({message: '브레이크타임이 서로 겹칩니다.', validation_errors: createValidationError('breaks', '브레이크타임이 서로 겹칩니다.')});
         }
 
-        // 4. 교체 — 삭제 → 다시 넣기
+        // 4. 교체 — 소프트 삭제 → 다시 넣기
         await this.storeRepository.deleteStoreBreaks({store_id: store.store_id});
         const entities: StoreBreakEntity[] = [];
         for (const item of dto.breaks) {
@@ -948,6 +967,7 @@ export class StoreService {
             entity.store_id = store.store_id;
             entity.start_time = item.start_time;
             entity.end_time = item.end_time;
+            entity.is_deleted = 0;
             entities.push(entity);
         }
         if (entities.length > 0) {
@@ -1076,12 +1096,13 @@ export class StoreService {
         period.starts_at = starts_at.toDate();
         period.ends_at = ends_at.toDate();
         period.memo = dto.memo ?? null;
+        period.is_deleted = 0;
         await this.storeRepository.insertUnavailablePeriod(period);
         return {store_unavailable_period_id: period.store_unavailable_period_id};
     }
 
     /**
-     * 내 업체 일시 예약불가 삭제 (업체 관리자) — 그 업체 것만, 없으면 404(남의 업체 것 포함). (RabbitMQ: admin.store.mine-unavailable-period-delete)
+     * 내 업체 일시 예약불가 삭제 (업체 관리자) — 그 업체 것만 소프트 삭제(행은 남고 목록 · 겹침에서 빠진다), 없으면 404(남의 업체 것 · 이미 삭제된 것 포함). (RabbitMQ: admin.store.mine-unavailable-period-delete)
      *
      * @param user_id 로그인 매니저 ID
      * @param store_unavailable_period_id 일시 예약불가 ID

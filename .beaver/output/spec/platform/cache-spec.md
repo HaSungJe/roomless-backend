@@ -79,7 +79,7 @@ affected_data: ["Redis 키 auth-user:<login_scope>:<user_id> (로그인 회원 �
 | 쓰기 | 앱 | 바뀌는 값 | 지금 |
 |---|---|---|---|
 | 업체 정보 수정 · 상태 변경(총관리자 — `updateStore` · `changeStoreState`) | admin-service store (Phase 9) | 상호 · 주소 · 좌표 · 상태 | Phase 9 |
-| 내 업체 소개 수정(`updateMyStoreProfile`) | admin-service store (Phase 11) | 소개 · 연락처 · 편의시설 | Phase 11 |
+| 내 업체 소개 수정(`updateMyStoreProfile`) | admin-service store (Phase 11) | 소개 · 연락처 | Phase 11 |
 | 내 업체 사진 등록 · 삭제 · 순서 변경(`addMyStoreFile` · `removeMyStoreFile` · `reorderMyStoreFiles`) | admin-service store (Phase 11) | 사진 · 대표 사진 | Phase 11 |
 | 영업시간 · 브레이크타임 교체 · 정비시간 · 영업중 여부(`replaceMyStoreHours` · `replaceMyStoreBreaks` · `changeMyStoreMaintenance` · `changeMyStoreOpen`) | admin-service store (Phase 11) | 영업 설정 — 목록의 영업중 표시 · 예약 가능 시간 | Phase 11 |
 | 일시 예약불가 등록 · 삭제(`addMyStoreUnavailablePeriod` · `removeMyStoreUnavailablePeriod`) | admin-service store (Phase 11) | 예약 가능 시간 | Phase 11 |

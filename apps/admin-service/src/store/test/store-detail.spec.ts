@@ -38,7 +38,7 @@ describe('GET /internal/v1/admin-service/store/:store_id — 업체 상세 (총�
 
     describe('[SUCCESS]', () => {
         it('업체 + 업체 정보 파일(사업자등록증 서명 주소 · 업체 사진 CDN 주소 · 정렬 순서)을 돌려준다', async () => {
-            repo.findStore.mockResolvedValueOnce(storeRow({store_detail: {parking: true}}));
+            repo.findStore.mockResolvedValueOnce(storeRow());
             repo.findStoreFileRows.mockResolvedValueOnce([
                 fileRow({file_key: LICENSE_KEY, store_id: STORE_ID}),
                 fileRow({
@@ -63,7 +63,6 @@ describe('GET /internal/v1/admin-service/store/:store_id — 업체 상세 (총�
                 store_code: STORE_CODE,
                 store_state_id: 'ACTIVE',
                 introduction: null,
-                store_detail: {parking: true},
                 is_always_open: 0,
                 is_open: 0,
                 maintenance_minutes: 0,
@@ -73,6 +72,7 @@ describe('GET /internal/v1/admin-service/store/:store_id — 업체 상세 (총�
                 created_at: FIXED_TIME.toISOString(),
                 updated_at: FIXED_TIME.toISOString(),
             });
+            expect(res.body).not.toHaveProperty('store_detail');
             expect(res.body.files).toEqual([
                 {
                     store_file_id: 'f'.repeat(32),

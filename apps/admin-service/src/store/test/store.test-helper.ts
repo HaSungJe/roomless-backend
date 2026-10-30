@@ -82,6 +82,7 @@ export function createStoreRepositoryMock(): StoreRepositoryMock {
         countStores: vi.fn(),
         findStoreList: vi.fn(),
         insertStore: vi.fn(),
+        insertStorePlans: vi.fn(),
         updateStore: vi.fn(),
         findApplicant: vi.fn(),
         insertHeadManager: vi.fn(),
@@ -240,6 +241,7 @@ export function applicationRow(override: Record<string, unknown> = {}): Record<s
         application_comment: null,
         reject_comment: null,
         reviewed_at: null,
+        is_deleted: 0,
         created_at: FIXED_TIME,
         updated_at: FIXED_TIME,
         ...override,
@@ -288,7 +290,6 @@ export function storeRow(override: Record<string, unknown> = {}): Record<string,
         latitude: 37.4979,
         longitude: 127.0276,
         introduction: null,
-        store_detail: {},
         is_always_open: 0,
         is_open: 0,
         maintenance_minutes: 0,
@@ -352,6 +353,7 @@ export function hourRow(override: Record<string, unknown> = {}): Record<string, 
         is_closed: 0,
         open_time: '09:00:00',
         close_time: '18:00:00',
+        is_deleted: 0,
         created_at: FIXED_TIME,
         updated_at: FIXED_TIME,
         ...override,
@@ -365,7 +367,7 @@ export function hourRow(override: Record<string, unknown> = {}): Record<string, 
  * @returns 브레이크타임 행
  */
 export function breakRow(override: Record<string, unknown> = {}): Record<string, unknown> {
-    return {store_break_id: 'e'.repeat(32), store_id: STORE_ID, start_time: '12:00:00', end_time: '13:00:00', created_at: FIXED_TIME, updated_at: FIXED_TIME, ...override};
+    return {store_break_id: 'e'.repeat(32), store_id: STORE_ID, start_time: '12:00:00', end_time: '13:00:00', is_deleted: 0, created_at: FIXED_TIME, updated_at: FIXED_TIME, ...override};
 }
 
 /**
@@ -381,6 +383,7 @@ export function periodRow(override: Record<string, unknown> = {}): Record<string
         starts_at: new Date('2026-11-02T00:00:00.000Z'),
         ends_at: new Date('2026-11-02T09:00:00.000Z'),
         memo: null,
+        is_deleted: 0,
         created_at: FIXED_TIME,
         updated_at: FIXED_TIME,
         ...override,

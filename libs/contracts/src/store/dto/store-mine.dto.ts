@@ -100,9 +100,6 @@ export class StoreMineResultDto {
     @ApiProperty({description: '업체 소개', nullable: true, type: String})
     introduction: string | null;
 
-    @ApiProperty({description: '편의시설 (room_count · has_shower · has_tv · has_pc — 없는 항목은 빠진다)', type: Object})
-    store_detail: Record<string, number>;
-
     @ApiProperty({description: '24시간 연중무휴 여부 (0 · 1 — 1 이면 요일별 영업시간이 비어 있다)'})
     is_always_open: number;
 

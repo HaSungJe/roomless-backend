@@ -80,9 +80,6 @@ export class StoreDetailResultDto {
     @ApiProperty({description: '업체 소개', nullable: true, type: String})
     introduction: string | null;
 
-    @ApiProperty({description: '업체 상세정보 (room_count · has_shower · has_tv · has_pc)', type: Object})
-    store_detail: Record<string, number>;
-
     @ApiProperty({description: '24시간 연중무휴 여부 (0 · 1)'})
     is_always_open: number;
 

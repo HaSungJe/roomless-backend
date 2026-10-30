@@ -31,16 +31,7 @@ describe('GET /internal/v1/admin-service/store/mine — 내 업체 상세 (업�
         repo = createStoreRepositoryMock();
         storage = createStorageGatewayMock();
         repo.findStoreByManager.mockResolvedValue(
-            storeRow({
-                introduction: '소개',
-                store_detail: {room_count: 3, has_tv: 1},
-                is_open: 1,
-                maintenance_minutes: 30,
-                booking_open_hours: 24,
-                refund_deadline_hours: 2,
-                store_state_id: 'SUSPEND',
-                suspend_comment: '민원 접수',
-            }),
+            storeRow({introduction: '소개', is_open: 1, maintenance_minutes: 30, booking_open_hours: 24, refund_deadline_hours: 2, store_state_id: 'SUSPEND', suspend_comment: '민원 접수'}),
         );
         repo.findStoreHours.mockResolvedValue([hourRow({day_of_week: 0, is_closed: 1, open_time: null, close_time: null}), hourRow({day_of_week: 1})]);
         repo.findStoreBreaks.mockResolvedValue([breakRow()]);
@@ -78,7 +69,6 @@ describe('GET /internal/v1/admin-service/store/mine — 내 업체 상세 (업�
                 latitude: 37.4979,
                 longitude: 127.0276,
                 introduction: '소개',
-                store_detail: {room_count: 3, has_tv: 1},
                 is_always_open: 0,
                 is_open: 1,
                 maintenance_minutes: 30,

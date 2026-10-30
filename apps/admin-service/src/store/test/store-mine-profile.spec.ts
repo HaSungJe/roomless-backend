@@ -22,8 +22,8 @@ describe('admin.store.mine-profile — 내 업체 소개 수정 (큐 경로)', (
     });
 
     describe('[SUCCESS]', () => {
-        it('업체 행을 잠가 찾고 소개 · 연락처 · 편의시설만 바꾼다 — 편의시설은 아는 항목 중 값이 있는 것만', async () => {
-            const payload = {introduction: '깨끗한 룸입니다.', phone: '0298765432', store_detail: {room_count: 3, has_tv: 1, has_pc: null, sauna: 1}};
+        it('업체 행을 잠가 찾고 소개 · 연락처만 바꾼다', async () => {
+            const payload = {introduction: '깨끗한 룸입니다.', phone: '0298765432'};
 
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload, actor: MANAGER_ACTOR});
 
@@ -35,17 +35,26 @@ describe('admin.store.mine-profile — 내 업체 소개 수정 (큐 경로)', (
             expect(entity).toBeInstanceOf(StoreEntity);
             expect(entity.introduction).toBe('깨끗한 룸입니다.');
             expect(entity.phone).toBe('0298765432');
-            expect(entity.store_detail).toEqual({room_count: 3, has_tv: 1});
             expect(entity.store_name).toBeUndefined();
             expect(entity.business_number).toBeUndefined();
         });
 
-        it('소개를 빼면 null, 편의시설 {} 이면 모두 지운다', async () => {
-            await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload: {phone: '0298765432', store_detail: {}}, actor: MANAGER_ACTOR});
+        it('소개를 빼면 null', async () => {
+            await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload: {phone: '0298765432'}, actor: MANAGER_ACTOR});
 
             const entity = repo.updateStore.mock.calls[0][1] as StoreEntity;
             expect(entity.introduction).toBeNull();
-            expect(entity.store_detail).toEqual({});
+        });
+
+        it('예전 클라이언트가 편의시설(store_detail)을 보내도 소개 · 연락처만 바꾼다 — 편의시설은 객실 그룹으로 옮겼다', async () => {
+            const payload = {phone: '0298765432', store_detail: {room_count: 3, has_tv: 1}};
+
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload, actor: MANAGER_ACTOR});
+
+            expect(result).toEqual({result: null, error: null});
+            const entity = repo.updateStore.mock.calls[0][1] as StoreEntity;
+            expect(entity).not.toHaveProperty('store_detail');
+            expect(Object.keys(entity).sort()).toEqual(['introduction', 'phone']);
         });
     });
 
@@ -53,34 +62,28 @@ describe('admin.store.mine-profile — 내 업체 소개 수정 (큐 경로)', (
         it('소속 업체가 없으면 failed 404, 수정 없음', async () => {
             repo.findStoreByManager.mockResolvedValueOnce(null);
 
-            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload: {phone: '0298765432', store_detail: {}}, actor: MANAGER_ACTOR});
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload: {phone: '0298765432'}, actor: MANAGER_ACTOR});
 
             expect(result?.error).toEqual({status_code: 404, body: {message: '소속 업체를 찾을 수 없습니다.', validation_errors: null}});
             expect(repo.updateStore).not.toHaveBeenCalled();
         });
     });
 
-    describe('[FAIL:validation] 게이트웨이 ValidationPipe — 중첩 편의시설은 점 경로', () => {
-        it('방 칸수 101 → store_detail.room_count', async () => {
-            const body = await validateBody(StoreMineProfileDto, {phone: '0212345678', store_detail: {room_count: 101}});
+    describe('[FAIL:validation] 게이트웨이 ValidationPipe', () => {
+        it('연락처가 숫자 8 ~ 11자리가 아니면 → phone', async () => {
+            const body = await validateBody(StoreMineProfileDto, {phone: '02-123-4567'});
 
-            expect(body).toEqual({message: '방 칸수는 0 ~ 100 사이로 입력해주세요.', validation_errors: [{property: 'store_detail.room_count', message: '방 칸수는 0 ~ 100 사이로 입력해주세요.'}]});
-        });
-
-        it('편의시설이 객체가 아니면 → store_detail', async () => {
-            const body = await validateBody(StoreMineProfileDto, {phone: '0212345678', store_detail: 'x'});
-
-            expect(body).toEqual({message: '편의시설 형식이 올바르지 않습니다.', validation_errors: [{property: 'store_detail', message: '편의시설 형식이 올바르지 않습니다.'}]});
+            expect(body).toEqual({message: '업체 연락처를 숫자만 정확히 입력해주세요.', validation_errors: [{property: 'phone', message: '업체 연락처를 숫자만 정확히 입력해주세요.'}]});
         });
 
         it('정상 본문은 통과한다', async () => {
-            await expect(validateBody(StoreMineProfileDto, {phone: '0212345678', store_detail: {room_count: 3, has_shower: 0}})).resolves.toBeNull();
+            await expect(validateBody(StoreMineProfileDto, {introduction: '소개', phone: '0212345678'})).resolves.toBeNull();
         });
     });
 
     describe('[SECURITY]', () => {
         it('actor 없는 명령은 failed 401, 업체 조회 없음', async () => {
-            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload: {phone: '0298765432', store_detail: {}}, actor: null});
+            const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.MINE_PROFILE, payload: {phone: '0298765432'}, actor: null});
 
             expect(result?.error?.status_code).toBe(401);
             expect(repo.findStoreByManager).not.toHaveBeenCalled();

@@ -24,7 +24,7 @@ export const STORE_COMMAND = {
     STATE: 'admin.store.state',
     /** 업체 영업중 여부 변경 (총관리자 · 관리자) */
     OPEN: 'admin.store.open',
-    /** 내 업체 소개 · 연락처 · 편의시설 수정 (업체 관리자) */
+    /** 내 업체 소개 · 연락처 수정 (업체 관리자) */
     MINE_PROFILE: 'admin.store.mine-profile',
     /** 내 업체 사진 등록 (업체 관리자) */
     MINE_FILE: 'admin.store.mine-file',

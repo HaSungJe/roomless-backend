@@ -1,4 +1,4 @@
-import type {StoreDetail} from '@app/database/entities/store/store.entity.js';
+import type {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 
 /** 업체 상태 — t_store_state PK (seeder.targets.ts 의 STORE_STATE_SEED_DATA 와 같다) */
 export const STORE_STATE = {ACTIVE: 'ACTIVE', SUSPEND: 'SUSPEND', LEAVE: 'LEAVE'} as const;
@@ -39,9 +39,6 @@ export const STORE_FILE_PURPOSE_INVALID_MESSAGE = '파일 용도가 올바르지
 /** 탈퇴 업체를 바꾸려 할 때 */
 export const STORE_LEAVE_LOCKED_MESSAGE = '탈퇴한 업체는 바꿀 수 없습니다.';
 
-/** 편의시설(t_store.store_detail)로 저장하는 항목 — 검증 파이프가 선언 안 된 키를 거르지 않으므로 service 가 이 항목만 남긴다 */
-export const STORE_DETAIL_KEYS: (keyof StoreDetail)[] = ['room_count', 'has_shower', 'has_tv', 'has_pc'];
-
 /** 매니저의 소속 업체 없음 — 탈퇴 업체 포함 (내 업체 설정) */
 export const STORE_MANAGER_STORE_NOT_FOUND_MESSAGE = '소속 업체를 찾을 수 없습니다.';
 
@@ -62,6 +59,16 @@ export const STORE_BOOKING_OPEN_HOURS_DEFAULT = 72;
 
 /** 100% 환불 기준 기본값(시간) — 입점 승인 때 · 기존 업체(DB 기본값) */
 export const STORE_REFUND_DEADLINE_HOURS_DEFAULT = 1;
+
+/** 업체 상품 설정 예약 가능 요일 기본값 — 매일(비트 — 일 1 · 월 2 · 화 4 · 수 8 · 목 16 · 금 32 · 토 64) */
+export const STORE_PLAN_DAYS_OF_WEEK_ALL = 127;
+
+/** 업체 상품 설정 기본값 — 입점 승인 때 상품 종류(t_room_plan_type)마다 1행, 판매 · 매일. 기존 업체는 마이그레이션 RoomSchema 가 같은 값을 넣는다 */
+export const STORE_PLAN_DEFAULTS: Pick<RoomPlanEntity, 'room_plan_type_id' | 'usage_hours' | 'check_in_time' | 'check_out_time'>[] = [
+    {room_plan_type_id: 'HOURLY', usage_hours: 3, check_in_time: null, check_out_time: null},
+    {room_plan_type_id: 'NIGHT', usage_hours: null, check_in_time: '22:00', check_out_time: '09:00'},
+    {room_plan_type_id: 'LONG', usage_hours: null, check_in_time: '15:00', check_out_time: '11:00'},
+];
 
 /** 일시 예약불가 입력 형식 — 한국 시각 분 단위 (dayjs 형식 문자열) */
 export const STORE_DATETIME_FORMAT = 'YYYY-MM-DD HH:mm';

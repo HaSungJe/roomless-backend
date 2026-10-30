@@ -2,6 +2,7 @@ import {BadRequestException, ServiceUnavailableException} from '@nestjs/common';
 import type {TestingModule} from '@nestjs/testing';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
 import {STORE_COMMAND} from '@app/contracts/store/store.commands.js';
+import {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
@@ -45,7 +46,7 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
     });
 
     describe('[SUCCESS]', () => {
-        it('업체(활성 · 영업준비 · 업체코드) → 파일을 업체로 → 업체 총관리자(신청 때 정한 아이디 · 비밀번호) → 신청 승인(대기 조건) → 승인 알림 SMS(마지막)', async () => {
+        it('업체(활성 · 영업준비 · 업체코드) → 업체 상품 설정 3행 → 파일을 업체로 → 업체 총관리자(신청 때 정한 아이디 · 비밀번호) → 신청 승인(대기 조건) → 승인 알림 SMS(마지막)', async () => {
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
 
             // 업체
@@ -65,7 +66,6 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
                 latitude: 37.4979,
                 longitude: 127.0276,
                 introduction: null,
-                store_detail: {},
                 is_always_open: 0,
                 is_open: 0,
                 maintenance_minutes: 0,
@@ -75,6 +75,22 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
                 is_deleted: 0,
                 delete_backup: null,
             });
+            expect(store).not.toHaveProperty('store_detail');
+
+            // 업체 상품 설정 — 새 업체에 상품 종류마다 1행(판매 · 매일 · 기본 이용 시간 · 입실 · 퇴실 시각)
+            expect(repo.insertStorePlans).toHaveBeenCalledTimes(1);
+            const plans = repo.insertStorePlans.mock.calls[0][0] as RoomPlanEntity[];
+            expect(plans).toHaveLength(3);
+            for (const plan of plans) {
+                expect(plan).toBeInstanceOf(RoomPlanEntity);
+                expect(plan.room_plan_id).toMatch(/^[a-f0-9]{32}$/);
+                expect(plan).toMatchObject({store_id: store.store_id, is_used: 1, days_of_week: 127});
+            }
+            expect(plans.map(({room_plan_type_id, usage_hours, check_in_time, check_out_time}) => ({room_plan_type_id, usage_hours, check_in_time, check_out_time}))).toEqual([
+                {room_plan_type_id: 'HOURLY', usage_hours: 3, check_in_time: null, check_out_time: null},
+                {room_plan_type_id: 'NIGHT', usage_hours: null, check_in_time: '22:00', check_out_time: '09:00'},
+                {room_plan_type_id: 'LONG', usage_hours: null, check_in_time: '15:00', check_out_time: '11:00'},
+            ]);
 
             // 파일 → 업체
             expect(repo.assignStoreFiles).toHaveBeenCalledWith(APPLICATION_ID, store.store_id);
@@ -122,6 +138,7 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
 
             expect(result?.error).toEqual({status_code: 404, body: {message: '입점 신청을 찾을 수 없습니다.', validation_errors: null}});
             expect(repo.insertStore).not.toHaveBeenCalled();
+            expect(repo.insertStorePlans).not.toHaveBeenCalled();
         });
 
         it.each([
@@ -135,6 +152,7 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
 
             expect(result?.error).toEqual({status_code: 400, body: {message, validation_errors: null}});
             expect(repo.insertStore).not.toHaveBeenCalled();
+            expect(repo.insertStorePlans).not.toHaveBeenCalled();
             expect(sms.send).not.toHaveBeenCalled();
         });
 
@@ -148,12 +166,13 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
             expect(sms.send).not.toHaveBeenCalled();
         });
 
-        it('사업자번호 UK 충돌(repository 400)은 그대로 failed 400, 파일 · 계정 처리 없음', async () => {
+        it('사업자번호 UK 충돌(repository 400)은 그대로 failed 400, 업체 상품 설정 · 파일 · 계정 처리 없음', async () => {
             repo.insertStore.mockRejectedValueOnce(new BadRequestException({message: '이미 신청 · 등록된 사업자등록번호입니다.'}));
 
             const {result} = await runCommand(dispatcher, {type: STORE_COMMAND.APPLICATION_APPROVE, payload: PAYLOAD, actor: ADMIN_ACTOR});
 
             expect(result?.error).toEqual({status_code: 400, body: {message: '이미 신청 · 등록된 사업자등록번호입니다.', validation_errors: null}});
+            expect(repo.insertStorePlans).not.toHaveBeenCalled();
             expect(repo.assignStoreFiles).not.toHaveBeenCalled();
             expect(repo.insertHeadManager).not.toHaveBeenCalled();
         });

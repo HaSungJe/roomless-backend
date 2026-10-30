@@ -66,6 +66,9 @@ export class StoreApplicationEntity {
     @Column({name: 'reviewed_at', type: 'timestamptz', nullable: true, comment: '처리일(승인 · 반려, 대기 NULL)'})
     reviewed_at: Date | null;
 
+    @Column({name: 'is_deleted', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제 — 소프트 삭제, 신청 취소)'})
+    is_deleted: number;
+
     @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '신청일'})
     created_at: Date;
 

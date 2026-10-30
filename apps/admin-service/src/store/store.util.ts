@@ -10,7 +10,6 @@ import type {StoreDetailFileResultDto, StoreDetailResultDto} from '@app/contract
 import type {StoreListDto, StoreListItemResultDto} from '@app/contracts/store/dto/store-list.dto.js';
 import type {StoreMineBreakDto} from '@app/contracts/store/dto/store-mine-breaks.dto.js';
 import type {StoreMineHourDto} from '@app/contracts/store/dto/store-mine-hours.dto.js';
-import type {StoreMineProfileDetailDto} from '@app/contracts/store/dto/store-mine-profile.dto.js';
 import type {StoreMineUnavailablePeriodItemResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period-list.dto.js';
 import type {StoreMineBreakItemResultDto, StoreMineFileItemResultDto, StoreMineHourItemResultDto, StoreMineResultDto} from '@app/contracts/store/dto/store-mine.dto.js';
 import type {StoreMyApplicationItemResultDto} from '@app/contracts/store/dto/store-my-application-list.dto.js';
@@ -19,10 +18,10 @@ import type {StoreApplicationEntity} from '@app/database/entities/store/store-ap
 import type {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import type {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js';
 import type {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
-import type {StoreDetail, StoreEntity} from '@app/database/entities/store/store.entity.js';
+import type {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import type {UserEntity} from '@app/database/entities/user/user.entity.js';
 import type {StoreFileRow} from './interfaces/store.repository.interface.js';
-import {STORE_DETAIL_KEYS, STORE_FILE_EXTENSION, STORE_FILE_PURPOSE} from './store.constants.js';
+import {STORE_FILE_EXTENSION, STORE_FILE_PURPOSE} from './store.constants.js';
 
 /**
  * 입점 신청 목록 WHERE — 상태 + 검색어(상호명 · 사업자등록번호 OR).
@@ -186,23 +185,6 @@ export function nextSortOrder(images: StoreFileRow[]): number {
  */
 export function isSameIdSet(ids: string[], current: string[]): boolean {
     return ids.length === current.length && new Set(ids).size === ids.length && ids.every((id) => current.includes(id));
-}
-
-/**
- * 편의시설 — STORE_DETAIL_KEYS 항목 중 값이 있는 것만 담는다(선언 안 된 키 · null 은 버린다).
- *
- * @param dto 편의시설 입력
- * @returns t_store.store_detail 값
- */
-export function buildStoreDetail(dto: StoreMineProfileDetailDto): StoreDetail {
-    const detail: StoreDetail = {};
-    for (const key of STORE_DETAIL_KEYS) {
-        const value = dto[key];
-        if (value !== undefined && value !== null) {
-            detail[key] = value;
-        }
-    }
-    return detail;
 }
 
 /**
@@ -510,7 +492,6 @@ export function toStoreDetail(entity: StoreEntity, files: StoreDetailFileResultD
         latitude: entity.latitude,
         longitude: entity.longitude,
         introduction: entity.introduction ?? null,
-        store_detail: {...entity.store_detail},
         is_always_open: entity.is_always_open,
         is_open: entity.is_open,
         maintenance_minutes: entity.maintenance_minutes,
@@ -601,7 +582,6 @@ export function toMineDetail(entity: StoreEntity, hours: StoreMineHourItemResult
         latitude: entity.latitude,
         longitude: entity.longitude,
         introduction: entity.introduction ?? null,
-        store_detail: {...entity.store_detail},
         is_always_open: entity.is_always_open,
         is_open: entity.is_open,
         maintenance_minutes: entity.maintenance_minutes,

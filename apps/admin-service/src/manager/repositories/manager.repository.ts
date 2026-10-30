@@ -10,6 +10,7 @@ import {SessionEntity} from '@app/database/entities/user/session.entity.js';
 import {SmsVerificationEntity} from '@app/database/entities/user/sms-verification.entity.js';
 import {StateEntity} from '@app/database/entities/user/state.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
+import {notDeleted} from '@app/database/soft-delete.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginManagerRow, ManagerRepositoryInterface} from '../interfaces/manager.repository.interface.js';
 import {STAFF_LOGIN_ID_TAKEN_MESSAGE, STAFF_PHONE_TAKEN_MESSAGE} from '../manager.constants.js';
@@ -125,7 +126,7 @@ export class ManagerRepository implements ManagerRepositoryInterface {
      */
     async findManagerStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null> {
         try {
-            return await this.stores.findOne({where, loadRelationIds: true});
+            return await this.stores.findOne({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -235,7 +236,7 @@ export class ManagerRepository implements ManagerRepositoryInterface {
      */
     async findSession(where: FindOptionsWhere<SessionEntity>): Promise<SessionEntity | null> {
         try {
-            return await this.sessions.findOne({where, loadRelationIds: true});
+            return await this.sessions.findOne({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }

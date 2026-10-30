@@ -1,6 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import type {DataSource, EntityTarget, ObjectLiteral} from 'typeorm';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
+import {RoomPlanTypeEntity} from '../entities/room/room-plan-type.entity.js';
+import {RoomStateEntity} from '../entities/room/room-state.entity.js';
 import {StoreApplicationStateEntity} from '../entities/store/store-application-state.entity.js';
 import {StoreFilePurposeEntity} from '../entities/store/store-file-purpose.entity.js';
 import {StoreStateEntity} from '../entities/store/store-state.entity.js';
@@ -74,6 +76,21 @@ export const STORE_FILE_PURPOSE_SEED_DATA: StoreFilePurposeEntity[] = [
     {store_file_purpose_id: 'STORE_IMAGE', store_file_purpose_name: '업체 사진', is_private: 0},
 ];
 
+/** 호실 상태(t_room_state) 기본 데이터 — 사용중지(DISABLED) 호실은 예약을 받지 않는다 */
+export const ROOM_STATE_SEED_DATA: RoomStateEntity[] = [
+    {room_state_id: 'STANDBY', room_state_name: '스탠바이'},
+    {room_state_id: 'IN_USE', room_state_name: '이용중'},
+    {room_state_id: 'MAINTENANCE', room_state_name: '정비중'},
+    {room_state_id: 'DISABLED', room_state_name: '사용중지'},
+];
+
+/** 상품 종류(t_room_plan_type) 기본 데이터 — 마이그레이션 RoomSchema 도 같은 3행을 넣는다(기존 업체의 업체 상품 설정 FK) */
+export const ROOM_PLAN_TYPE_SEED_DATA: RoomPlanTypeEntity[] = [
+    {room_plan_type_id: 'HOURLY', room_plan_type_name: '시간 이용'},
+    {room_plan_type_id: 'NIGHT', room_plan_type_name: '1박'},
+    {room_plan_type_id: 'LONG', room_plan_type_name: '연박'},
+];
+
 /**
  * 첫 총관리자 `admin` / `1234` — 비밀번호는 시드 시점에 bcrypt + pepper 로 해시하고, 첫 로그인 때 변경 필요로 둔다.
  * login_id 로 이미 있는지 확인하므로(SEED_TARGETS 의 key), 비밀번호를 바꾼 뒤에는 덮지 않는다.
@@ -140,6 +157,8 @@ export const SEED_TARGETS: SeedTarget[] = [
     {entity: StoreStateEntity, data: STORE_STATE_SEED_DATA},
     {entity: StoreApplicationStateEntity, data: STORE_APPLICATION_STATE_SEED_DATA},
     {entity: StoreFilePurposeEntity, data: STORE_FILE_PURPOSE_SEED_DATA},
+    {entity: RoomStateEntity, data: ROOM_STATE_SEED_DATA},
+    {entity: RoomPlanTypeEntity, data: ROOM_PLAN_TYPE_SEED_DATA},
     {entity: UserEntity, data: buildSuperAdminSeed, key: 'login_id'},
     {entity: UserSettingEntity, data: buildSuperAdminSettingSeed, key: 'user_id'},
 ];

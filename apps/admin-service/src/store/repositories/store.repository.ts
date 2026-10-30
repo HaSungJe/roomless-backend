@@ -1,8 +1,9 @@
 import {BadRequestException, Injectable, InternalServerErrorException} from '@nestjs/common';
 import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import type {DeleteQueryBuilder, FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
+import type {FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
+import {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 import {StoreApplicationEntity} from '@app/database/entities/store/store-application.entity.js';
 import {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.js';
 import {StoreFilePurposeEntity} from '@app/database/entities/store/store-file-purpose.entity.js';
@@ -11,6 +12,7 @@ import {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js
 import {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
+import {notDeleted} from '@app/database/soft-delete.js';
 import {isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {StoreFileRow, StoreRepositoryInterface} from '../interfaces/store.repository.interface.js';
 import {STORE_BUSINESS_NUMBER_TAKEN_MESSAGE, STORE_STATE} from '../store.constants.js';
@@ -20,7 +22,8 @@ const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리�
 
 /**
  * store repository (아웃바운드 어댑터) — t_store_application · t_store · t_store_file · t_store_file_purpose · t_store_hour · t_store_break · t_store_unavailable_period 와
- * 공유 DB 의 t_user(신청자 · 업체 총관리자 · 업체 매니저)를 직접 다룬다. `txHost.tx` 는 `@Transactional()` 범위 안에서는 트랜잭션 EntityManager 다.
+ * 공유 DB 의 t_user(신청자 · 업체 총관리자 · 업체 매니저) · 업체 상품 설정 t_room_plan 을 직접 다룬다. `txHost.tx` 는 `@Transactional()` 범위 안에서는 트랜잭션 EntityManager 다.
+ * 삭제는 소프트 삭제(is_deleted = 1)이고, is_deleted 가 있는 테이블의 조회 · 개수 · 수정에는 항상 is_deleted = 0 을 붙인다(notDeleted · QueryBuilder 조건 — service 는 넣지 않는다).
  */
 @Injectable()
 export class StoreRepository implements StoreRepositoryInterface {
@@ -69,6 +72,11 @@ export class StoreRepository implements StoreRepositoryInterface {
         return this.txHost.tx.getRepository(StoreUnavailablePeriodEntity);
     }
 
+    /** t_room_plan repository (현재 트랜잭션 기준) — 업체 상품 설정, 입점 승인 때 상품 종류마다 1행 */
+    private get roomPlans(): Repository<RoomPlanEntity> {
+        return this.txHost.tx.getRepository(RoomPlanEntity);
+    }
+
     /**
      * 입점 신청 단건
      *
@@ -77,7 +85,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async findApplication(where: FindOptionsWhere<StoreApplicationEntity>): Promise<StoreApplicationEntity | null> {
         try {
-            return await this.applications.findOne({where, loadRelationIds: true});
+            return await this.applications.findOne({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -91,7 +99,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async countApplications(where: FindOptionsWhere<StoreApplicationEntity> | FindOptionsWhere<StoreApplicationEntity>[]): Promise<number> {
         try {
-            return await this.applications.count({where});
+            return await this.applications.count({where: notDeleted(where)});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -122,7 +130,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      * @returns 쿼리 빌더
      */
     buildApplicationListQuery(where: FindOptionsWhere<StoreApplicationEntity> | FindOptionsWhere<StoreApplicationEntity>[], limit: number, offset: number): SelectQueryBuilder<StoreApplicationEntity> {
-        return this.applications.createQueryBuilder('a').setFindOptions({where, order: {created_at: 'DESC'}, take: limit, skip: offset, loadRelationIds: true});
+        return this.applications.createQueryBuilder('a').setFindOptions({where: notDeleted(where), order: {created_at: 'DESC'}, take: limit, skip: offset, loadRelationIds: true});
     }
 
     /**
@@ -147,7 +155,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async updateApplication(where: FindOptionsWhere<StoreApplicationEntity>, entity: StoreApplicationEntity): Promise<boolean> {
         try {
-            const result = await this.applications.update(where, entity);
+            const result = await this.applications.update(notDeleted(where), entity);
             return result.affected === 1;
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
@@ -155,14 +163,16 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 입점 신청 삭제 — 취소. 업체 정보 파일(FK RESTRICT)을 같은 트랜잭션에서 먼저 지운다.
+     * 입점 신청 삭제 — 취소. 삭제 표시(is_deleted = 1)로 남긴다(소프트 삭제). 업체 정보 파일은 같은 트랜잭션에서 먼저 삭제 표시한다.
      *
-     * @param where 삭제 조건
+     * @param where 삭제 조건 (지워지지 않은 행만)
      * @returns 지웠으면 true, 조건에 맞는 행이 없으면 false
      */
     async deleteApplication(where: FindOptionsWhere<StoreApplicationEntity>): Promise<boolean> {
         try {
-            const result = await this.applications.delete(where);
+            const entity = new StoreApplicationEntity();
+            entity.is_deleted = 1;
+            const result = await this.applications.update(notDeleted(where), entity);
             return result.affected === 1;
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
@@ -212,7 +222,7 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 업체 정보 파일 조회 쿼리 — 매핑 민감(용도 조인 · raw select)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 업체 정보 파일 조회 쿼리 — 지워지지 않은 파일만. 매핑 민감(용도 조인 · raw select)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param column 기준 컬럼 (신청 · 업체)
      * @param id 신청 ID 또는 업체 ID
@@ -233,6 +243,7 @@ export class StoreRepository implements StoreRepositoryInterface {
             .addSelect('p.is_private', 'is_private')
             .innerJoin(StoreFilePurposeEntity, 'p', 'p.store_file_purpose_id = f.store_file_purpose_id')
             .where(`f.${column} = :id`, {id})
+            .andWhere('f.is_deleted = 0')
             .orderBy('f.store_file_purpose_id', 'ASC')
             .addOrderBy('f.sort_order', 'ASC')
             .addOrderBy('f.created_at', 'ASC');
@@ -246,7 +257,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async countStoreFiles(where: FindOptionsWhere<StoreFileEntity>): Promise<number> {
         try {
-            return await this.storeFiles.count({where});
+            return await this.storeFiles.count({where: notDeleted(where)});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -260,7 +271,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async findStoreFile(where: FindOptionsWhere<StoreFileEntity>): Promise<StoreFileEntity | null> {
         try {
-            return await this.storeFiles.findOne({where, loadRelationIds: true});
+            return await this.storeFiles.findOne({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -284,13 +295,15 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 업체 정보 파일 삭제
+     * 업체 정보 파일 삭제 — 삭제 표시(is_deleted = 1)로 남긴다(소프트 삭제). S3 객체는 service 가 실제로 지운다.
      *
-     * @param where 삭제 조건
+     * @param where 삭제 조건 (지워지지 않은 행만)
      */
     async deleteStoreFile(where: FindOptionsWhere<StoreFileEntity>): Promise<void> {
         try {
-            await this.storeFiles.delete(where);
+            const entity = new StoreFileEntity();
+            entity.is_deleted = 1;
+            await this.storeFiles.update(notDeleted(where), entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -304,14 +317,14 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async updateStoreFile(where: FindOptionsWhere<StoreFileEntity>, entity: StoreFileEntity): Promise<void> {
         try {
-            await this.storeFiles.update(where, entity);
+            await this.storeFiles.update(notDeleted(where), entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
     }
 
     /**
-     * 신청의 업체 정보 파일 삭제 — 신청 취소. 아직 업체에 붙지 않은(store_id 없음) 파일만 지운다 — 그 사이 승인된 신청의 파일은 남는다.
+     * 신청의 업체 정보 파일 삭제 — 신청 취소. 아직 업체에 붙지 않은(store_id 없음) 파일만 삭제 표시한다(소프트 삭제) — 그 사이 승인된 신청의 파일은 남는다.
      *
      * @param store_application_id 입점 신청 ID
      */
@@ -324,13 +337,20 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 신청의 업체 정보 파일 삭제 쿼리 — 매핑 민감(QueryBuilder 삭제 · 관계 컬럼 IS NULL)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 신청의 업체 정보 파일 삭제 쿼리 — 삭제 표시(is_deleted = 1 · 수정일)로 바꾼다(소프트 삭제 — QueryBuilder 갱신은 훅이 돌지 않아 수정일을 직접 넣는다).
+     * 매핑 민감(QueryBuilder 갱신 · 관계 컬럼 IS NULL)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param store_application_id 입점 신청 ID
      * @returns 쿼리 빌더
      */
-    buildDeleteApplicationFilesQuery(store_application_id: string): DeleteQueryBuilder<StoreFileEntity> {
-        return this.storeFiles.createQueryBuilder().delete().from(StoreFileEntity).where('store_application_id = :store_application_id', {store_application_id}).andWhere('store_id IS NULL');
+    buildDeleteApplicationFilesQuery(store_application_id: string): UpdateQueryBuilder<StoreFileEntity> {
+        return this.storeFiles
+            .createQueryBuilder()
+            .update(StoreFileEntity)
+            .set({is_deleted: 1, updated_at: () => 'CURRENT_TIMESTAMP'})
+            .where('store_application_id = :store_application_id', {store_application_id})
+            .andWhere('store_id IS NULL')
+            .andWhere('is_deleted = 0');
     }
 
     /**
@@ -348,14 +368,20 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 업체 정보 파일 업체 지정 쿼리 — 매핑 민감(QueryBuilder 갱신 · 관계 컬럼)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 업체 정보 파일 업체 지정 쿼리 — 지워지지 않은 파일만, 수정일도 넣는다(QueryBuilder 갱신은 훅이 돌지 않는다).
+     * 매핑 민감(QueryBuilder 갱신 · 관계 컬럼)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param store_application_id 입점 신청 ID
      * @param store_id 등록한 업체 ID
      * @returns 쿼리 빌더
      */
     buildAssignStoreFilesQuery(store_application_id: string, store_id: string): UpdateQueryBuilder<StoreFileEntity> {
-        return this.storeFiles.createQueryBuilder().update(StoreFileEntity).set({store_id}).where('store_application_id = :store_application_id', {store_application_id});
+        return this.storeFiles
+            .createQueryBuilder()
+            .update(StoreFileEntity)
+            .set({store_id, updated_at: () => 'CURRENT_TIMESTAMP'})
+            .where('store_application_id = :store_application_id', {store_application_id})
+            .andWhere('is_deleted = 0');
     }
 
     /**
@@ -366,7 +392,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async findStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null> {
         try {
-            return await this.stores.findOne({where, loadRelationIds: true});
+            return await this.stores.findOne({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -380,7 +406,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async findStores(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity[]> {
         try {
-            return await this.stores.find({where, loadRelationIds: true});
+            return await this.stores.find({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -394,7 +420,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async countStores(where: FindOptionsWhere<StoreEntity> | FindOptionsWhere<StoreEntity>[]): Promise<number> {
         try {
-            return await this.stores.count({where});
+            return await this.stores.count({where: notDeleted(where)});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -425,7 +451,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      * @returns 쿼리 빌더
      */
     buildStoreListQuery(where: FindOptionsWhere<StoreEntity> | FindOptionsWhere<StoreEntity>[], limit: number, offset: number): SelectQueryBuilder<StoreEntity> {
-        return this.stores.createQueryBuilder('s').setFindOptions({where, order: {created_at: 'DESC'}, take: limit, skip: offset, loadRelationIds: true});
+        return this.stores.createQueryBuilder('s').setFindOptions({where: notDeleted(where), order: {created_at: 'DESC'}, take: limit, skip: offset, loadRelationIds: true});
     }
 
     /**
@@ -446,6 +472,19 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
+     * 업체 상품 설정 등록 — 입점 승인 때 상품 종류마다 1행. 방금 만든 업체라 UK · CHECK 위반이 없으므로 위반은 통일 500
+     *
+     * @param entities new RoomPlanEntity() + 할당 (상품 종류마다 1개)
+     */
+    async insertStorePlans(entities: RoomPlanEntity[]): Promise<void> {
+        try {
+            await this.roomPlans.insert(entities);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
      * 업체 수정
      *
      * @param where 수정 조건
@@ -453,7 +492,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async updateStore(where: FindOptionsWhere<StoreEntity>, entity: StoreEntity): Promise<void> {
         try {
-            await this.stores.update(where, entity);
+            await this.stores.update(notDeleted(where), entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -547,6 +586,7 @@ export class StoreRepository implements StoreRepositoryInterface {
             .where('u.user_id = :user_id', {user_id})
             .andWhere('u.login_scope = :login_scope', {login_scope: LOGIN_SCOPE.MANAGER})
             .andWhere('s.store_state_id <> :leave', {leave: STORE_STATE.LEAVE})
+            .andWhere('s.is_deleted = 0')
             .loadAllRelationIds();
         return lock ? query.setLock('pessimistic_write', undefined, ['s']) : query;
     }
@@ -572,17 +612,19 @@ export class StoreRepository implements StoreRepositoryInterface {
      * @returns 쿼리 빌더
      */
     buildStoreHoursQuery(store_id: string): SelectQueryBuilder<StoreHourEntity> {
-        return this.storeHours.createQueryBuilder('h').setFindOptions({where: {store_id}, order: {day_of_week: 'ASC'}, loadRelationIds: true});
+        return this.storeHours.createQueryBuilder('h').setFindOptions({where: notDeleted<StoreHourEntity>({store_id}), order: {day_of_week: 'ASC'}, loadRelationIds: true});
     }
 
     /**
-     * 요일별 영업시간 삭제 — 교체
+     * 요일별 영업시간 삭제 — 교체 전 기존 행을 삭제 표시한다(소프트 삭제 — 요일 UK 는 지워지지 않은 행끼리라 새 행이 들어간다)
      *
-     * @param where 삭제 조건
+     * @param where 삭제 조건 (지워지지 않은 행만)
      */
     async deleteStoreHours(where: FindOptionsWhere<StoreHourEntity>): Promise<void> {
         try {
-            await this.storeHours.delete(where);
+            const entity = new StoreHourEntity();
+            entity.is_deleted = 1;
+            await this.storeHours.update(notDeleted(where), entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -622,17 +664,19 @@ export class StoreRepository implements StoreRepositoryInterface {
      * @returns 쿼리 빌더
      */
     buildStoreBreaksQuery(store_id: string): SelectQueryBuilder<StoreBreakEntity> {
-        return this.storeBreaks.createQueryBuilder('b').setFindOptions({where: {store_id}, order: {start_time: 'ASC'}, loadRelationIds: true});
+        return this.storeBreaks.createQueryBuilder('b').setFindOptions({where: notDeleted<StoreBreakEntity>({store_id}), order: {start_time: 'ASC'}, loadRelationIds: true});
     }
 
     /**
-     * 브레이크타임 삭제 — 교체
+     * 브레이크타임 삭제 — 교체 전 기존 행을 삭제 표시한다(소프트 삭제)
      *
-     * @param where 삭제 조건
+     * @param where 삭제 조건 (지워지지 않은 행만)
      */
     async deleteStoreBreaks(where: FindOptionsWhere<StoreBreakEntity>): Promise<void> {
         try {
-            await this.storeBreaks.delete(where);
+            const entity = new StoreBreakEntity();
+            entity.is_deleted = 1;
+            await this.storeBreaks.update(notDeleted(where), entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -659,7 +703,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async countUnavailablePeriods(where: FindOptionsWhere<StoreUnavailablePeriodEntity>): Promise<number> {
         try {
-            return await this.unavailablePeriods.count({where});
+            return await this.unavailablePeriods.count({where: notDeleted(where)});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
@@ -691,7 +735,7 @@ export class StoreRepository implements StoreRepositoryInterface {
      * @returns 쿼리 빌더
      */
     buildUnavailablePeriodListQuery(where: FindOptionsWhere<StoreUnavailablePeriodEntity>, limit: number, offset: number): SelectQueryBuilder<StoreUnavailablePeriodEntity> {
-        return this.unavailablePeriods.createQueryBuilder('p').setFindOptions({where, order: {starts_at: 'ASC'}, take: limit, skip: offset, loadRelationIds: true});
+        return this.unavailablePeriods.createQueryBuilder('p').setFindOptions({where: notDeleted(where), order: {starts_at: 'ASC'}, take: limit, skip: offset, loadRelationIds: true});
     }
 
     /**
@@ -708,14 +752,16 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 일시 예약불가 삭제 — 업체를 조건에 넣으면 남의 업체 것은 0건이다.
+     * 일시 예약불가 삭제 — 삭제 표시(is_deleted = 1)로 남긴다(소프트 삭제). 업체를 조건에 넣으면 남의 업체 것 · 이미 지운 것은 0건이다.
      *
-     * @param where 삭제 조건
+     * @param where 삭제 조건 (지워지지 않은 행만)
      * @returns 지웠으면 true, 조건에 맞는 행이 없으면 false
      */
     async deleteUnavailablePeriod(where: FindOptionsWhere<StoreUnavailablePeriodEntity>): Promise<boolean> {
         try {
-            const result = await this.unavailablePeriods.delete(where);
+            const entity = new StoreUnavailablePeriodEntity();
+            entity.is_deleted = 1;
+            const result = await this.unavailablePeriods.update(notDeleted(where), entity);
             return result.affected === 1;
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});

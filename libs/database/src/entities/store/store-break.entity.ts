@@ -22,6 +22,9 @@ export class StoreBreakEntity {
     @Column({name: 'end_time', type: 'time', nullable: false, comment: '브레이크 마감 시각(한국 시각, 분 단위 — 시작보다 이르면 다음 날)'})
     end_time: string;
 
+    @Column({name: 'is_deleted', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제 — 교체 때 기존 행을 삭제 표시)'})
+    is_deleted: number;
+
     @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
     created_at: Date;
 

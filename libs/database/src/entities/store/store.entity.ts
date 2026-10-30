@@ -1,22 +1,11 @@
 import {BeforeInsert, BeforeUpdate, Column, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn, Unique} from 'typeorm';
 import {StoreStateEntity} from './store-state.entity.js';
 
-/** 업체 상세정보(t_store.store_detail) — 항목은 언제든 바뀔 수 있다. 플래그는 0/1 */
-export interface StoreDetail {
-    /** 방 칸수 */
-    room_count?: number;
-    /** 샤워실 유무 */
-    has_shower?: number;
-    /** TV 유무 */
-    has_tv?: number;
-    /** PC 유무 */
-    has_pc?: number;
-}
-
 /**
  * 업체 — 입점 승인으로 만들어진다. 이용자에게는 활성(ACTIVE) · 미삭제 업체만 보인다.
  * 영업중 = 영업중 여부(is_open) 1 이고, 24시간 연중무휴(is_always_open) 이거나 요일별 영업시간(t_store_hour) 안 · 브레이크타임 밖.
  * is_open 이 0 이면 연중무휴로 되어 있어도 영업중 아님이다.
+ * 상품 설정은 업체 상품 설정(t_room_plan — 상품 종류마다 1행), 편의시설 같은 객실 상세정보는 객실 그룹(t_room_group.room_group_detail)에 있다.
  */
 @Entity({name: 't_store', comment: '업체 정보'})
 @Unique('UK_Store_BusinessNumber', ['business_number'])
@@ -59,9 +48,6 @@ export class StoreEntity {
 
     @Column({name: 'introduction', type: 'text', nullable: true, comment: '업체 소개'})
     introduction: string | null;
-
-    @Column({name: 'store_detail', type: 'jsonb', nullable: false, default: () => "'{}'", comment: '업체 상세정보(JSON — room_count · has_shower · has_tv · has_pc, 항목은 바뀔 수 있다)'})
-    store_detail: StoreDetail;
 
     @Column({name: 'is_always_open', type: 'smallint', nullable: false, default: 0, comment: '24시간 연중무휴 여부(0: 요일별 영업시간 t_store_hour, 1: 24시간 연중무휴 — 영업시간을 두지 않는다)'})
     is_always_open: number;

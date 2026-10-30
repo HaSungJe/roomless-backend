@@ -55,6 +55,8 @@
 - 응답은 항상 `ResultDto`: `UserSignResultDto` (❌ `ResponseDto`)
 - 게이트웨이 controller `UserController`(동기) · `UserQueueController`(큐), 서비스 큐 컨트롤러 `UserQueueController`(내부 HTTP 는 `UserController`), crontab `UserLeaveCleanupCrontab`
 
+**이름은 뜻이 바로 드러나는 말로** — 룩업 이름 · 주석 · 사용자 노출 문구에 영어를 한글로 옮겨 적은 말(데이유즈 · 나이트 · 롱스테이)을 쓰지 않는다. 우리말로 뜻을 쓴다(상품 종류 `t_room_plan_type` — 시간 이용 · 1박 · 연박). 코드 ID 는 뜻이 드러나는 영어 대문자다(`HOURLY` · `NIGHT` · `LONG`) — 사용자 결정 2026-10-31.
+
 **DTO 독립 명명**: 기능당 DTO 1개. 모양이 같아도(토큰 응답 4종 등) 독립 재선언하고 재사용 · alias 하지 않는다.
 
 ## snake_case 전 레이어 통일
@@ -94,9 +96,9 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 ## Validation (class-validator)
 
-- **사용**: `@IsNotEmpty` · `@IsOptional` · `@IsIn` · `@Matches` · `@MaxLength` (+ 짝 필드 조건부 `@ValidateIf`) · 위경도 `@IsLatitude` · `@IsLongitude`(숫자 좌표는 위 데코레이터로 검증할 수 없다 — store-application.dto.ts · store-update.dto.ts, 문자열 · 숫자 모두 받으므로 service 가 `Number()` 로 바꾼다) · 숫자 범위 `@IsInt` · `@Min` · `@Max`(정비시간 · 방 칸수) · 배열 `@IsArray` · `@ArrayMaxSize`(문자열 항목은 `@Matches(…, {each: true})` — 사진 순서) · 중첩 `@ValidateNested({each: true})` + `@Type(() => 항목 DTO)`(영업시간 · 브레이크타임 · 편의시설 — store-mine-hours.dto.ts · store-mine-breaks.dto.ts · store-mine-profile.dto.ts, 사용자 결정 2026-10-27).
+- **사용**: `@IsNotEmpty` · `@IsOptional` · `@IsIn` · `@Matches` · `@MaxLength` (+ 짝 필드 조건부 `@ValidateIf`) · 위경도 `@IsLatitude` · `@IsLongitude`(숫자 좌표는 위 데코레이터로 검증할 수 없다 — store-application.dto.ts · store-update.dto.ts, 문자열 · 숫자 모두 받으므로 service 가 `Number()` 로 바꾼다) · 숫자 범위 `@IsInt` · `@Min` · `@Max`(정비시간 · 방 칸수) · 배열 `@IsArray` · `@ArrayMaxSize`(문자열 항목은 `@Matches(…, {each: true})` — 사진 순서) · 중첩 `@ValidateNested({each: true})` + `@Type(() => 항목 DTO)`(영업시간 · 브레이크타임 — store-mine-hours.dto.ts · store-mine-breaks.dto.ts, 사용자 결정 2026-10-27).
 - **미사용**(grep 0건): `@IsString` · `@IsNumber` · `@IsBoolean` · `@IsEnum` · `@MinLength` · `@Length` · `@Transform`. `@Type` 은 중첩 항목에만 — class-transformer 가 중첩 객체를 그 DTO 인스턴스로 만들어야 `@ValidateNested` 가 항목을 검증한다. 숫자를 바꾸는 `@Type(() => Number)` 는 쓰지 않는다(쿼리 값은 문자열 그대로).
-- **중첩 오류의 대상 필드는 점 경로** — `validationExceptionFactory` 가 `children` 을 펼쳐 제약이 걸린 오류마다 1건(`hours.0.open_time` · `store_detail.room_count`)을 담는다. 배열 자체의 제약(`hours` 개수)은 그 필드명 그대로. service 가 항목에 귀속되는 비즈니스 오류를 낼 때도 같은 경로를 쓴다(`createValidationError('breaks.0.end_time', …)`).
+- **중첩 오류의 대상 필드는 점 경로** — `validationExceptionFactory` 가 `children` 을 펼쳐 제약이 걸린 오류마다 1건(`hours.0.open_time`)을 담는다. 배열 자체의 제약(`hours` 개수)은 그 필드명 그대로. service 가 항목에 귀속되는 비즈니스 오류를 낼 때도 같은 경로를 쓴다(`createValidationError('breaks.0.end_time', …)`).
 - **`@IsNotEmpty` 는 `''` · null · undefined 만 막는다** — 숫자 0 · 빈 배열 · `{}` 는 통과한다. 개수(영업시간 7개)는 service 가 본다.
 - **모든 제약에 `message: '<한국어 문자열>'` 리터럴 필수**. message 를 받지 않는 것은 `@IsOptional()` 과 `@ValidateIf(...)` 뿐.
 - **순서**:

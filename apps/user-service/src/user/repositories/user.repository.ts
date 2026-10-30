@@ -10,6 +10,7 @@ import {SmsVerificationEntity} from '@app/database/entities/user/sms-verificatio
 import {StateEntity} from '@app/database/entities/user/state.entity.js';
 import {UserSettingEntity} from '@app/database/entities/user/user-setting.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
+import {notDeleted} from '@app/database/soft-delete.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginUserRow, UserRepositoryInterface} from '../interfaces/user.repository.interface.js';
 import {PHONE_TAKEN_MESSAGE} from '../user.constants.js';
@@ -198,7 +199,7 @@ export class UserRepository implements UserRepositoryInterface {
      */
     async findSession(where: FindOptionsWhere<SessionEntity>): Promise<SessionEntity | null> {
         try {
-            return await this.sessions.findOne({where, loadRelationIds: true});
+            return await this.sessions.findOne({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }

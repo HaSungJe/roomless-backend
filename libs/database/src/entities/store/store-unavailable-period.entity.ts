@@ -26,6 +26,9 @@ export class StoreUnavailablePeriodEntity {
     @Column({name: 'memo', type: 'varchar', length: 30, nullable: true, comment: '메모(간단한 사유, 30자)'})
     memo: string | null;
 
+    @Column({name: 'is_deleted', type: 'smallint', nullable: false, default: 0, comment: '삭제여부(0: 정상, 1: 삭제 — 소프트 삭제, 겹침 검사는 정상 행끼리)'})
+    is_deleted: number;
+
     @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
     created_at: Date;
 

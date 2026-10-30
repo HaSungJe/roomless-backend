@@ -46,6 +46,13 @@ describe('AdminRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         expect((error as BadRequestException).getResponse()).toEqual({message: '존재하지 않는 회원입니다.'});
     });
 
+    it('findSession 은 받은 조건에 is_deleted: 0 을 더해 loadRelationIds 로 조회한다(지워지지 않은 세션만)', async () => {
+        const {repository, session} = makeRepository();
+
+        await repository.findSession({session_id: 's1'});
+
+        expect(session.findOne).toHaveBeenCalledWith({where: {session_id: 's1', is_deleted: 0}, loadRelationIds: true});
+    });
     it('findAdmin 은 조건 그대로 loadRelationIds 로 조회한다', async () => {
         const {repository, user} = makeRepository();
 

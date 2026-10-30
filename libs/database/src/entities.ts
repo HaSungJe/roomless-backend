@@ -1,4 +1,12 @@
 import {ApiLogEntity} from './entities/api-log/api-log.entity.js';
+import {RoomGroupImageEntity} from './entities/room/room-group-image.entity.js';
+import {RoomGroupPlanPriceEntity} from './entities/room/room-group-plan-price.entity.js';
+import {RoomGroupPlanEntity} from './entities/room/room-group-plan.entity.js';
+import {RoomGroupEntity} from './entities/room/room-group.entity.js';
+import {RoomPlanTypeEntity} from './entities/room/room-plan-type.entity.js';
+import {RoomPlanEntity} from './entities/room/room-plan.entity.js';
+import {RoomStateEntity} from './entities/room/room-state.entity.js';
+import {RoomEntity} from './entities/room/room.entity.js';
 import {StoreApplicationStateEntity} from './entities/store/store-application-state.entity.js';
 import {StoreApplicationEntity} from './entities/store/store-application.entity.js';
 import {StoreBreakEntity} from './entities/store/store-break.entity.js';
@@ -36,6 +44,14 @@ export const ENTITIES = [
     StoreHourEntity,
     StoreBreakEntity,
     StoreUnavailablePeriodEntity,
+    RoomStateEntity,
+    RoomPlanTypeEntity,
+    RoomPlanEntity,
+    RoomGroupEntity,
+    RoomGroupImageEntity,
+    RoomEntity,
+    RoomGroupPlanEntity,
+    RoomGroupPlanPriceEntity,
     UserEntity,
     UserSettingEntity,
     SessionEntity,

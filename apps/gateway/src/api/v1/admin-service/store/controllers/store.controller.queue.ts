@@ -56,7 +56,7 @@ export class StoreQueueController {
     constructor(private readonly commandStream: CommandStreamService) {}
 
     /**
-     * 내 업체 소개 수정 (업체 관리자) — 소개 · 연락처 · 편의시설(통째로 교체). done 의 data 는 null.
+     * 내 업체 소개 수정 (업체 관리자) — 소개 · 연락처. done 의 data 는 null.
      */
     @Patch('/mine/profile')
     @UseGuards(PassportJwtManagerAuthGuard)
