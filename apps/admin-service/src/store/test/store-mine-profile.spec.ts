@@ -54,7 +54,12 @@ describe('admin.store.mine-profile — 내 업체 소개 수정 (큐 경로)', (
             expect(result).toEqual({result: null, error: null});
             const entity = repo.updateStore.mock.calls[0][1] as StoreEntity;
             expect(entity).not.toHaveProperty('store_detail');
-            expect(Object.keys(entity).sort()).toEqual(['introduction', 'phone']);
+            expect(
+                Object.entries(entity)
+                    .filter(([, value]) => value !== undefined)
+                    .map(([key]) => key)
+                    .sort(),
+            ).toEqual(['introduction', 'phone']);
         });
     });
 

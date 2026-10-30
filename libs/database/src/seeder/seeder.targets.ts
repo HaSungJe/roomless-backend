@@ -76,10 +76,14 @@ export const STORE_FILE_PURPOSE_SEED_DATA: StoreFilePurposeEntity[] = [
     {store_file_purpose_id: 'STORE_IMAGE', store_file_purpose_name: '업체 사진', is_private: 0},
 ];
 
-/** 호실 상태(t_room_state) 기본 데이터 — 사용중지(DISABLED) 호실은 예약을 받지 않는다 */
+/**
+ * 호실 상태(t_room_state) 기본 데이터 — admin-service room.constants.ts 의 ROOM_STATE 와 같다. 사용중지(DISABLED) 호실은 예약을 받지 않는다.
+ * 예약 → 예약완료 · 체크인 → 사용중 · 체크아웃 → 정비중 · 정비 완료(업체 관리자) → 예약가능. 기존 DB 의 STANDBY 정리 · 이름은 마이그레이션 RoomState 가 맞춘다(시드는 PK 가 있으면 건너뛴다)
+ */
 export const ROOM_STATE_SEED_DATA: RoomStateEntity[] = [
-    {room_state_id: 'STANDBY', room_state_name: '스탠바이'},
-    {room_state_id: 'IN_USE', room_state_name: '이용중'},
+    {room_state_id: 'AVAILABLE', room_state_name: '예약가능'},
+    {room_state_id: 'RESERVED', room_state_name: '예약완료'},
+    {room_state_id: 'IN_USE', room_state_name: '사용중'},
     {room_state_id: 'MAINTENANCE', room_state_name: '정비중'},
     {room_state_id: 'DISABLED', room_state_name: '사용중지'},
 ];

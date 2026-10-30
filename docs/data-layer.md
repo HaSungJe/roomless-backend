@@ -15,7 +15,7 @@ libs/database/src/
 ├── migrations/      # <timestamp>-<Name>.ts
 ├── migrations.ts    # MIGRATIONS — 실행할 마이그레이션 목록
 ├── typeorm.config.ts · data-source.ts · database.module.ts
-├── typeorm-error.ts # isUniqueViolation · isForeignKeyViolation
+├── typeorm-error.ts # isUniqueViolation · isForeignKeyViolation · isExclusionViolation
 ├── soft-delete.ts   # notDeleted — 조회 · 개수 · 수정 조건에 is_deleted = 0(repository 가 감싼다)
 ├── job-lock/        # JobLockService — 인스턴스 여러 대 중 1대만 실행하는 잠금(scheduler 의 crontab 용)
 └── seeder/          # 룩업 기본 데이터
@@ -140,13 +140,14 @@ export class UserRepository implements UserRepositoryInterface {
 규칙:
 - **`txHost.tx.getRepository(XEntity)` 로만 접근** — `@Transactional()` 범위면 트랜잭션 EntityManager, 밖이면 기본 EntityManager. `@InjectRepository` 는 쓰지 않는다(트랜잭션 전파가 안 된다). 엔티티별 private getter 로 묶는다.
 - **DB 를 실행하는 메서드는 모두 try/catch**, 최종 실패는 통일 500 — 문구는 파일 상수 `SERVER_ERROR_MESSAGE`(user.repository.ts:14). 조회 · update 는 `catch {` + 500.
-- **제약 위반은 그 제약이 걸릴 수 있는 쓰기에서 제약명별 `if … else if … else` 분기** — `isUniqueViolation(error, 'UK_…')`(23505) · `isForeignKeyViolation(error, 'FK_…')`(23503), 마지막 else 는 500. 지금은 insert 만 분기하고 update 2개는 500 만 던진다(user.repository.ts:230-250). 멱등 insert 는 UK 중복을 `return` 으로 무시(`insertUserSetting`).
+- **제약 위반은 그 제약이 걸릴 수 있는 쓰기에서 제약명별 `if … else if … else` 분기** — `isUniqueViolation(error, 'UK_…')`(23505) · `isForeignKeyViolation(error, 'FK_…')`(23503) · `isExclusionViolation(error, 'EXC_…')`(23P01 — 배타 제약, 기간 가격 겹침 room.repository.ts), 마지막 else 는 500. 지금은 insert 만 분기하고 update 2개는 500 만 던진다(user.repository.ts:230-250). 멱등 insert 는 UK 중복을 `return` 으로 무시(`insertUserSetting`).
 - **QueryBuilder 빌더 메서드는 예외** — 쿼리만 만들고 실행하지 않으므로 try/catch 없이 public 으로 두고 포트 인터페이스에 넣지 않는다(`buildLoginUserQuery` — user.repository.ts:177). 실행하는 메서드(`findLoginUser`)가 try/catch 를 가진다. 빌더를 public 으로 두는 이유는 repository spec 의 Data-Access Smoke 가 SQL 을 고정하기 위해서다.
 - **범용 메서드 우선**(`insertX`/`findX`/`findXs`/`updateX`). WHERE 는 service 가 `FindOptionsWhere<XEntity>`(❌ `Partial`)로 만들고 repository 는 실행만 — **예외: 소프트 삭제 조건**(아래).
 - **삭제는 항상 소프트 삭제 — DB 데이터만**(사용자 규칙 2026-10-31). 행을 지우는 동작은 `is_deleted`(smallint 0/1, 기본 0)를 1 로 바꾸고 행을 남긴다(`DELETE` ❌). 파일을 지울 때 S3 객체는 실제로 지우고(`storageGateway.remove`), DB 행만 `is_deleted = 1`. 통째로 교체(영업시간 · 브레이크타임)도 기존 행을 삭제 표시한 뒤 새 행을 넣는다. 지우는 동작이 있는 테이블에만 `is_deleted` 를 둔다(t_user — 탈퇴는 상태 + 정보 가리기, 세션 갱신 · SMS 기록 · 룩업 · API 로그는 없음). 종류마다 반드시 있는 행(`t_room_plan` · `t_room_group_plan`)은 지우지 않는다.
   - **`is_deleted = 0` 은 repository 가 항상 붙인다** — `is_deleted` 가 있는 테이블의 조회 · 개수 · 수정 메서드는 받은 조건을 `notDeleted(where)`(libs/database/src/soft-delete.ts — 배열 OR 조건이면 각 조건에)로 감싸고, QueryBuilder 빌더는 `"<별칭>"."is_deleted" = 0`(조인한 `is_deleted` 테이블 포함)을 더한다. service 는 조건에 `is_deleted` 를 넣지 않는다(삭제 조건이 빠지는 일을 구조로 막는다 — 사용자 결정 2026-10-31). 객체 리터럴을 바로 넘길 때는 타입 인자를 적는다(`notDeleted<StoreHourEntity>({store_id})`) — `is_deleted` 가 없는 엔티티에 쓰면 컴파일 오류다.
   - **삭제 메서드는 `update(notDeleted(where), is_deleted = 1 인 엔티티)`**(이름은 `deleteX` 그대로 — 훅이 수정일을 채운다). 상태 조건을 건 삭제(`deleteApplication` · `deleteUnavailablePeriod`)는 `affected === 1` 을 돌려준다. QueryBuilder 갱신은 훅이 돌지 않아 `updated_at: () => 'CURRENT_TIMESTAMP'` 를 직접 넣는다(`buildDeleteApplicationFilesQuery` · `buildAssignStoreFilesQuery`). 새 행은 service 가 `is_deleted = 0` 을 명시한다.
   - **유일성 · 배타 제약은 지워지지 않은 행끼리** — 부분 유니크 인덱스 `WHERE "is_deleted" = 0`(지운 행의 이름을 다시 쓸 수 있다 — `UK_Room_StoreIdRoomName` · `UK_RoomGroup_StoreIdRoomGroupName` · `UK_StoreHour_StoreIdDayOfWeek`) · 배타 제약 `… WHERE ("is_deleted" = 0)`. 다시 쓰지 않는 값(업로드마다 새로 만드는 저장 키 `UK_StoreFile_FileKey` · `UK_RoomGroupImage_FileKey`)과 지우지 않는 행(`UK_RoomPlan_StoreIdRoomPlanTypeId` · `UK_RoomGroupPlan_RoomGroupIdRoomPlanTypeId`)은 일반 UK.
+  - 딸린 행도 같이 삭제 표시한다 — 객실 그룹 삭제는 그 그룹의 호실 · 사진을 함께 삭제 표시한다(room.service.ts `deleteMyRoomGroup`, 사진 S3 객체는 마지막에 실제 삭제).
 - 조회 시 `loadRelationIds: true`.
 - `update(where, entity)` 의 `entity` 는 호출자가 `new XEntity()` + 바꿀 필드만 할당해 넘긴다(`@BeforeUpdate` 트리거). `undefined` 필드는 건드리지 않고 `null` 은 NULL 로 비운다 — 수정 API 의 선택 필드는 `?? null`.
 - **조인 · raw select · 동적 조립은 QueryBuilder 빌더 메서드로 분리**(`buildLoginUserQuery` · `buildStoreFileRowsQuery` — 용도 조인 + raw 별칭이 결과 행 타입 `StoreFileRow` 의 키와 같다)하고 repository spec 의 Data-Access Smoke 로 SQL 을 고정한다 — service spec 은 repository 를 mock 하므로 쿼리를 실행하지 않는다([testing.md](testing.md)).
@@ -188,7 +189,7 @@ export class UserRepository implements UserRepositoryInterface {
 
 ## Pagination / 목록 조회
 
-> 적용: store 목록 3종(apps/admin-service/src/store/store.service.ts `getMyApplicationList` · `getApplicationList` · `getStoreList`) · 업체 관리자 목록(apps/admin-service/src/manager/manager.service.ts `getStaffList`). 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts`). Query DTO 생성자 규칙은 [conventions.md](conventions.md).
+> 적용: store 목록 3종(apps/admin-service/src/store/store.service.ts `getMyApplicationList` · `getApplicationList` · `getStoreList`) · 업체 관리자 목록(apps/admin-service/src/manager/manager.service.ts `getStaffList`) · room 목록 3종(apps/admin-service/src/room/room.service.ts `getMyRoomGroups` · `getMyRoomGroupPlanPrices` · `getMyRooms`). 공통 `PaginationDto`(`libs/common/src/dto/pagination.dto.ts`) · `Pagination`(`libs/common/src/utils/pagination.ts`). Query DTO 생성자 규칙은 [conventions.md](conventions.md).
 
 - 응답 `{list, pagination}`.
 - 순서 **count → `Pagination` → 목록** — `Pagination` 이 `total_count` 로 `limit`/`offset` 을 산출한다. repository 는 `countX(where)` 와 `findXList(where, limit, offset)` 두 메서드로 둔다(`findAndCount` ❌).

@@ -85,6 +85,8 @@ affected_data: ["Redis 키 auth-user:<login_scope>:<user_id> (로그인 회원 �
 | 일시 예약불가 등록 · 삭제(`addMyStoreUnavailablePeriod` · `removeMyStoreUnavailablePeriod`) | admin-service store (Phase 11) | 예약 가능 시간 | Phase 11 |
 | 관리자 영업중 여부 변경(`changeStoreOpen`) · 정지 사유(`changeStoreState`) | admin-service store (리비전 261029-1) | 영업중 표시 · 상태 | 리비전 |
 | 내 업체 예약 · 환불 규정(`changeMyStoreReservationPolicy`) | admin-service store (리비전 261029-1) | 예약 가능 시간 · 환불 규정 | 리비전 |
+| 업체 상품 설정 · 그룹 상품 · 기간 가격 수정(`updateMyRoomPlan` · `updateMyRoomGroupPlan` · `addMyRoomGroupPlanPrice` · `updateMyRoomGroupPlanPrice` · `deleteMyRoomGroupPlanPrice`) | admin-service room (Phase 13) | 판매 상품 · 요금 · 예약 가능 요일 | Phase 13 |
+| 객실 그룹 · 사진 · 호실 · 호실 상태(`createMyRoomGroup` · `updateMyRoomGroup` · `deleteMyRoomGroup` · `addMyRoomGroupImage` · `reorderMyRoomGroupImages` · `deleteMyRoomGroupImage` · `createMyRoom` · `updateMyRoom` · `deleteMyRoom` · `changeMyRoomState`) | admin-service room (Phase 13) | 객실 그룹 목록 · 사진 · 호실별 예약 가능 여부 | Phase 13 |
 
 ## 다시 생각한 문제 — 무효화
 

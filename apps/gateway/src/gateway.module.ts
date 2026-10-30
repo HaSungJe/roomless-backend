@@ -4,6 +4,7 @@ import {PassportJwtAuthModule} from './guards/passport.jwt.auth/passport.jwt.aut
 import {TransportModule} from './modules/transport/transport.module.js';
 import {AdminModule} from './api/v1/admin-service/admin/admin.module.js';
 import {ManagerModule} from './api/v1/admin-service/manager/manager.module.js';
+import {RoomModule} from './api/v1/admin-service/room/room.module.js';
 import {StoreModule} from './api/v1/admin-service/store/store.module.js';
 import {UserModule} from './api/v1/user-service/user/user.module.js';
 
@@ -13,7 +14,7 @@ import {UserModule} from './api/v1/user-service/user/user.module.js';
  * - MessagingModule.forGateway: 명령 발행 + 인스턴스 전용 결과 큐
  * - TransportModule: 동기(내부 HTTP) · 큐(RabbitMQ + SSE) 전달 수단
  * - PassportJwtAuthModule: JWT 전략 (guards/)
- * - 로그인 그룹별 라우트: UserModule(/api/v1/user-service/user) · ManagerModule(/api/v1/admin-service/manager) · AdminModule(/api/v1/admin-service/admin) · StoreModule(/api/v1/admin-service/store — 이용자 · 관리자 가드)
+ * - 로그인 그룹별 라우트: UserModule(/api/v1/user-service/user) · ManagerModule(/api/v1/admin-service/manager) · AdminModule(/api/v1/admin-service/admin) · StoreModule(/api/v1/admin-service/store — 이용자 · 관리자 가드) · RoomModule(/api/v1/admin-service/room — 매니저 가드)
  */
-@Module({imports: [MessagingModule.forGateway(), TransportModule, PassportJwtAuthModule, UserModule, ManagerModule, AdminModule, StoreModule]})
+@Module({imports: [MessagingModule.forGateway(), TransportModule, PassportJwtAuthModule, UserModule, ManagerModule, AdminModule, StoreModule, RoomModule]})
 export class GatewayModule {}
