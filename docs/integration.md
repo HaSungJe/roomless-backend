@@ -1,6 +1,6 @@
 # 외부 연동 (`libs/integration`)
 
-> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기, admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화(둘 다 루트 모듈이 `SmsModule` 을 import 한다). AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md).
+> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 문 열기 · 닫기(문 정보 — Redis), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 을 import 한다). AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md).
 
 ## 원칙
 
@@ -22,14 +22,16 @@
 
 | 파일 | 내용 |
 |---|---|
-| `integration.symbols.ts` | `SMS_SENDER` · `STORAGE_GATEWAY` |
-| `interfaces/integration.interface.ts` | `SmsSenderInterface` · `SmsMessage` · `StorageGatewayInterface` · `StorageUploadInput` · `StorageUploadResult` · `StorageDownloadResult` |
-| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` · `STORAGE_DOWNLOAD_URL_TTL_SECONDS` |
+| `integration.symbols.ts` | `SMS_SENDER` · `STORAGE_GATEWAY` · `DOOR_STORE` |
+| `interfaces/integration.interface.ts` | `SmsSenderInterface` · `SmsMessage` · `StorageGatewayInterface` · `StorageUploadInput` · `StorageUploadResult` · `StorageDownloadResult` · `DoorStoreInterface` · `DoorRecord` · `DoorState` |
+| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` · `STORAGE_DOWNLOAD_URL_TTL_SECONDS` · `REDIS_UNAVAILABLE_MESSAGE` · `DOOR_QR_ISSUE_FAILED_MESSAGE` · `DOOR_STATE` · `DOOR_TIME_NONE` · `DOOR_QR_ISSUE_ATTEMPTS` |
 | `integration.util.ts` | `toE164KrPhone` — 국내 번호 → `+82…` |
 | `sms/sns-sms.sender.ts` · `sms/sms.module.ts` | `SnsSmsSender`(SNS `Publish`, Transactional) · `SmsModule`(`@Global`) |
 | `storage/s3-storage.gateway.ts` · `storage/storage.module.ts` | `S3StorageGateway`(presigned PutObject — Content-Type 서명 · presigned GetObject · HeadObject · DeleteObject) · `StorageModule`(`@Global`) |
+| `redis/redis.connection.ts` · `redis/redis.module.ts` | `RedisConnection`(node-redis — 부팅을 막지 않는 연결 · 끊긴 동안 명령을 쌓지 않음 · 준비 전 503) · `RedisModule`(`@Global`) |
+| `door/redis-door.store.ts` · `door/door-store.module.ts` | `RedisDoorStore`(Lua 스크립트 3개 — 열기 · 닫기 · QR 발급) · `DoorStoreModule`(`@Global`, RedisModule 포함) |
 
-설정은 `.env` 의 `AWS_REGION` · `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_S3_BUCKET` · `AWS_S3_PUBLIC_URL` 이다. 자격증명은 SDK 기본 체인이 읽는다(IAM 역할이면 키를 비운다).
+설정은 `.env` 의 `AWS_REGION` · `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_S3_BUCKET` · `AWS_S3_PUBLIC_URL`(AWS — 자격증명은 SDK 기본 체인이 읽는다, IAM 역할이면 키를 비운다)과 `REDIS_URL`(Redis) 이다.
 
 ## S3 클라이언트 설정
 
@@ -43,6 +45,14 @@
 - **접두가 공개 여부를 가른다** — 공개 `store/…`(CloudFront 가 OAC 로 읽는다), 비공개 `private/…`(버킷 정책이 CloudFront 에 열지 않는다 → 서명된 열람 주소로만). 접두는 파일 용도 룩업의 `is_private` 로 정한다(store.util.ts `buildApplicationFileKey`).
 - **등록 명령은 키 모양을 다시 확인한다** — 그 리소스 · 공개 여부 · 형식으로 발급한 키인지(`isApplicationFileKey`) 본 뒤 `exists(key)`. 남의 리소스 키나 다른 접두를 막는다.
 - 파일 삭제는 행을 지운 뒤 저장소 파일을 지운다(마지막 단계 — 503 이면 재시도). S3 삭제는 없는 키에도 성공하므로 재시도해도 안전하다.
+
+## 문 정보 (`DOOR_STORE` · Redis)
+
+- **저장 모양** — `door:<room_id>` = `QR:상태:시각`(상태 `open` | `close`, 시각은 한국 시각 yyyyMMddHHmmss — 만드는 쪽은 service 의 `toDoorTime`), `door-qr:<QR>` = room_id. 기록이 없는 문은 키가 없고 `get` 이 `{qr: null, state: 'close', changed_at: '00000000000000'}` 으로 읽는다.
+- **원자적 3동작** — 열기(QR 색인으로 문을 찾아 open + 시각) · 닫기(QR 은 그대로 close + 시각) · QR 발급(새 색인을 `SET NX` 로 잡은 뒤 문 정보를 바꾸고 이전 색인을 지운다)은 Lua 스크립트 1개씩이다. 그래서 QR 은 두 문에 겹치지 않고, 열기와 발급이 겹쳐도 옛 QR 로 덮어쓰지 않는다.
+- **단일 노드 전제** — 스크립트가 값에서 읽은 키를 쓰므로 클러스터 모드가 아닌 Redis(ElastiCache 는 클러스터 모드 끔)여야 한다.
+- **원본이다** — 캐시가 아니라 문 정보의 유일한 저장소라 Docker 묶음은 AOF 영속, 운영은 백업을 켠다([guides/redis-setup.md](guides/redis-setup.md)).
+- 서버는 문을 직접 움직이지 않는다 — 문 쪽 타 업체 프로그램이 읽은 QR 로 문 열기 API 를 부르고 그 결과로 문을 연다. QR 발급의 첫 사용처는 예약 쪽(로드맵 Phase 15 #112)이다.
 
 ## 쓰는 법
 
@@ -58,6 +68,7 @@ await this.smsSender.send({to: phone, text: `[roomless] 인증번호 ${code}`});
 ## 실패 계약
 
 - AWS 가 접수하지 못하거나 닿지 못하면, 어댑터가 오류를 로그로 남기고 `ServiceUnavailableException({message: SMS_UNAVAILABLE_MESSAGE | STORAGE_UNAVAILABLE_MESSAGE})`(503)를 던진다. 형제는 `RabbitMqConnection.publish` 의 503 이다.
+- Redis 가 준비되지 않았거나 명령이 실패하면 `ServiceUnavailableException({message: REDIS_UNAVAILABLE_MESSAGE})`(503, "상태 저장소에 연결할 수 없습니다") — `RedisConnection.ready()` · `RedisDoorStore` 가 던진다. QR 발급이 겹치지 않는 값을 3번 안에 못 잡으면 `InternalServerErrorException({message: DOOR_QR_ISSUE_FAILED_MESSAGE})`(500).
 - `exists` 만 예외다. 404 면 false 를 돌려준다.
 - `getPublicUrl` 은 `AWS_S3_PUBLIC_URL` 이 비어 있으면 `InternalServerErrorException({message: STORAGE_PUBLIC_URL_MISSING_MESSAGE})`(500, "설정된 파일 공개 주소가 없습니다") 를 던진다.
 - service 는 잡지 않는다. 큐 경로에서는 5xx 라 재시도(최대 3회) 후 failed + DLQ 로 간다.

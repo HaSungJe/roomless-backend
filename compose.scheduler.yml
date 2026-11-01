@@ -38,6 +38,8 @@ services:
             RABBITMQ_USER_SERVICE_PASSWORD: ''
             RABBITMQ_ADMIN_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
+            REDIS_URL: ''
+            REDIS_PASSWORD: ''
             POSTGRES_PASSWORD: ''
             JWT_SECRET: ''
             TOKEN_CIPHER_KEY: ''

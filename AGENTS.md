@@ -33,12 +33,13 @@ NestJS 12 **모노레포**(ESM, `"type": "module"`) + TypeORM 1.x(PostgreSQL, pg
 ```
 apps/
 ├── gateway/src/
-│   ├── api/v1/<service>/<domain>/  # 공개 라우트 — user-service/user · admin-service/{manager,admin,store,room}. controllers/<domain>.controller.ts(동기 · 내부 HTTP) · controllers/<domain>.controller.queue.ts(큐 · RabbitMQ + 요청 단위 SSE)
+│   ├── api/v1/<service>/<domain>/  # 공개 라우트 — user-service/{user,door} · admin-service/{manager,admin,store,room}. controllers/<domain>.controller.ts(동기 · 내부 HTTP) · controllers/<domain>.controller.queue.ts(큐 · RabbitMQ + 요청 단위 SSE)
 │   ├── guards/               # passport.jwt.auth(로그인 그룹별 JWT 전략 · 가드 — jwt-user · jwt-manager · jwt-admin) · roles(그룹 안 권한 — 업체 관리자 라우트)
 │   ├── modules/transport/    # InternalHttpClient · CommandStreamService
 │   └── config/               # cors.config.ts · trust-proxy.config.ts
 ├── user-service/src/        # 이용자 서버 — DB 소유(마이그레이션 · 시드)
 │   ├── user/                 # 이용자 도메인: controllers/(user.controller.ts 내부 HTTP · user.controller.queue.ts RabbitMQ) → UserService
+│   ├── door/                 # 문 도메인(문 열기 · 닫기 — 문 쪽 타 업체 프로그램, 가드 없음): controllers/(door.controller.ts 내부 HTTP — 큐 없음) → DoorService → DOOR_STORE(Redis)
 │   └── migrate.ts            # 마이그레이션 실행기
 ├── admin-service/src/       # 관리자 서버 — 공유 DB 직접(마이그레이션 · 시드 없음)
 │   ├── manager/              # 매니저 도메인(총매니저 · 매니저 — 인증 · 계정 찾기 · 업체 관리자 계정 관리): controllers/ → ManagerService
@@ -52,7 +53,7 @@ libs/
 ├── common/       # 실패 응답 DTO · toFailResult · 예외 필터 · 반환된 예외 인터셉터 · ValidationPipe 팩토리 · 순수 util · 내부 요청 가드
 ├── contracts/    # 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type · 큐 · 바인딩 · 내부 HTTP 경로 상수, 메시지 봉투, Actor, 내부 헤더, SSE 이벤트
 ├── database/     # entities/<domain>/ · entities.ts · migrations/ · migrations.ts · DatabaseModule · JobLockService · typeorm-error · soft-delete(notDeleted) · seeder
-├── integration/  # 외부 연동 포트 — SMS 발송(SMS_SENDER · Amazon SNS) · 파일 저장(STORAGE_GATEWAY · S3 + CloudFront) · SmsModule · StorageModule(전역)
+├── integration/  # 외부 연동 포트 — SMS 발송(SMS_SENDER · Amazon SNS) · 파일 저장(STORAGE_GATEWAY · S3 + CloudFront) · 문 정보(DOOR_STORE · Redis) · SmsModule · StorageModule · RedisModule · DoorStoreModule(전역)
 └── messaging/    # RabbitMQ 연결 · 발행 · 소비 · @OnCommand · CommandDispatcher
 scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker-network.mjs · check-broker-acl.mjs
 ```
@@ -168,6 +169,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
   - 다른 그룹 계정은 로그인에서 없는 계정과 같은 404, 재발급에서 401(refresh 만료 단축). 각 도메인 service 가 자기 그룹 조건으로 찾는다(`findManager({..., login_scope: LOGIN_SCOPE.MANAGER})`).
   - `login_scope` 는 계정을 만들 때 권한에 맞춰 넣는다(가입 · 시드 · 입점 승인 · 업체 관리자 등록). 아이디 · 휴대폰 번호 유일성은 업체가 없는 계정(이용자 · 관리자)은 그룹 단위, 매니저 그룹은 **업체 단위**다(같은 아이디를 다른 업체에서 쓸 수 있다) — 그래서 매니저 로그인 · 계정 찾기는 업체코드로 업체를 먼저 찾는다(없으면 계정이 없는 것과 같은 404).
 - **그룹 안 권한(적용 — 업체 관리자 라우트 `/api/v1/admin-service/manager/staff…`)**: 그룹 안에서 권한을 더 좁히는 API(예: 업체 총관리자만)는 그룹 가드 뒤에 `RolesGuard` + `@Roles(AUTH_ID.HEAD_MANAGER)`(`guards/roles/roles.decorator.ts`)를 **한 세트로** 붙이고 `@ApiForbiddenResponse` 를 명시한다(`@UseGuards(PassportJwtManagerAuthGuard, RolesGuard)` → `@Roles(...)`) — 불일치 403 `{message: '접근 권한이 없습니다.'}`. 그룹 자체는 그룹 가드가 가르므로 그룹 전체에 열린 라우트에는 `@Roles` 를 붙이지 않는다. service 는 역할을 다시 보지 않고 actor 로 그 계정(업체 총관리자)을 찾아 그 업체만 다룬다.
+- **인증 없는 공개 라우트(적용 — 문 `/api/v1/user-service/door/open` · `/close`)**: 로그인 사용자가 아니라 문 쪽 타 업체 프로그램이 부른다 — 가드를 붙이지 않고, 열기는 QR(32자 무작위)이 열쇠, 닫기는 지워지지 않은 호실만(404). 서비스 쪽 전역 InternalAuthGuard(게이트웨이 내부 토큰)는 그대로다.
 - **미적용 규약(정의만 있고 사용 0)**: 게이트웨이 안에서만 쓰는 회원 값은 `@PassportUser('user_id')`.
 - 서비스 내부 HTTP 의 로그인 회원은 `@InternalActor('user_id') user_id: string`(게이트웨이가 actor 헤더로 넘긴다 — store 내 신청 라우트).
 - 서비스 내부 HTTP 의 클라이언트 IP 는 `@ClientIp()`.
@@ -192,7 +194,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 ## Key Patterns
 
 - **Repository DI**: Symbol 토큰(`<domain>.symbols.ts`) + 모듈 `{provide: TOKEN, useClass: XRepository}` + service `@Inject(TOKEN) … : XRepositoryInterface`(인터페이스는 `import type`). 메시징 포트(`COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) · 외부 연동 포트(`SMS_SENDER` · `STORAGE_GATEWAY`)도 같은 패턴.
-- **전역 모듈**: `TransportModule`(게이트웨이) · `DatabaseModule` · `MessagingModule` · `SmsModule` · `StorageModule` 은 전역이라 도메인 모듈은 import 없이 주입받는다.
+- **전역 모듈**: `TransportModule`(게이트웨이) · `DatabaseModule` · `MessagingModule` · `SmsModule` · `StorageModule` · `RedisModule` · `DoorStoreModule` 은 전역이라 도메인 모듈은 import 없이 주입받는다.
 - **외부 연동** (첫 사용처: user-service 휴대폰 SMS 인증 · 아이디 찾기 · 비밀번호 초기화 — `SmsModule`):
   - **mock · 가짜 어댑터를 두지 않는다.** 실제 서비스 어댑터 + 세팅 가이드(`docs/guides/`)로 만들고, 세팅 전에는 `.env` 값이 비어 요청만 실패한다(부팅은 된다).
   - 발송은 SMS 하나다 — `SMS_SENDER.send({to, text})`(Amazon SNS). 이메일 · 알림톡 · 푸시는 쓰지 않는다.
@@ -201,11 +203,12 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
   - 저장 키는 서버가 만들고 업로드마다 새 키다(덮어쓰지 않는다 → CDN 캐시를 길게 두고 무효화하지 않는다). 비공개는 `private/` 접두(CDN 이 읽지 못한다), 공개는 `store/` 접두.
   - 포트를 쓰는 앱 루트 모듈이 `SmsModule` · `StorageModule` 중 필요한 것을 import 한다.
   - 외부 실패는 어댑터가 503(`SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE`)으로 던지고, service 는 잡지 않는다. 재시도되면 다시 나가므로 발송은 명령의 마지막 단계에 둔다.
-  - → 상세: [docs/integration.md](docs/integration.md) · AWS 세팅: [docs/guides/aws-setup.md](docs/guides/aws-setup.md)
+  - 문 정보는 `DOOR_STORE`(Redis) — `door:<room_id>` = `QR:open|close:yyyyMMddHHmmss`, `door-qr:<QR>` = room_id. 열기 · 닫기 · QR 발급은 Lua 스크립트 1개씩(원자적, QR 은 `SET NX` 로 겹치지 않음). 캐시가 아니라 원본이라 Redis 는 AOF 영속 · 단일 노드(클러스터 모드 끔). Redis 가 없어도 부팅하고 문 요청만 503.
+  - → 상세: [docs/integration.md](docs/integration.md) · AWS 세팅: [docs/guides/aws-setup.md](docs/guides/aws-setup.md) · Redis 세팅: [docs/guides/redis-setup.md](docs/guides/redis-setup.md)
 - **Transaction**: service 쓰기 메서드에 `@Transactional()`, repository 는 `txHost.tx`. 커밋해야 하는 실패는 예외를 return 한다(서비스 계층 규칙) — 시도 횟수 소비도 확인과 같은 트랜잭션이라 요청 1건이 DB 연결 1개만 쓴다. 풀에서 연결을 기다리는 시간은 `DATABASE_CONNECTION_TIMEOUT_MS`(기본 30초)로 제한한다(typeorm.config.ts). DB 를 쓰는 앱 루트 모듈은 `DatabaseModule`(TypeOrmModule + ClsModule `TransactionalAdapterTypeOrm` + `JobLockService`)을 import 한다.
 - **기본 데이터 시드**: `libs/database/src/seeder/seeder.targets.ts` 의 `<X>_SEED_DATA` + `SEED_TARGETS` 를 DB 소유 서비스(user-service)의 `SeederService` 가 부팅 시 PK 기준 멱등 입력. 시드 행은 객체 리터럴 허용(유일 예외). DTO 허용값(`@IsIn`)은 모두 시드에 있어야 한다.
-- **Docker 실행 — 묶음 6개를 따로**: `compose.postgres.yml` · `compose.rabbitmq.yml`(+rabbitmq-init 브로커 계정 · 권한) · `compose.user-service.yml`(migrate 1회 → user-service × `USER_SERVICE_REPLICAS` → user-service-lb) · `compose.admin-service.yml`(admin-service × `ADMIN_SERVICE_REPLICAS`(기본 1) → admin-service-lb, 마이그레이션 없음) · `compose.scheduler.yml`(scheduler × `SCHEDULER_REPLICAS`, `roomless-data` 만 — 포트 · LB 없음) · `compose.gateway.yml`(gateway × `GATEWAY_REPLICAS` → gateway-lb, 호스트 `GATEWAY_PORT`). `docker:up` 순서는 user-service(마이그레이션) → admin-service → scheduler → gateway. 각자 띄우고 내리며(`npm run docker:<묶음>`, 전체는 `docker:up`), 묶음끼리는 `npm run docker:network` 가 만든 공용 external 네트워크(`roomless-edge` · `roomless-service`(internal) · `roomless-broker` · `roomless-data`)에서 서비스 이름으로 만난다. gateway · user-service · admin-service 는 **로드밸런싱 전제** — 앞단 nginx(1.28, upstream `resolve` 로 `--scale` 을 재시작 없이 따라감), 큐 명령은 경쟁 소비, 결과는 `reply_to` 인스턴스로(sticky session 불필요), crontab 은 JobLockService. 그래서 앱 코드는 인스턴스 로컬 상태(메모리 캐시 · 세션 등)에 기대지 않는다.
-- **`.env` 하나가 곧 서버 설정** — compose 는 환경 값(NODE_ENV · DB/RabbitMQ 접속정보 · 비밀값 · CORS · TRUST_PROXY · 인스턴스 수)을 바꾸지 않고 그대로 쓴다. 비밀값 · 접속정보는 기본값 없이 필수(`${VAR:?}` — 비면 띄우지 않음), 비밀이 아닌 구성값만 기본값(`TRUST_PROXY:-1` · `*_REPLICAS:-2`(admin-service · scheduler `:-1`) · 호스트 포트). compose 가 고정하는 것은 서버 구성(컨테이너 안 포트 · 바인딩 0.0.0.0 · user-service-lb · admin-service-lb 주소 · 인스턴스 ID 비움 · TZ)뿐이다. 가상 운영(같은 서버의 postgres · rabbitmq 묶음, 주소 = 컨테이너 이름)과 실제 운영(RDS · Amazon MQ)은 `.env` 의 접속정보로 사용자가 고르고, 운영으로 옮길 때 compose 를 다시 세팅하지 않는다 — compose 에 환경별 값 · 약한 기본 비밀번호를 넣지 않는다. 각 앱에는 쓰지 않는 다른 앱 · 관리자 비밀값을 빈 값으로 덮어 전달하지 않는다. 이미지는 `Dockerfile` 하나를 `APP` 빌드 인자로(Node 24 slim, 운영 의존성만, `node` 사용자). 앱 코드 개발 중에는 `npm run docker:infra` 로 인프라만 띄우고 `npm run start:*` 로 로컬 실행해도 된다.
+- **Docker 실행 — 묶음 7개를 따로**: `compose.postgres.yml` · `compose.rabbitmq.yml`(+rabbitmq-init 브로커 계정 · 권한) · `compose.redis.yml`(Redis 8 — AOF 영속 · 비밀번호, `roomless-data`) · `compose.user-service.yml`(migrate 1회 → user-service × `USER_SERVICE_REPLICAS` → user-service-lb) · `compose.admin-service.yml`(admin-service × `ADMIN_SERVICE_REPLICAS`(기본 1) → admin-service-lb, 마이그레이션 없음) · `compose.scheduler.yml`(scheduler × `SCHEDULER_REPLICAS`, `roomless-data` 만 — 포트 · LB 없음) · `compose.gateway.yml`(gateway × `GATEWAY_REPLICAS` → gateway-lb, 호스트 `GATEWAY_PORT`). `docker:up` 순서는 인프라(postgres → rabbitmq → redis — `docker:infra`) → user-service(마이그레이션) → admin-service → scheduler → gateway. 각자 띄우고 내리며(`npm run docker:<묶음>`, 전체는 `docker:up`), 묶음끼리는 `npm run docker:network` 가 만든 공용 external 네트워크(`roomless-edge` · `roomless-service`(internal) · `roomless-broker` · `roomless-data`)에서 서비스 이름으로 만난다. gateway · user-service · admin-service 는 **로드밸런싱 전제** — 앞단 nginx(1.28, upstream `resolve` 로 `--scale` 을 재시작 없이 따라감), 큐 명령은 경쟁 소비, 결과는 `reply_to` 인스턴스로(sticky session 불필요), crontab 은 JobLockService. 그래서 앱 코드는 인스턴스 로컬 상태(메모리 캐시 · 세션 등)에 기대지 않는다.
+- **`.env` 하나가 곧 서버 설정** — compose 는 환경 값(NODE_ENV · DB/RabbitMQ/Redis 접속정보 · 비밀값 · CORS · TRUST_PROXY · 인스턴스 수)을 바꾸지 않고 그대로 쓴다. 비밀값 · 접속정보는 기본값 없이 필수(`${VAR:?}` — 비면 띄우지 않음), 비밀이 아닌 구성값만 기본값(`TRUST_PROXY:-1` · `*_REPLICAS:-2`(admin-service · scheduler `:-1`) · 호스트 포트). compose 가 고정하는 것은 서버 구성(컨테이너 안 포트 · 바인딩 0.0.0.0 · user-service-lb · admin-service-lb 주소 · 인스턴스 ID 비움 · TZ)뿐이다. 가상 운영(같은 서버의 postgres · rabbitmq · redis 묶음, 주소 = 컨테이너 이름)과 실제 운영(RDS · Amazon MQ · ElastiCache)은 `.env` 의 접속정보로 사용자가 고르고, 운영으로 옮길 때 compose 를 다시 세팅하지 않는다 — compose 에 환경별 값 · 약한 기본 비밀번호를 넣지 않는다. 각 앱에는 쓰지 않는 다른 앱 · 관리자 비밀값을 빈 값으로 덮어 전달하지 않는다. 이미지는 `Dockerfile` 하나를 `APP` 빌드 인자로(Node 24 slim, 운영 의존성만, `node` 사용자). 앱 코드 개발 중에는 `npm run docker:infra` 로 인프라만 띄우고 `npm run start:*` 로 로컬 실행해도 된다.
 
 ## Testing
 

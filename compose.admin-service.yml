@@ -52,6 +52,8 @@ services:
             RABBITMQ_GATEWAY_PASSWORD: ''
             RABBITMQ_USER_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
+            REDIS_URL: ''
+            REDIS_PASSWORD: ''
         deploy:
             replicas: ${ADMIN_SERVICE_REPLICAS:-1}
         expose:

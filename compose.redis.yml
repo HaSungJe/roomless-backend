@@ -1,0 +1,46 @@
+# Redis — 문 정보(호실 문의 QR · 열림/닫힘 · 마지막 시각)의 원본 저장소. 단독 실행
+#   npm run docker:redis   (docker compose -f compose.redis.yml up -d --wait)
+#
+# 설정은 .env 를 그대로 쓴다(compose 가 값을 바꾸지 않는다). 필수값이 비어 있으면 띄우지 않는다.
+# 캐시가 아니라 원본이라 AOF(appendonly, 매초 디스크에 기록)를 켠다 — 컨테이너를 다시 띄워도 문 정보가 볼륨 roomless-redis-data 에 남는다.
+# 실제 운영 Redis(ElastiCache 등 — 클러스터 모드 끔)를 쓰면 이 묶음은 띄우지 않고, .env 의 REDIS_URL 을 그 주소로 둔다 — 앱 쪽 설정은 그대로다.
+#
+# roomless-data 네트워크에만 붙고, 호스트 포트는 127.0.0.1 에만 연다. 세팅 · 확인: docs/guides/redis-setup.md
+name: roomless-redis
+
+x-logging: &logging
+    driver: json-file
+    options:
+        max-size: '10m'
+        max-file: '5'
+
+services:
+    redis:
+        image: redis:8-alpine
+        container_name: roomless-redis
+        environment:
+            REDIS_PASSWORD: '${REDIS_PASSWORD:?.env 에 REDIS_PASSWORD 가 필요합니다}'
+            TZ: Asia/Seoul
+        # 비밀번호(requirepass)는 compose 파일에 적지 않고 .env 에서 받는다 — $$ 는 컨테이너 셸이 펼친다
+        command: ['sh', '-c', 'exec redis-server --appendonly yes --appendfsync everysec --requirepass "$$REDIS_PASSWORD"']
+        ports:
+            - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+        volumes:
+            - redis-data:/data
+        networks: [data]
+        healthcheck:
+            test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
+            interval: 5s
+            timeout: 3s
+            retries: 10
+        logging: *logging
+        restart: unless-stopped
+
+networks:
+    data:
+        name: roomless-data
+        external: true
+
+volumes:
+    redis-data:
+        name: roomless-redis-data

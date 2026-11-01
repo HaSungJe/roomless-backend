@@ -58,6 +58,8 @@ services:
             RABBITMQ_ADMIN_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
             DATABASE_URL: ''
+            REDIS_URL: ''
+            REDIS_PASSWORD: ''
             POSTGRES_PASSWORD: ''
             BCRYPT_CODE: ''
             TOKEN_CIPHER_KEY: ''

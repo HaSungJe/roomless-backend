@@ -1,9 +1,9 @@
 /**
- * Docker 공용 네트워크 만들기 — postgres · rabbitmq · user-service · gateway 를 각자 따로 띄워도 서로 이름으로 찾게 한다.
+ * Docker 공용 네트워크 만들기 — postgres · rabbitmq · redis · user-service · admin-service · scheduler · gateway 를 각자 따로 띄워도 서로 이름으로 찾게 한다.
  *
  * 실행: `npm run docker:network` (이미 있으면 건너뛴다 — 몇 번을 돌려도 같다)
  *
- * compose 파일 4개는 이 네트워크들을 `external: true` 로 쓴다. 한 묶음을 내려도(`down`) 네트워크는 지워지지 않아
+ * compose 파일 7개는 이 네트워크들을 `external: true` 로 쓴다. 한 묶음을 내려도(`down`) 네트워크는 지워지지 않아
  * 다른 묶음이 계속 동작한다.
  */
 import {execFileSync} from 'node:child_process';
@@ -13,7 +13,7 @@ const NETWORKS = [
     {name: 'roomless-edge', internal: false, purpose: 'gateway-lb · gateway (외부 포트는 gateway-lb 만)'},
     {name: 'roomless-service', internal: true, purpose: 'gateway → user-service-lb → user-service 내부 HTTP'},
     {name: 'roomless-broker', internal: false, purpose: 'rabbitmq · gateway · user-service'},
-    {name: 'roomless-data', internal: false, purpose: 'postgres · migrate · user-service'},
+    {name: 'roomless-data', internal: false, purpose: 'postgres · redis · migrate · user-service · admin-service · scheduler'},
 ];
 
 /**

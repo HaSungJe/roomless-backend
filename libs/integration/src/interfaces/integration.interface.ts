@@ -83,3 +83,53 @@ export interface StorageGatewayInterface {
      */
     remove(key: string): Promise<void>;
 }
+
+/** 문 상태 — DOOR_STATE 값 */
+export type DoorState = 'open' | 'close';
+
+/** 호실 문 1개의 정보 — Redis `door:<room_id>` 의 값 `QR:상태:시각` */
+export interface DoorRecord {
+    /** 지금 유효한 QR 정보 — 아직 발급하지 않았으면 null */
+    qr: string | null;
+    /** 문 상태 */
+    state: DoorState;
+    /** 마지막으로 열거나 닫은 시각 — 한국 시각 yyyyMMddHHmmss, 기록이 없으면 DOOR_TIME_NONE */
+    changed_at: string;
+}
+
+/**
+ * 문 정보 포트 — 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 둔다(Redis). QR 은 두 문에 겹치지 않는다.
+ * 서버는 문을 직접 움직이지 않는다 — 문 쪽 타 업체 프로그램이 읽은 QR 로 문 열기 API 를 부르고, 그 결과로 문을 연다.
+ */
+export interface DoorStoreInterface {
+    /**
+     * 문 정보를 읽는다. 기록이 없으면 `{qr: null, state: 'close', changed_at: DOOR_TIME_NONE}`.
+     *
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     */
+    get(room_id: string): Promise<DoorRecord>;
+
+    /**
+     * 새 QR 을 발급한다 — 겹치지 않는 값으로 바꾸고 이전 QR 은 무효가 된다. 상태 · 시각은 그대로(기록이 없으면 close · DOOR_TIME_NONE).
+     *
+     * @returns 새 QR (32자)
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     * @throws InternalServerErrorException `{message: DOOR_QR_ISSUE_FAILED_MESSAGE}` — 겹치지 않는 값을 잡지 못했을 때
+     */
+    issueQr(room_id: string): Promise<string>;
+
+    /**
+     * QR 이 같은 문을 open + changed_at 으로 바꾼다. 찾기와 쓰기를 한 번에 한다(그 사이 QR 이 바뀌어도 옛 QR 로 덮어쓰지 않는다).
+     *
+     * @returns 그 문의 room_id — 일치하는 문이 없으면 null
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     */
+    open(qr: string, changed_at: string): Promise<string | null>;
+
+    /**
+     * 그 문을 close + changed_at 으로 바꾼다(QR 은 그대로, 기록이 없으면 QR 없이 만든다).
+     *
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     */
+    close(room_id: string, changed_at: string): Promise<void>;
+}

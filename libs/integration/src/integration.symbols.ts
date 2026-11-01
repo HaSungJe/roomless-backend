@@ -3,3 +3,6 @@ export const SMS_SENDER = Symbol('SmsSenderInterface');
 
 /** 파일 저장소 포트 — 구현: S3StorageGateway (Amazon S3) */
 export const STORAGE_GATEWAY = Symbol('StorageGatewayInterface');
+
+/** 문 정보 포트 — 구현: RedisDoorStore (Redis) */
+export const DOOR_STORE = Symbol('DoorStoreInterface');

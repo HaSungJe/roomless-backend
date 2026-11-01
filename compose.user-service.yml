@@ -17,7 +17,7 @@
 #
 # 네트워크 — "user-service 는 게이트웨이만 닿는다"
 #   roomless-service (internal) : gateway · user-service-lb · user-service (· admin-service-lb · admin-service) 만 있다
-#   roomless-broker / roomless-data : 브로커 / DB 로 나가는 길 (외부 RDS · Amazon MQ 도 이 길로 나간다)
+#   roomless-broker / roomless-data : 브로커 / DB · Redis 로 나가는 길 (외부 RDS · Amazon MQ · ElastiCache 도 이 길로 나간다)
 name: roomless-user-service
 
 x-logging: &logging
@@ -59,6 +59,8 @@ services:
             JWT_SECRET: '${JWT_SECRET:?.env 에 JWT_SECRET 이 필요합니다}'
             TOKEN_CIPHER_KEY: '${TOKEN_CIPHER_KEY:?.env 에 TOKEN_CIPHER_KEY 가 필요합니다}'
             INTERNAL_API_TOKEN: '${INTERNAL_API_TOKEN:?.env 에 INTERNAL_API_TOKEN 이 필요합니다}'
+            # 문 정보 저장소 — 가상 운영은 redis 묶음(@redis), 실제 운영은 ElastiCache 등(rediss://)
+            REDIS_URL: '${REDIS_URL:?.env 에 REDIS_URL 이 필요합니다}'
             # ── 서버 구성: 어느 환경이든 같다 ──
             # user-service-lb 의 upstream 포트(docker/nginx/user-service.conf)와 같아야 한다
             USER_SERVICE_PORT: 4001
@@ -69,6 +71,7 @@ services:
             RABBITMQ_GATEWAY_PASSWORD: ''
             RABBITMQ_ADMIN_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
+            REDIS_PASSWORD: ''
         deploy:
             replicas: ${USER_SERVICE_REPLICAS:-2}
         expose:
