@@ -27,7 +27,7 @@ flowchart LR
   P8 --> P12["Phase 12 · room 스키마 (7)"]:::done
   P11 --> P13["Phase 13 · 객실 관리 (6)"]:::done
   P12 --> P13
-  P12 --> P14["Phase 14 · 문 상태 (3)"]:::inprog
+  P12 --> P14["Phase 14 · 문 상태 (3)"]:::done
   P12 --> P16["Phase 16 · reservation 기반 (4)"]:::todo
   P13 --> P17["Phase 17 · 예약·결제 (7)"]:::todo
   P16 --> P17
@@ -69,7 +69,7 @@ flowchart LR
 - Phase 11 — 업체 운영 설정 · 유닛 9개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 12 — room 스키마 · 유닛 7개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room · store, libs/database/src/migrations, libs/database/src/soft-delete.ts, apps/*/repositories · done
 - Phase 13 — 객실 관리 · 유닛 6개 · 의존: Phase 11, 12 · 푼다: Phase 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · done
-- Phase 14 — 문 상태 · 유닛 3개 · 의존: Phase 12 · 푼다: Phase 15, 23 · 파일 집합: libs/integration/src/{redis,door}, apps/user-service/src/door, apps/gateway/src/api/v1/user-service/door, libs/contracts/src/door, compose.redis.yml, compose.*.yml, scripts/docker-network.mjs, package.json, .env.example, README.md, AGENTS.md, docs/ · in-progress
+- Phase 14 — 문 상태 · 유닛 3개 · 의존: Phase 12 · 푼다: Phase 15, 23 · 파일 집합: libs/integration/src/{redis,door}, apps/user-service/src/door, apps/gateway/src/api/v1/user-service/door, libs/contracts/src/door, compose.redis.yml, compose.*.yml, scripts/docker-network.mjs, package.json, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/reservation, libs/database/src/migrations, apps/user-service/src/reservation(포트) · todo
 - Phase 17 — 예약·결제 · 유닛 7개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
 - Phase 15 — 문 관리·QR 확인 · 유닛 3개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/door(업체 문 목록 · 바로 열기), apps/user-service/src/reservation(내 예약 방 · QR), apps/gateway/src/api/v1/{admin-service,user-service}, libs/contracts/src/{door,reservation} · todo
@@ -83,14 +83,16 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: Phase 14 진행 중 · Next up: Phase 14
+지금: 진행 중 없음 · Next up: Phase 16
 
 ## 지금 할 일
-Phase 14 문 상태 만들기 — 기획 끝(.beaver/output/plan/door/door-state-plan.md), build 중
-- #107 Redis 기반 — compose.redis.yml · npm run docker:redis · RedisModule · docs/guides/redis-setup.md
-- #108 문 정보 포트 DOOR_STORE — door:<room_id> = QR:open|close:yyyyMMddHHmmss
-- #109 문 열기(QR) · 닫기 API — POST /api/v1/user-service/door/open · /close
+Phase 16 reservation 기반 시작하기
+- #63 t_reservation_state 룩업 + 시드
+- #64 t_reservation
+- #65 t_payment
+- #66 PaymentGateway 포트 + 토스페이먼츠 어댑터
 - ok → 다음
+- 사용자 — `.env` 에 `REDIS_PASSWORD` · `REDIS_URL` 추가(`.env.example` 의 Redis 절) → `npm run docker:network` · `npm run docker:redis` → user-service 묶음 다시 띄우기(이제 `REDIS_URL` 없이는 뜨지 않는다). 로컬 실행은 hosts 에 `127.0.0.1 redis` — docs/guides/redis-setup.md
 - 사용자 — 마이그레이션 `RoomState` 적용(`RoomSchema` 뒤 — 데이터만 바꾼다: 호실 상태에 예약가능 · 예약완료가 생기고, 스탠바이 호실은 예약가능으로 옮겨진 뒤 스탠바이가 지워지며, 이용중이 사용중으로 바뀐다)
 - 사용자 — 마이그레이션 `RoomSchema` 적용(`StoreReservationPolicy` 뒤 — 적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한이 필요하다(RDS 13+ 는 DB 의 CREATE 권한). 기존 업체마다 업체 상품 설정 3행이 들어가고, 업체 편의시설(`store_detail`)은 사라지며, store 테이블 5개가 소프트 삭제로 바뀐다)
 - 사용자 — 마이그레이션 `StoreReservationPolicy` 적용(`StoreOperation` 뒤 — 기존 업체에 예약 가능 72시간 · 환불 기준 1시간이 들어가고 정지 사유 컬럼이 생긴다)
@@ -352,11 +354,13 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 |---|------|------|--------------|---------|--------|
 | 58 | `t_device_type` · `t_device` · `t_device_command` | 전등 · 에어컨 · 도어락, 명령 이력 | — | 50 | dropped(기기 제어 제외 — 문 상태로 바뀜, 사용자 결정 2026-11-01) |
 | 59 | `DeviceGateway` 포트 + 실제 기기 연동 | 기기 명령 · 상태 회신 | 기기 · 연동 방식, 입장 QR 확인 수단(Open Decisions) | 58 | dropped(기기 제어 제외 — 문 상태로 바뀜, 사용자 결정 2026-11-01) |
-| 107 | Redis 기반 | `compose.redis.yml`(AOF 영속 · 비밀번호) · `npm run docker:redis`(+ `docker:infra` · `docker:up` · `docker:down`) · 전역 `RedisModule`(부팅을 막지 않는 연결 · 준비 전 503) · `docs/guides/redis-setup.md` · `.env` `REDIS_URL` — Phase 23 #95 의 기반을 앞당김 | node-redis 6 · 단일 노드(클러스터 모드 끔) | — | in-progress |
-| 108 | 문 정보 포트 `DOOR_STORE` | 호실 문마다 `door:<room_id>` = `QR:open|close:yyyyMMddHHmmss`(기록 없음 `00000000000000`), `door-qr:<QR>` = room_id — 열기 · 닫기 · QR 발급(이전 QR 무효)은 Lua 1개씩, QR 은 `SET NX` 로 겹치지 않음 | 저장 모양 · 원자성 | 107, 50 | in-progress |
-| 109 | 문 열기 · 닫기 API | `POST /api/v1/user-service/door/open`(QR → 같은 QR 의 문을 open + 시각, 여기까지만) · `/close`(room_id → close + 시각, 없는 호실 404) — 인증 없음(QR 이 열쇠) · 동기 | 인증 없이 여는 범위 | 108 | in-progress |
+| 107 | Redis 기반 | `compose.redis.yml`(AOF 영속 · 비밀번호) · `npm run docker:redis`(+ `docker:infra` · `docker:up` · `docker:down`) · 전역 `RedisModule`(부팅을 막지 않는 연결 · 준비 전 503) · `docs/guides/redis-setup.md` · `.env` `REDIS_URL` — Phase 23 #95 의 기반을 앞당김 | node-redis 6 · 단일 노드(클러스터 모드 끔) | — | done(3a67e43) |
+| 108 | 문 정보 포트 `DOOR_STORE` | 호실 문마다 `door:<room_id>` = `QR:open|close:yyyyMMddHHmmss`(기록 없음 `00000000000000`), `door-qr:<QR>` = room_id — 열기 · 닫기 · QR 발급(이전 QR 무효)은 Lua 1개씩, QR 은 `SET NX` 로 겹치지 않음 | 저장 모양 · 원자성 | 107, 50 | done(3a67e43) |
+| 109 | 문 열기 · 닫기 API | `POST /api/v1/user-service/door/open`(QR → 같은 QR 의 문을 open + 시각, 여기까지만) · `/close`(room_id → close + 시각, 없는 호실 404) — 인증 없음(QR 이 열쇠) · 동기 | 인증 없이 여는 범위 | 108 | done(3a67e43) |
 
 **Expected entry points**: `POST /api/v1/user-service/door/open` · `/close`(가드 없음) → user-service `door` 도메인, 포트 `DOOR_STORE`(`libs/integration/src/door/`) · `RedisModule`(`libs/integration/src/redis/`), `compose.redis.yml`. 기기 제어는 하지 않는다 — 계획이 바뀌어 #58 · #59 는 dropped (사용자 결정 2026-11-01).
+
+report: `.beaver/output/report/door/door-state-report.md` · review: `main-review-261101.md`. 문 API 2개 · Redis Docker 묶음(`npm run docker:redis`) · 실행 가이드. 지운 호실의 Redis 문 키 정리는 Phase 15(#112 QR 발급)에서.
 
 ### Phase 15 — 문 관리 · QR 확인 (업체 관리자 · 이용자) · depends: Phase 14, Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -474,8 +478,8 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 70/105 units done (13/24 phases)
-**Next up**: Phase 14 문 상태 — 의존(Phase 12) 모두 완료
+**Progress**: 73/105 units done (14/24 phases)
+**Next up**: Phase 16 reservation 기반 — 의존(Phase 12) 모두 완료
 
 함께 시작할 수 있는 것: reservation 기반(Phase 16) · 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 14 와 파일이 겹치지 않는다. 16 · 22 는 둘 다 마이그레이션을 더해 서로는 동시에 돌리지 않는다.
 
