@@ -27,14 +27,14 @@ flowchart LR
   P8 --> P12["Phase 12 · room 스키마 (7)"]:::done
   P11 --> P13["Phase 13 · 객실 관리 (6)"]:::done
   P12 --> P13
-  P12 --> P14["Phase 14 · device 기반 (2)"]:::todo
-  P13 --> P15["Phase 15 · 사물 관리 (3)"]:::todo
-  P14 --> P15
+  P12 --> P14["Phase 14 · 문 상태 (3)"]:::inprog
   P12 --> P16["Phase 16 · reservation 기반 (4)"]:::todo
   P13 --> P17["Phase 17 · 예약·결제 (7)"]:::todo
   P16 --> P17
+  P14 --> P15["Phase 15 · 문 관리·QR 확인 (3)"]:::todo
+  P17 --> P15
   P17 --> P18["Phase 18 · discovery (4)"]:::todo
-  P15 --> P19["Phase 19 · 이용 (6)"]:::todo
+  P15 --> P19["Phase 19 · 이용 (5)"]:::todo
   P17 --> P19
   P5 --> P19
   P6 --> P20["Phase 20 · 관리자 계정 관리 (2)"]:::todo
@@ -42,13 +42,14 @@ flowchart LR
   P17 --> P21["Phase 21 · 통계 (1)"]:::todo
   P19 --> P21
   P6 --> P23["Phase 23 · 캐시 Redis (3)"]:::todo
+  P14 --> P23
   P18 --> P23
   P17 --> P24["Phase 24 · 스토리 테스트 (2)"]:::todo
   P18 --> P24
   P6 -. 동시 가능 .- P7
   P6 -. 동시 가능 .- P8
   P13 -. 동시 가능 .- P14
-  P15 -. 동시 가능 .- P16
+  P15 -. 동시 가능 .- P18
   P18 -. 동시 가능 .- P19
   classDef done stroke:#3fa46f,stroke-width:2px
   classDef inprog stroke:#e0a82e,stroke-width:3px
@@ -67,29 +68,28 @@ flowchart LR
 - Phase 10 — 업체 인력 · 유닛 2개 · 의존: Phase 9 · 푼다: Phase 11, 20 · 파일 집합: apps/admin-service/src/{manager,store}, apps/gateway/src/api/v1/admin-service/{manager,store}, libs/contracts/src/{manager,store} · done
 - Phase 11 — 업체 운영 설정 · 유닛 9개 · 의존: Phase 10 (+ Phase 3) · 푼다: Phase 13 · 파일 집합: apps/admin-service/src/store, apps/gateway/src/api/v1/admin-service/store, libs/contracts/src/store · done
 - Phase 12 — room 스키마 · 유닛 7개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room · store, libs/database/src/migrations, libs/database/src/soft-delete.ts, apps/*/repositories · done
-- Phase 13 — 객실 관리 · 유닛 6개 · 의존: Phase 11, 12 · 푼다: Phase 15, 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · done
-- Phase 14 — device 기반 · 유닛 2개 · 의존: Phase 12 · 푼다: Phase 15 · 파일 집합: libs/database/src/entities/device, libs/database/src/migrations, apps/admin-service/src/device(포트) · todo
-- Phase 15 — 사물 관리 · 유닛 3개 · 의존: Phase 13, 14 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/device, apps/gateway/src/api/v1/admin-service/device, libs/contracts/src/device · todo
+- Phase 13 — 객실 관리 · 유닛 6개 · 의존: Phase 11, 12 · 푼다: Phase 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · done
+- Phase 14 — 문 상태 · 유닛 3개 · 의존: Phase 12 · 푼다: Phase 15, 23 · 파일 집합: libs/integration/src/{redis,door}, apps/user-service/src/door, apps/gateway/src/api/v1/user-service/door, libs/contracts/src/door, compose.redis.yml, compose.*.yml, scripts/docker-network.mjs, package.json, .env.example, README.md, AGENTS.md, docs/ · in-progress
 - Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/reservation, libs/database/src/migrations, apps/user-service/src/reservation(포트) · todo
-- Phase 17 — 예약·결제 · 유닛 7개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
+- Phase 17 — 예약·결제 · 유닛 7개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
+- Phase 15 — 문 관리·QR 확인 · 유닛 3개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/door(업체 문 목록 · 바로 열기), apps/user-service/src/reservation(내 예약 방 · QR), apps/gateway/src/api/v1/{admin-service,user-service}, libs/contracts/src/{door,reservation} · todo
 - Phase 18 — discovery · 유닛 4개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/admin-service/src/discovery, apps/gateway/src/api/v1/admin-service/discovery, libs/contracts/src/discovery · todo
-- Phase 19 — 이용 · 유닛 6개 · 의존: Phase 5, 15, 17 · 푼다: Phase 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation(crontabs), apps/gateway/src/api/v1/user-service/reservation · todo
+- Phase 19 — 이용 · 유닛 5개 · 의존: Phase 5, 15, 17 · 푼다: Phase 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation(crontabs), apps/gateway/src/api/v1/user-service/reservation · todo
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/admin(이용자 · 업체 관리자 관리 — 공유 DB 의 t_user 를 관리자 도메인 repository 가 다룬다), apps/gateway/src/api/v1/admin-service/admin, libs/contracts/src/admin · todo
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats, apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats · todo
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
-- Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, compose.redis.yml, docker/, .env.example, docs/guides, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
+- Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 14, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
 - Phase 24 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18 · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
 
-동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 16 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 14 · 16 · 22).
+동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 14
+지금: Phase 14 진행 중 · Next up: Phase 14
 
 ## 지금 할 일
-Phase 14 device 기반 시작하기
-- #58 t_device_type · t_device · t_device_command
-- #59 DeviceGateway 포트 + 실제 기기 연동
-- 시작 전에 정하기
-  입장 QR 확인 수단 — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 14 · 19)
+Phase 14 문 상태 만들기 — 기획 끝(.beaver/output/plan/door/door-state-plan.md), build 중
+- #107 Redis 기반 — compose.redis.yml · npm run docker:redis · RedisModule · docs/guides/redis-setup.md
+- #108 문 정보 포트 DOOR_STORE — door:<room_id> = QR:open|close:yyyyMMddHHmmss
+- #109 문 열기(QR) · 닫기 API — POST /api/v1/user-service/door/open · /close
 - ok → 다음
 - 사용자 — 마이그레이션 `RoomState` 적용(`RoomSchema` 뒤 — 데이터만 바꾼다: 호실 상태에 예약가능 · 예약완료가 생기고, 스탠바이 호실은 예약가능으로 옮겨진 뒤 스탠바이가 지워지며, 이용중이 사용중으로 바뀐다)
 - 사용자 — 마이그레이션 `RoomSchema` 적용(`StoreReservationPolicy` 뒤 — 적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한이 필요하다(RDS 13+ 는 DB 의 CREATE 권한). 기존 업체마다 업체 상품 설정 3행이 들어가고, 업체 편의시설(`store_detail`)은 사라지며, store 테이블 5개가 소프트 삭제로 바뀐다)
@@ -109,17 +109,18 @@ Phase 14 device 기반 시작하기
 |---|---|---|
 | 총관리자 `SUPER_ADMIN` / `ADMIN` | 관리자 (admin-service · `admin` 도메인) | 아이디 로그인 · 비밀번호 변경(찾기 · 초기화 없음), 입점 신청 승인 · 반려, 업체 등록 · 상태 관리(영업중지 등), 업체 총관리자 계정 생성, 이용자 관리, 업체 관리자 관리, 전체 통계 |
 | 업체 총관리자 `HEAD_MANAGER` | 매니저 (admin-service · `manager` 도메인) | 업체 관리자 권한 전부 + 업체 관리자 계정 등록 · 수정 · 삭제 |
-| 업체 관리자 `MANAGER` | 매니저 (admin-service · `manager` 도메인) | 아이디 로그인 · 비밀번호 변경 · 등록된 휴대폰으로 아이디 찾기 · 비밀번호 초기화(총매니저도 같다), 자기 업체 1곳 — 업체 소개 · 영업시간 · 브레이크타임 · 정비시간, 층별 호실 · 객실 그룹 · 상품 · 기간 가격 · 사물, 호실 상태 전이, 예약 현황 · 예약 취소 · 호실 이동, 자기 업체 통계 |
-| 이용자 `USER` | 이용자 (user-service · `user` 도메인) | 성인만(청소년보호법) SNS 가입 · 로그인(비밀번호 없음) 후 휴대폰 SMS 인증 · SMS로 아이디(가입한 SNS) 찾기, 지도 검색, 호실 · 시간대 선택 예약 · 결제 · 취소, QR 입장, 사물 제어, 연장, 입점 신청 |
-| 시스템 | — | scheduler 서버의 crontab(탈퇴 자동처리 · 입장 QR 발송 · 이용 종료 자동 완료), 서비스의 브로커 명령 처리 |
+| 업체 관리자 `MANAGER` | 매니저 (admin-service · `manager` 도메인) | 아이디 로그인 · 비밀번호 변경 · 등록된 휴대폰으로 아이디 찾기 · 비밀번호 초기화(총매니저도 같다), 자기 업체 1곳 — 업체 소개 · 영업시간 · 브레이크타임 · 정비시간, 층별 호실 · 객실 그룹 · 상품 · 기간 가격 · 호실 문(상태 확인 · 바로 열기), 호실 상태 전이, 예약 현황 · 예약 취소 · 호실 이동, 자기 업체 통계 |
+| 이용자 `USER` | 이용자 (user-service · `user` 도메인) | 성인만(청소년보호법) SNS 가입 · 로그인(비밀번호 없음) 후 휴대폰 SMS 인증 · SMS로 아이디(가입한 SNS) 찾기, 지도 검색, 호실 · 시간대 선택 예약 · 결제 · 취소, 내 예약 방 · QR 확인(로그인 웹페이지), QR 입장, 연장, 입점 신청 |
+| 문 쪽 타 업체 프로그램 | — (인증 없음 — QR 이 열쇠) | 예약자 QR 을 읽어 문 열기 API 호출, 문 닫기 API 호출 — 문 자체를 여닫는 것은 그 프로그램 몫 |
+| 시스템 | — | scheduler 서버의 crontab(탈퇴 자동처리 · QR 확인 링크 발송 · 이용 종료 자동 완료), 서비스의 브로커 명령 처리 |
 
 업체 총관리자와 업체 관리자는 객실 관리 권한이 같다. 다른 점은 업체 관리자 계정을 관리할 수 있는지 하나다.
 
-**업체별로 달라지는 축** — 영업시간 · 브레이크타임(요일 반복) / 정비시간(퇴실 후 n분) / 층 · 호실 · 객실 그룹 / 그룹별 상품(이름 · 이용시간 · 가격) · 기간별 가격 / 업체 소개 · 사진 · 편의시설 / 호실 사물.
+**업체별로 달라지는 축** — 영업시간 · 브레이크타임(요일 반복) / 정비시간(퇴실 후 n분) / 층 · 호실 · 객실 그룹 / 그룹별 상품(이름 · 이용시간 · 가격) · 기간별 가격 / 업체 소개 · 사진 · 편의시설 / 호실 문.
 
 ## Non-Goals / External Boundaries
 
-- **하드웨어 설치 · 배선** — 도어락 · QR 리더 · 전등 · 에어컨 설치는 업체 몫. 우리는 `DeviceGateway` 포트로 명령만 보낸다(기기 · 연동 방식은 Phase 14 기획 때 정한다 — mock 으로 자리만 채우지 않는다).
+- **문 · 기기** — 도어락 · 문 쪽 QR 리더 프로그램(타 업체)은 업체 몫이고, 문을 여닫는 것도 그 프로그램이 한다. 우리는 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 두고 문 열기(QR) · 닫기 API 만 연다. 전등 · 에어컨 등 기기 제어 · 기기 플랫폼 연동은 하지 않는다 (사용자 결정 2026-11-01 · Phase 14).
 - **AWS 리소스 세팅** — IAM · S3 버킷 · SMS 샌드박스 해제 · 지출 한도는 사용자가 `docs/guides/aws-setup.md` 대로 한다. 코드는 처음부터 실제 연동이다(mock 없음). 이메일 · 알림톡 · 푸시는 쓰지 않는다.
 - **프론트엔드** — 관리자 페이지 · 이용자 페이지(Next.js)는 별도 레포.
 - **후순위(별도 기획)** — Phases & Units 끝의 "후순위" 표.
@@ -346,22 +347,28 @@ report: `.beaver/output/report/room/room-schema-report.md` · review: `main-revi
 
 report: `.beaver/output/report/room/room-manage-report.md` · review: `main-review-261031-2.md`. `/api/v1/admin-service/room` 21개(동기 6 · 큐 15), 호실 상태 5개 개편 마이그레이션 `RoomState`(데이터만). 미래 예약이 있는 그룹 삭제 · 호실 그룹 이동은 예약 Phase(16 · 17)에서.
 
-### Phase 14 — device 기반 (사물 스키마 · 기기 포트) · depends: Phase 12
+### Phase 14 — 문 상태 (Redis 기반 · 문 정보 · 문 열기 · 닫기) · depends: Phase 12
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 58 | `t_device_type` · `t_device` · `t_device_command` | 전등 · 에어컨 · 도어락, 명령 이력 | — | 50 | todo |
-| 59 | `DeviceGateway` 포트 + 실제 기기 연동 | 기기 명령 · 상태 회신 | 기기 · 연동 방식, 입장 QR 확인 수단(Open Decisions) | 58 | todo |
+| 58 | `t_device_type` · `t_device` · `t_device_command` | 전등 · 에어컨 · 도어락, 명령 이력 | — | 50 | dropped(기기 제어 제외 — 문 상태로 바뀜, 사용자 결정 2026-11-01) |
+| 59 | `DeviceGateway` 포트 + 실제 기기 연동 | 기기 명령 · 상태 회신 | 기기 · 연동 방식, 입장 QR 확인 수단(Open Decisions) | 58 | dropped(기기 제어 제외 — 문 상태로 바뀜, 사용자 결정 2026-11-01) |
+| 107 | Redis 기반 | `compose.redis.yml`(AOF 영속 · 비밀번호) · `npm run docker:redis`(+ `docker:infra` · `docker:up` · `docker:down`) · 전역 `RedisModule`(부팅을 막지 않는 연결 · 준비 전 503) · `docs/guides/redis-setup.md` · `.env` `REDIS_URL` — Phase 23 #95 의 기반을 앞당김 | node-redis 6 · 단일 노드(클러스터 모드 끔) | — | in-progress |
+| 108 | 문 정보 포트 `DOOR_STORE` | 호실 문마다 `door:<room_id>` = `QR:open|close:yyyyMMddHHmmss`(기록 없음 `00000000000000`), `door-qr:<QR>` = room_id — 열기 · 닫기 · QR 발급(이전 QR 무효)은 Lua 1개씩, QR 은 `SET NX` 로 겹치지 않음 | 저장 모양 · 원자성 | 107, 50 | in-progress |
+| 109 | 문 열기 · 닫기 API | `POST /api/v1/user-service/door/open`(QR → 같은 QR 의 문을 open + 시각, 여기까지만) · `/close`(room_id → close + 시각, 없는 호실 404) — 인증 없음(QR 이 열쇠) · 동기 | 인증 없이 여는 범위 | 108 | in-progress |
 
-**Expected data contract**: `t_device_type` · `t_device` · `t_device_command`, 포트 `DeviceGateway`.
+**Expected entry points**: `POST /api/v1/user-service/door/open` · `/close`(가드 없음) → user-service `door` 도메인, 포트 `DOOR_STORE`(`libs/integration/src/door/`) · `RedisModule`(`libs/integration/src/redis/`), `compose.redis.yml`. 기기 제어는 하지 않는다 — 계획이 바뀌어 #58 · #59 는 dropped (사용자 결정 2026-11-01).
 
-### Phase 15 — 사물 관리 (업체 관리자) · depends: Phase 13, Phase 14
+### Phase 15 — 문 관리 · QR 확인 (업체 관리자 · 이용자) · depends: Phase 14, Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 60 | 사물 등록 · 수정 · 삭제 · 목록 | 호실별 | — | 58 | todo |
-| 61 | 사물 제어 | 큐 경로 | — | 59 | todo |
-| 62 | 사물 상태 조회 | 최근 상태 · 수신 시각 | — | 58 | todo |
+| 60 | 사물 등록 · 수정 · 삭제 · 목록 | 호실별 | — | 58 | dropped(기기 제어 제외 — 문 관리로 바뀜, 사용자 결정 2026-11-01) |
+| 61 | 사물 제어 | 큐 경로 | — | 59 | dropped(기기 제어 제외 — 문 관리로 바뀜, 사용자 결정 2026-11-01) |
+| 62 | 사물 상태 조회 | 최근 상태 · 수신 시각 | — | 58 | dropped(기기 제어 제외 — 문 관리로 바뀜, 사용자 결정 2026-11-01) |
+| 110 | 업체 문 목록 | 업체 관리자가 자기 업체 호실 문의 상태(열림/닫힘 · 마지막 시각)를 본다 | 목록 모양(호실 목록과 합칠지) | 108, 54 | todo |
+| 111 | 관리자 바로 열기 | 업체 관리자가 호실 문을 바로 열어 준다 | 실제 문이 열리는 방식 — 서버는 문을 직접 움직이지 않는다(문 쪽 프로그램이 상태를 묻게 할지 · 그쪽 API 를 부를지) | 108, 110 | todo |
+| 112 | 내 예약 방 목록 · QR 확인 | 이용자가 예약한 방 목록과 이용 시간의 QR 을 로그인 웹페이지에서 본다(#71 내 예약 목록에 QR 을 더한다) — 예약 건마다 QR 을 새로 발급(`issueQr`) | QR 발급 시점 · 새로 발급 주기 | 108, 71 | todo |
 
-**Expected APIs** (가칭, 매니저 가드): `/api/v1/admin-service/device`(#60 · #62), `POST /api/v1/admin-service/device/:device_id/command`(#61, SSE).
+**Expected APIs** (가칭): 매니저 가드 `/api/v1/admin-service/door`(#110) · `/:room_id/open`(#111), 이용자 가드 `/api/v1/user-service/reservation/mine`(#112 — 방 목록 · QR). 사물 등록 · 제어 · 상태(#60 ~ #62)는 기기 제어를 빼면서 dropped (사용자 결정 2026-11-01).
 
 ### Phase 16 — reservation 기반 (예약 · 결제 스키마 · 결제 포트) · depends: Phase 12
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -408,14 +415,14 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 ### Phase 19 — 이용 (입장 QR · 체크인 · 연장 · 퇴실) · depends: Phase 5, Phase 15, Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 78 | 입장 QR 링크 발송 crontab | 이용 시작 5분 전 SMS로 (scheduler 서버 · 1분 주기 · `JobLockService`) | — | 17, 69, 88 | todo |
-| 79 | 체크인 = 첫 입장 | QR 확인 후 도어락 개방, 예약 체크인 · 호실 사용중 | 입장 QR 확인 수단 | 59, 78 | todo |
-| 80 | 이용 중 사물 제어 | 내 예약 구간 안에서만 | — | 61, 79 | todo |
+| 78 | QR 확인 링크 발송 crontab | 이용 시작 5분 전 SMS로 QR 확인 웹페이지(로그인 — #112) 링크 (scheduler 서버 · 1분 주기 · `JobLockService`) | — | 17, 69, 88, 112 | todo |
+| 79 | 체크인 = 첫 입장 | 이용 시간 안의 첫 문 열기(QR — #109)로 예약 체크인 · 호실 사용중 | 문 열기와 체크인 연결 방식(문 열기 API 는 Redis 만 바꾼다) | 109, 78 | todo |
+| 80 | 이용 중 사물 제어 | 내 예약 구간 안에서만 | — | 61, 79 | dropped(기기 제어 제외, 사용자 결정 2026-11-01) |
 | 81 | 연장 | 같은 호실에서 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(단위 기본안: 시간 이용 단위), 정비시간은 마지막 연장 뒤로, 추가 결제 | 1박 · 연박 연장 단위 · 요금 | 69 | todo |
 | 82 | 체크아웃 | 호실 정비중 전이 | — | 79 | todo |
 | 83 | 이용 종료 자동 완료 crontab | 종료 경과 예약 완료 · 호실 정비중 (scheduler 서버) | 퇴실 지연 처리 | 79, 88 | todo |
 
-**Expected APIs** (가칭, 이용자 가드): `POST /api/v1/user-service/reservation/:reservation_id/check-in`(#79), `/device/:device_id/command`(#80, SSE), `/extend`(#81, SSE), `/check-out`(#82).
+**Expected APIs** (가칭, 이용자 가드): `POST /api/v1/user-service/reservation/:reservation_id/check-in`(#79), `/extend`(#81, SSE), `/check-out`(#82). 이용 중 사물 제어(#80)는 기기 제어를 빼면서 dropped (사용자 결정 2026-11-01).
 
 ### Phase 20 — 관리자 계정 관리 (총관리자) · depends: Phase 6, Phase 10
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -439,14 +446,14 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 
 **Expected entry points**: 게이트웨이 전역 인터셉터 · `t_api_log` 월별 파티션.
 
-### Phase 23 — 캐시 (Redis 공유 캐시) · depends: Phase 6, Phase 18
+### Phase 23 — 캐시 (Redis 공유 캐시) · depends: Phase 6, Phase 14, Phase 18
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 95 | Redis 캐시 포트 · 어댑터 | `CACHE_STORE` 포트(get · set(TTL) · delete) + 실제 Redis 어댑터 · 전역 `CacheModule` · `docs/guides/redis-setup.md` · `compose.redis.yml` 묶음 · `.env` 접속정보(mock 없음 — 비어 있으면 캐시 없이 동작) | 클라이언트 라이브러리 · 운영 대상(같은 서버 컨테이너 · 관리형) | — | todo |
+| 95 | Redis 캐시 포트 · 어댑터 | `CACHE_STORE` 포트(get · set(TTL) · delete) + 실제 Redis 어댑터 · 전역 `CacheModule` — Redis 연결(`RedisModule`) · `compose.redis.yml` · `docs/guides/redis-setup.md` · `REDIS_URL` 은 Phase 14 #107 에서 들어온다(캐시는 Redis 가 없으면 캐시 없이 동작 — 문 정보와 다르다) | 키 규칙 · TTL · 문 정보와 같은 Redis 를 쓸지(DB 번호 · 접두) | 107 | todo |
 | 96 | 로그인 회원 확인 캐시 | 게이트웨이 그룹 전략이 요청마다 하는 auth-user 조회(내부 HTTP + DB)를 짧은 TTL 로 캐시, 회원 상태 · 권한이 바뀌는 쓰기(정지 · 탈퇴 · 권한 변경 · 계정 삭제)에서 키 삭제 | 캐시 위치(게이트웨이 전략 · 서비스 auth-user) · TTL · 무효화 지점 목록 | 95 | todo |
 | 97 | discovery 캐시 (필요 시) | 지도 · 주변 · 업체 상세 조회 결과 — 업체 정보 · 영업 설정이 바뀌면 삭제. `t_api_log.duration_ms` 로 느린 경로를 확인한 뒤 대상 결정 | 캐시 대상 · 무효화 | 95, 74, 75, 76 | todo |
 
-**Expected entry points**: `CACHE_STORE`(`libs/integration/src/cache/`) · `CacheModule`(전역) · `compose.redis.yml` · `docs/guides/redis-setup.md`. 룩업 테이블은 캐싱하지 않는다(Cross-Cutting "캐시").
+**Expected entry points**: `CACHE_STORE`(`libs/integration/src/cache/`) · `CacheModule`(전역) — Redis 연결 · Docker 묶음 · 가이드는 Phase 14 것을 쓴다. 룩업 테이블은 캐싱하지 않는다(Cross-Cutting "캐시").
 
 무효화 원칙은 `.beaver/memory/cache.md` 에 있다 — 캐시한 데이터를 바꾸는 쓰기(정지 · 탈퇴 · 수정 …)는 그 키도 함께 고친다. 캐싱 전략 초안(어떻게 캐시하나 · 무효화 문제 8가지 · 무효화 지점 표 · 열린 결정 7개)은 `.beaver/output/spec/platform/cache-spec.md` — Phase 23 기획은 이 spec 에서 출발한다.
 
@@ -468,13 +475,13 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
 **Progress**: 70/105 units done (13/24 phases)
-**Next up**: Phase 14 device 기반 — 의존(Phase 12) 모두 완료
+**Next up**: Phase 14 문 상태 — 의존(Phase 12) 모두 완료
 
-함께 시작할 수 있는 것: room 스키마(Phase 12)와 api-log(Phase 22)도 의존이 끝났다. 둘 다 Phase 9 와 파일이 겹치지 않아 함께 돌릴 수 있지만, 서로는 마이그레이션 등록 파일이 겹쳐 동시에 돌리지 않는다.
+함께 시작할 수 있는 것: reservation 기반(Phase 16) · 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 14 와 파일이 겹치지 않는다. 16 · 22 는 둘 다 마이그레이션을 더해 서로는 동시에 돌리지 않는다.
 
 ## Cross-Cutting Rules
 
-- **서버 분할** — gateway · user-service(이용자 — 회원 · 예약 · 결제 · 이용, 트래픽이 몰려 로드밸런싱) · admin-service(매니저 · 관리자 도메인 + 업체 · 객실 · 상품 · 사물 — 총관리자 · 업체 관리자는 그룹 가드로 가르고, 그룹 안 권한만 `@Roles`) · scheduler(crontab 만, 들어오는 연결 없음 · DB 직접) · notify-service(후순위). 게이트웨이가 유일한 진입점. 인스턴스 수는 고정하지 않고 모두 `.env` 로 정한다 — `GATEWAY_REPLICAS`(기본 2) · `USER_SERVICE_REPLICAS`(기본 2) · `ADMIN_SERVICE_REPLICAS`(기본 1) · `SCHEDULER_REPLICAS`(기본 1) (결정 2026-10-20)
+- **서버 분할** — gateway · user-service(이용자 — 회원 · 예약 · 결제 · 이용, 트래픽이 몰려 로드밸런싱) · admin-service(매니저 · 관리자 도메인 + 업체 · 객실 · 상품 · 문 관리 — 총관리자 · 업체 관리자는 그룹 가드로 가르고, 그룹 안 권한만 `@Roles`) · scheduler(crontab 만, 들어오는 연결 없음 · DB 직접) · notify-service(후순위). 게이트웨이가 유일한 진입점. 인스턴스 수는 고정하지 않고 모두 `.env` 로 정한다 — `GATEWAY_REPLICAS`(기본 2) · `USER_SERVICE_REPLICAS`(기본 2) · `ADMIN_SERVICE_REPLICAS`(기본 1) · `SCHEDULER_REPLICAS`(기본 1) (결정 2026-10-20)
 - **전달 경로** — 즉시 응답 · 조회는 내부 HTTP, 상태를 바꾸는 쓰기 · 몰리는 작업은 RabbitMQ 명령 + 요청 단위 SSE
 - **경로 규칙** — 공개 `/api/v1/<service>/<domain>/<action>`(게이트웨이 폴더 `api/v1/<service>/<domain>/`), 내부 `/internal/v1/<service>/<domain>/<action>`. service = `user-service` · `admin-service`, domain = 그 앱의 도메인 폴더. 로그인 그룹은 경로가 아니라 가드로 가른다(같은 도메인 안에서 이용자 · 매니저 · 관리자 라우트가 섞여도 된다) (결정 2026-10-23)
 - **로그인 그룹 = 도메인** — `t_user.login_scope` 3개: 이용자 `USER` → `user` 도메인(user-service, `/api/v1/user-service/user`) · 매니저 `MANAGER` = 총매니저 · 매니저 → `manager` 도메인 · 관리자 `ADMIN` = 총관리자 · 관리자 → `admin` 도메인(둘 다 admin-service, `/api/v1/admin-service/manager` · `/api/v1/admin-service/admin`). 도메인마다 controller · service · repository · DTO · 명령 · 내부 경로가 따로이고, 게이트웨이 인증도 그룹별 전략 · 가드(토큰 확인은 그 그룹의 서비스)다. 다른 그룹 계정은 404 · 401. 아이디 · 휴대폰 번호 UK 도 그룹 단위. 공통 계정 로직은 `libs/account` (결정 2026-10-22 · 2026-10-23)
@@ -484,15 +491,16 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 - **첫 총관리자 · 업체 총관리자 계정** — 시드 `admin` / `1234` 후 `/api/v1/admin-service/admin/password` 로 변경. 업체 총관리자는 휴대폰 번호 필수. 매니저 그룹의 아이디 찾기 · 비밀번호 초기화는 등록된 번호로 SMS(초기화는 임시 비밀번호). 관리자 그룹은 비밀번호 변경만, 이용자는 비밀번호가 없다
 - **연령 제한** — 성인만 가입한다(청소년보호법 — 만 19세가 되는 해의 1월 1일부터, SNS 가입의 생년월일로 판정). 이용자는 SNS 로만 가입한다 (결정 2026-10-22)
 - **휴대폰 인증** — 이용자는 가입 후 SMS 인증(발송 → 인증 ID + 인증번호 확인)을 마쳐야 그 번호가 회원정보에 저장되고 서비스를 이용할 수 있다. 로그인 그룹 안에서 번호 1개 = 계정 1개. 인증번호 6자리 · 5분 · 3회, 같은 번호 하루(한국 날짜) 10번(`SMS_VERIFICATION_DAILY_LIMIT`). 인증 전 회원을 막는 가드는 회원 전용 기능이 생길 때
-- **객실 모델** — 객실 그룹(객실 유형) 단위로 가격을 정하고 그룹 안 호실은 같은 상품을 쓴다. 상품 종류는 시간 이용(`HOURLY`) · 1박(`NIGHT`) · 연박(`LONG`) 셋 — 시간 규칙 · 판매 여부 · 예약 가능 요일은 업체 공통(`t_room_plan`, 업체 × 종류 1행), 사용 여부 · 요금은 그룹마다(`t_room_group_plan`, 그룹 × 종류 1행), 기간 가격(성수기 등)은 그룹 상품마다. 층은 호실의 정수 `floor`. 상태 · 사물은 호실마다. 객실 상세정보(편의시설)는 그룹의 JSON(사용자 결정 2026-10-30 · 31)
+- **객실 모델** — 객실 그룹(객실 유형) 단위로 가격을 정하고 그룹 안 호실은 같은 상품을 쓴다. 상품 종류는 시간 이용(`HOURLY`) · 1박(`NIGHT`) · 연박(`LONG`) 셋 — 시간 규칙 · 판매 여부 · 예약 가능 요일은 업체 공통(`t_room_plan`, 업체 × 종류 1행), 사용 여부 · 요금은 그룹마다(`t_room_group_plan`, 그룹 × 종류 1행), 기간 가격(성수기 등)은 그룹 상품마다. 층은 호실의 정수 `floor`. 상태 · 문(QR · 열림/닫힘)은 호실마다. 객실 상세정보(편의시설)는 그룹의 JSON(사용자 결정 2026-10-30 · 31)
 - **이용 단위 · 사전 예약** — 시간 이용은 업체가 정한 이용 시간만큼(시간 기반), 1박은 업체가 정한 입실 ~ 퇴실 시각 그대로(22:00 ~ 다음 날 09:00 기본), 연박은 첫날 입실 ~ 마지막 날 퇴실(15:00 ~ 11:00 기본, 1박부터). 업체마다 이용 시작 n시간 전부터 예약을 받는다(`t_store.booking_open_hours`, 1 ~ 4,320 — 최대 6개월, 기본 72 · 사용자 결정 2026-10-29 · 31)
 - **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 업체 영업중(`is_open = 1`) + 점유 구간 겹침 없음 + 영업시간 내(연중무휴면 생략) · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 예약가능도). 호실 상태 전환 — 예약 → 예약완료 · 체크인 → 사용중 · 체크아웃 → 정비중은 시스템, 정비 완료(→ 예약가능) · 사용중지 · 사용 재개는 업체 관리자(Phase 13). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
 - **호실 선택** — 이용자가 호실을 직접 고른다
 - **취소 · 환불** — 업체 취소 100%. 이용자는 업체가 정한 n시간 전까지 환불 신청하면 100%(`t_store.refund_deadline_hours`, 0 ~ 168, 기본 1), 그 뒤에는 환불 신청 자체가 안 된다(50% 구간 없음). 예약할 때의 기준을 예약에 저장하고, 환불은 신청 뒤 백그라운드에서 토스페이먼츠로 처리한다(사용자 결정 2026-10-29)
-- **체크인 · 연장** — 시작 5분 전 SMS로 입장 QR 링크, 첫 입장 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(Phase 19 #81)
+- **문 · QR** — 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 둔다(`door:<room_id>` = `QR:open|close:yyyyMMddHHmmss`, 기록 없음 `00000000000000`). QR 은 예약 건마다 새로 발급하고(이전 QR 무효, 두 문에 겹치지 않음) 예약자는 로그인 웹페이지에서 본다. 문 쪽 타 업체 프로그램이 그 QR 로 문 열기 API 를 부르면 서버는 Redis 만 바꾸고 문은 그 프로그램이 연다. 기기 제어는 하지 않는다 (사용자 결정 2026-11-01 · Phase 14)
+- **체크인 · 연장** — 시작 5분 전 SMS로 QR 확인 웹페이지 링크, 이용 시간 안의 첫 문 열기 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(Phase 19 #81)
 - **업체 측 예약 변경** — 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 SMS
 - **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
-- **발송 채널 · 외부 연동** — 발송은 SMS(AWS SNS) 하나 — 이메일 · 알림톡 · 푸시는 쓰지 않는다. 외부 연동은 mock 없이 실제 서비스에 붙이고 세팅 가이드(`docs/guides/`)를 남긴다 — SMS · 이미지 = AWS(Phase 3), 결제 = 토스(테스트 키), 기기 = Phase 14 에서 정한다
+- **발송 채널 · 외부 연동** — 발송은 SMS(AWS SNS) 하나 — 이메일 · 알림톡 · 푸시는 쓰지 않는다. 외부 연동은 mock 없이 실제 서비스에 붙이고 세팅 가이드(`docs/guides/`)를 남긴다 — SMS · 이미지 = AWS(Phase 3), 결제 = 토스(테스트 키), 문 정보 = Redis(Phase 14 — 기기 플랫폼 연동 없음)
 - **목록 · 시드 · 규약** — 모든 목록 API 는 `PaginationDto`(Phase 3 이후). 룩업 기본 데이터는 seeder.targets.ts 한 곳. 규약은 [AGENTS.md](../../../AGENTS.md) 전면 준수
 - **영업시간 단위** — 요일 반복만(특정 날짜 임시휴무 · 특별영업은 후순위). 24시간 연중무휴는 업체 단위 `is_always_open`, 영업중 여부 `is_open`(0 이면 연중무휴여도 영업중 아님)
 - **캐시** — Redis(공유 캐시) 하나. 인스턴스 메모리 캐시는 두지 않는다(로드밸런싱 — 인스턴스 로컬 상태 금지). 룩업 테이블(`t_auth` · `t_state` · `t_store_state` …)은 캐싱하지 않는다 — ID 는 코드 상수, 이름은 같은 쿼리의 PK 조인. 캐시는 짧은 TTL + 상태가 바뀌는 쓰기에서 키 삭제, 대상은 `t_api_log.duration_ms` 로 느린 경로를 본 뒤 정한다 (결정 2026-10-24 · Phase 23)
@@ -502,7 +510,7 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 
 - [ ] **예약 · 조회가 객실 데이터를 읽는 방법** — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
-- [ ] **입장 QR 확인 수단** — 문 앞 QR 리더 / 링크의 "문 열기" 버튼. (Phase 14 · 19)
+- [x] **입장 QR 확인 수단** — 문 쪽 타 업체 프로그램이 예약자 QR 화면(로그인 웹페이지)을 읽어 문 열기 API(QR)를 부른다. 서버는 Redis 문 정보만 바꾸고 문을 직접 움직이지 않는다. QR 은 예약 건마다 새로 발급. (사용자 결정 2026-11-01 · Phase 14)
 - [x] **취소 규정의 끝** — 업체 환불 기준(n시간 전)이 지나면 환불 신청 자체가 안 된다 — 시작 이후 · 노쇼 환불 없음. 기준 뒤 환불 없는 취소를 받을지는 Phase 17 #70 기획 때. (사용자 결정 2026-10-29)
 - [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 특수 표시한다. 예약 기능(Phase 17)에서 구현. (사용자 결정 2026-10-27 · #98)
 - [ ] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지, 일시 예약불가처럼 특수 표시로 둘지. (Phase 9 · 11 → Phase 17 기획 때 — #41 · #46 · #94)
