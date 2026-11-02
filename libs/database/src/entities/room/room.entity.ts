@@ -4,7 +4,8 @@ import {RoomGroupEntity} from './room-group.entity.js';
 import {RoomStateEntity} from './room-state.entity.js';
 
 /**
- * 호실 — 그룹의 상품 · 가격을 쓰고, 상태 · 사물은 호실마다다. 업체(store_id)는 그룹의 업체와 같다(service 가 맞춘다).
+ * 호실 — 그룹의 상품 · 가격을 쓰고, 상태 · 문(QR · 열림/닫힘 — Redis)은 호실마다다. 업체(store_id)는 그룹의 업체와 같다(service 가 맞춘다).
+ * 그룹은 등록 때만 정한다 — 수정으로 바꾸지 않는다(예약이 호실로 그룹을 찾는다). 잘못 등록했으면 지우고 다시 등록한다.
  * 지울 때는 삭제 표시(is_deleted = 1)로 남긴다 — 예약이 호실을 가리킨다. 호실명은 업체 안에서 지워지지 않은 호실끼리 유일하다.
  */
 @Entity({name: 't_room', comment: '호실'})

@@ -27,3 +27,15 @@ export const DOOR_TIME_NONE = '00000000000000';
 
 /** 새 QR 을 겹치지 않게 잡는 최대 시도 횟수 */
 export const DOOR_QR_ISSUE_ATTEMPTS = 3;
+
+/** 토스페이먼츠에 닿지 못했거나 잠시 뒤 다시 하면 되는 실패 — 503, 큐 경로에서는 재시도된다 */
+export const PAYMENT_UNAVAILABLE_MESSAGE = '결제 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.';
+
+/** 토스가 업무 실패를 돌려줬는데 메시지가 없을 때(본문이 JSON 이 아님 등) — 400 */
+export const PAYMENT_FAILED_MESSAGE = '결제를 처리하지 못했습니다.';
+
+/** 토스페이먼츠 API 주소 */
+export const TOSS_API_BASE_URL = 'https://api.tosspayments.com';
+
+/** 토스 API 요청 제한 시간(ms) — 넘기면 503(재시도) */
+export const PAYMENT_REQUEST_TIMEOUT_MS = 30000;

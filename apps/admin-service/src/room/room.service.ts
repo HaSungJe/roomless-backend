@@ -775,13 +775,12 @@ export class RoomService {
     }
 
     /**
-     * 호실 수정 — 그룹 · 호실명 · 층을 통째로(그룹 이동은 같은 업체 그룹만). (RabbitMQ: admin.room.update)
+     * 호실 수정 — 호실명 · 층을 통째로. 그룹은 등록 때만 정한다(바꾸지 않는다 — 예약이 호실로 그룹을 찾는다). (RabbitMQ: admin.room.update)
      * - 업체 안 지워지지 않은 다른 호실명이면 repository 가 400(UK_Room_StoreIdRoomName)
-     * - 미래 예약이 있는 호실의 그룹 이동 제한은 예약 기능(Phase 17)이 생길 때
      *
      * @param user_id 로그인 매니저 ID
      * @param room_id 호실 ID
-     * @param dto 그룹 · 호실명 · 층
+     * @param dto 호실명 · 층
      */
     @Transactional()
     async updateMyRoom(user_id: string, room_id: string, dto: RoomUpdateDto): Promise<void> {
@@ -797,15 +796,8 @@ export class RoomService {
             throw new NotFoundException({message: ROOM_NOT_FOUND_MESSAGE});
         }
 
-        // 3. 옮길 그룹 — 그 업체의 지워지지 않은 그룹
-        const group = await this.roomRepository.findRoomGroup({room_group_id: dto.room_group_id, store_id: store.store_id});
-        if (!group) {
-            throw new NotFoundException({message: ROOM_GROUP_NOT_FOUND_MESSAGE});
-        }
-
-        // 4. 수정
+        // 3. 수정 — 그룹은 그대로
         const entity = new RoomEntity();
-        entity.room_group_id = group.room_group_id;
         entity.room_name = dto.room_name;
         entity.floor = dto.floor;
         await this.roomRepository.updateRoom({room_id: room.room_id}, entity);

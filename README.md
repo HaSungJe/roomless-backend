@@ -5,12 +5,12 @@
 - **gateway** — 유일한 외부 진입점(:3000). 로그인 그룹별 JWT 인증 · 입력 검증 후 서비스로 전달한다. 상태를 바꾸는 요청은 RabbitMQ 를 거쳐 처리하고 결과를 요청 단위 SSE 로 돌려준다. 공개 경로는 `/api/v1/<서비스>/<도메인>/...` 이다 — 이용자 `/api/v1/user-service/user` · 매니저(총매니저 · 매니저) `/api/v1/admin-service/manager` · 관리자(총관리자 · 관리자) `/api/v1/admin-service/admin` · 업체(입점 신청 · 업체 관리) `/api/v1/admin-service/store` · 객실 `/api/v1/admin-service/room` · 문 `/api/v1/user-service/door`. 서비스 내부 경로도 `/internal/v1/<서비스>/<도메인>/...` 다.
 - **scheduler** — crontab 전용 서버(탈퇴 자동처리). 들어오는 연결이 없고(포트 없음) DB 에만 붙는다. 여러 대여도 DB 잠금으로 회차마다 1대만 실행한다.
 - **user-service** — 이용자 서버(:4001, 내부망). SNS 가입 · 로그인(만 19세가 되는 해부터 — 청소년보호법) · 휴대폰 SMS 인증 · 아이디 찾기 · 탈퇴. PostgreSQL 을 소유하고(마이그레이션), 부팅 때 기본 데이터와 첫 총관리자(`admin` / `1234`)를 넣는다. 문: 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 두고, 문 쪽 타 업체 프로그램이 부르는 문 열기(QR — `POST /api/v1/user-service/door/open`) · 문 닫기(`/close`)를 받는다(로그인 없음 — QR 이 열쇠).
-- **admin-service** — 관리자 서버(:4002, 내부망). 매니저(총매니저 · 매니저): 업체코드 + 아이디 로그인 · 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(업체코드 + 등록된 휴대폰, 임시 비밀번호 SMS), 업체 총관리자의 업체 관리자 계정 등록 · 목록 · 상세 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제. 관리자(총관리자 · 관리자): 아이디 로그인 · 비밀번호 변경(첫 총관리자는 `POST /api/v1/admin-service/admin/login` 후 `PATCH /api/v1/admin-service/admin/password` 로 변경). 업체: 이용자의 입점 신청(업체 총관리자 아이디 · 비밀번호 포함) · 신청 취소 · 업체 정보 파일(사업자등록증 · 업체 사진) · 내 신청(승인되면 업체코드), 총관리자의 신청 승인(업체 + 업체코드 + 업체 총관리자 계정 + 승인 알림 SMS) · 반려 · 업체 목록 · 상세 · 수정 · 상태 변경(영업중지 사유) · 영업중 여부 변경, 업체 관리자의 내 업체 설정(상세 · 소개 · 사진과 순서 · 요일별 영업시간 · 매일 브레이크타임 · 정비시간 · 영업중 여부 · 예약 · 환불 규정 · 일시 예약불가). 객실: 업체 관리자의 업체 상품 설정(시간 이용 · 1박 · 연박 — 사용 여부 · 예약 가능 요일 · 이용 시간 · 입퇴실 시각) · 객실 그룹(상세정보 · 사진과 순서) · 그룹 상품(사용 여부 · 요금) · 상품별 기간 가격 · 호실 · 호실 상태(정비 완료 · 사용중지). user-service 와 같은 DB 를 직접 쓴다.
+- **admin-service** — 관리자 서버(:4002, 내부망). 매니저(총매니저 · 매니저): 업체코드 + 아이디 로그인 · 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(업체코드 + 등록된 휴대폰, 임시 비밀번호 SMS), 업체 총관리자의 업체 관리자 계정 등록 · 목록 · 상세 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제. 관리자(총관리자 · 관리자): 아이디 로그인 · 비밀번호 변경(첫 총관리자는 `POST /api/v1/admin-service/admin/login` 후 `PATCH /api/v1/admin-service/admin/password` 로 변경). 업체: 이용자의 입점 신청(업체 총관리자 아이디 · 비밀번호 포함) · 신청 취소 · 업체 정보 파일(사업자등록증 · 업체 사진) · 내 신청(승인되면 업체코드), 총관리자의 신청 승인(업체 + 업체코드 + 업체 총관리자 계정 + 승인 알림 SMS) · 반려 · 업체 목록 · 상세 · 수정 · 상태 변경(영업중지 사유) · 영업중 여부 변경, 업체 관리자의 내 업체 설정(상세 · 소개 · 사진과 순서 · 요일별 영업시간 · 매일 브레이크타임 · 정비시간 · 영업중 여부 · 예약 · 환불 규정 · 일시 예약불가). 객실: 업체 관리자의 업체 상품 설정(시간 이용 · 1박 · 연박 — 사용 여부 · 예약 가능 요일 · 이용 시간 · 입퇴실 시각) · 객실 그룹(상세정보 · 사진과 순서) · 그룹 상품(사용 여부 · 요금) · 상품별 기간 가격 · 호실(그룹은 등록 때만 — 수정으로 바꾸지 않는다) · 호실 상태(정비 완료 · 사용중지). user-service 와 같은 DB 를 직접 쓴다.
 - 아이디 · 휴대폰 번호는 로그인 그룹(이용자 · 매니저 · 관리자) 안에서만 겹치지 않는다. 매니저 그룹은 업체 안에서만 — 다른 업체면 같은 아이디를 쓸 수 있고, 로그인 때 업체코드(매니저 화면 주소에 들어 있다)를 함께 받는다.
 
-- **외부 연동** — 발송은 SMS 하나(Amazon SNS), 업체 정보 파일 · 객실 사진은 Amazon S3(presigned URL 로 클라이언트가 직접 업로드) — 공개 파일(업체 사진)은 CloudFront(CDN) 주소, 비공개 파일(사업자등록증)은 10분짜리 서명 주소로 본다. mock 없이 실제 AWS 에 붙는 코드이고, AWS 세팅은 [docs/guides/aws-setup.md](docs/guides/aws-setup.md) 를 따른다.
+- **외부 연동** — 발송은 SMS 하나(Amazon SNS), 업체 정보 파일 · 객실 사진은 Amazon S3(presigned URL 로 클라이언트가 직접 업로드) — 공개 파일(업체 사진)은 CloudFront(CDN) 주소, 비공개 파일(사업자등록증)은 10분짜리 서명 주소로 본다. 결제는 토스페이먼츠(결제창 · 승인은 프론트, 서버는 토스 조회로 검증 · 환불 — [docs/guides/toss-setup.md](docs/guides/toss-setup.md), 첫 사용은 예약 기능). mock 없이 실제 서비스에 붙는 코드이고, AWS 세팅은 [docs/guides/aws-setup.md](docs/guides/aws-setup.md) 를 따른다.
 
-스택: NestJS 12 (ESM) · TypeORM 1.x + PostgreSQL 17 · RabbitMQ 4 · Redis 8(node-redis) · AWS SDK v3(SNS · S3) · Vitest · oxlint.
+스택: NestJS 12 (ESM) · TypeORM 1.x + PostgreSQL 17 · RabbitMQ 4 · Redis 8(node-redis) · AWS SDK v3(SNS · S3) · 토스페이먼츠(fetch) · Vitest · oxlint.
 규약과 구조는 [AGENTS.md](AGENTS.md) 와 [docs/](docs/) 를 본다.
 
 ## 실행
@@ -30,6 +30,7 @@ cp .env.example .env
 
 - `.env` 하나가 곧 서버 설정이다. Docker 는 값을 바꾸지 않고 그대로 쓰며, 필수값이 비어 있으면 띄우지 않는다.
 - AWS 값(`AWS_REGION` · `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_S3_BUCKET` · `AWS_S3_PUBLIC_URL`)은 비워도 서버는 뜨고 SMS 발송 · 파일 요청만 실패한다(공개 파일 주소를 쓰려면 `AWS_S3_PUBLIC_URL` — CloudFront 배포 주소). 채우는 방법은 [docs/guides/aws-setup.md](docs/guides/aws-setup.md).
+- 토스 시크릿 키(`TOSS_SECRET_KEY`)도 비워도 서버는 뜬다 — 결제 확인 · 환불만 실패한다. 테스트 키 받는 법은 [docs/guides/toss-setup.md](docs/guides/toss-setup.md).
 
 ### 2. 전체 실행 (Docker)
 
@@ -52,7 +53,7 @@ npm run docker:down   # 모두 내림 (공용 네트워크 · 데이터 볼륨�
 - 묶음마다 compose 파일이 따로 있어 하나씩 띄우고 내릴 수 있다(`npm run docker:<묶음>`). 로그는 `npm run docker:logs:<앱>`.
 - gateway · user-service 는 여러 대(`GATEWAY_REPLICAS` · `USER_SERVICE_REPLICAS`, 기본 2), admin-service 는 `ADMIN_SERVICE_REPLICAS`(기본 1)로 뜨고 앞에 nginx 로드밸런서가 붙는다. scheduler 는 `SCHEDULER_REPLICAS`(기본 1)이고 포트 · 로드밸런서가 없다.
 - user-service · admin-service 는 게이트웨이만 닿는다(전역 내부 토큰 가드 + internal 네트워크). 큐 명령도 gateway 브로커 계정이 발행한 것만 처리한다.
-- 마이그레이션은 `migrate` 컨테이너(user-service 묶음)가 인스턴스보다 먼저 1회 적용한다. 적용 계정에는 PostgreSQL 확장 `btree_gist`(기간 겹침 배타 제약) 생성 권한이 필요하다(RDS PostgreSQL 13+ 는 DB 의 CREATE 권한). admin-service 는 같은 DB 를 쓰므로 user-service 묶음 뒤에 띄운다.
+- 마이그레이션은 `migrate` 컨테이너(user-service 묶음)가 인스턴스보다 먼저 1회 적용한다. 적용 계정에는 PostgreSQL 확장 `btree_gist`(기간 가격 · 예약 점유 겹침 배타 제약) 생성 권한이 필요하다(RDS PostgreSQL 13+ 는 DB 의 CREATE 권한). admin-service 는 같은 DB 를 쓰므로 user-service 묶음 뒤에 띄운다.
 - 같은 휴대폰 번호의 하루 인증 SMS 수는 `SMS_VERIFICATION_DAILY_LIMIT`(기본 10), DB 연결 풀 대기 최대 시간은 `DATABASE_CONNECTION_TIMEOUT_MS`(기본 30000ms — 넘기면 500).
 
 ### 3. 로컬 개발 — 인프라만 Docker, 앱은 watch
@@ -73,7 +74,7 @@ npm run start:scheduler     # crontab (포트 없음)
 
 - compose 는 그대로 두고 `.env` 의 접속정보만 바꾼다 — DB `DATABASE_URL`(RDS 등) · 브로커 `RABBITMQ_HOST`(Amazon MQ 등) · Redis `REDIS_URL`(ElastiCache 등, TLS 면 `rediss://`). 바꾼 인프라의 묶음(postgres · rabbitmq · redis)은 띄우지 않는다.
 - 올리기 전 확인: `NODE_ENV=production`(development 는 JWT 만료를 검사하지 않는다) · 비밀값 새로 생성 · `POSTGRES_PASSWORD` · `RABBITMQ_PASSWORD` · `REDIS_PASSWORD` 변경 · `CORS_ORIGINS` 를 실제 프론트 주소로.
-- 자세한 구성: [docs/architecture.md](docs/architecture.md) 의 "실행 (Docker)" · Redis: [docs/guides/redis-setup.md](docs/guides/redis-setup.md) · AWS: [docs/guides/aws-setup.md](docs/guides/aws-setup.md).
+- 자세한 구성: [docs/architecture.md](docs/architecture.md) 의 "실행 (Docker)" · Redis: [docs/guides/redis-setup.md](docs/guides/redis-setup.md) · AWS: [docs/guides/aws-setup.md](docs/guides/aws-setup.md) · 토스: [docs/guides/toss-setup.md](docs/guides/toss-setup.md).
 
 ## 명령
 
@@ -99,7 +100,7 @@ npm run start:scheduler     # crontab (포트 없음)
 apps/gateway   apps/user-service   apps/admin-service   apps/scheduler   # 진입점 · 이용자 · 매니저/관리자 · crontab 전용
 libs/account  libs/common  libs/contracts  libs/database  libs/integration  libs/messaging
 libs/database/src/entities/<domain>/   libs/database/src/migrations/
-libs/integration/src/sms/  libs/integration/src/storage/  libs/integration/src/redis/  libs/integration/src/door/   # SMS(SNS) · 파일 저장(S3) · Redis 연결 · 문 정보(Redis) 포트 · 어댑터
-docs/  docs/guides/        # 규약 · AWS · Redis 세팅 가이드
+libs/integration/src/sms/  libs/integration/src/storage/  libs/integration/src/redis/  libs/integration/src/door/  libs/integration/src/payment/   # SMS(SNS) · 파일 저장(S3) · Redis 연결 · 문 정보(Redis) · 결제(토스) 포트 · 어댑터
+docs/  docs/guides/        # 규약 · AWS · Redis · 토스 세팅 가이드
 .back/              # NestJS 11 시절 코드 (이식 참고용, git 제외 · 로컬 전용)
 ```

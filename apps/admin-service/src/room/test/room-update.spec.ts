@@ -5,10 +5,9 @@ import {RoomUpdateDto, RoomUpdateParamDto} from '@app/contracts/room/dto/room-up
 import {ROOM_COMMAND} from '@app/contracts/room/room.commands.js';
 import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
-import {bootCommandPath, createRoomRepositoryMock, MANAGER_ACTOR, ROOM_ID, roomEntity, roomGroupEntity, RoomRepositoryMock, runCommand, STORE_ID, storeRow, validateBody} from './room.test-helper.js';
+import {bootCommandPath, createRoomRepositoryMock, MANAGER_ACTOR, ROOM_ID, roomEntity, RoomRepositoryMock, runCommand, STORE_ID, storeRow, validateBody} from './room.test-helper.js';
 
-const OTHER_GROUP_ID = 'a'.repeat(32);
-const PAYLOAD = {room_id: ROOM_ID, room_group_id: OTHER_GROUP_ID, room_name: '201호', floor: 2};
+const PAYLOAD = {room_id: ROOM_ID, room_name: '201호', floor: 2};
 const NAME_TAKEN = '이미 있는 호실명입니다.';
 
 describe('admin.room.update — 호실 수정 (큐 경로)', () => {
@@ -20,7 +19,6 @@ describe('admin.room.update — 호실 수정 (큐 경로)', () => {
         repo = createRoomRepositoryMock();
         repo.findManagerStore.mockResolvedValue(storeRow());
         repo.findRoom.mockResolvedValue(roomEntity());
-        repo.findRoomGroup.mockResolvedValue(roomGroupEntity({room_group_id: OTHER_GROUP_ID, room_group_name: '디럭스'}));
         ({dispatcher, module} = await bootCommandPath(repo));
     });
 
@@ -30,7 +28,7 @@ describe('admin.room.update — 호실 수정 (큐 경로)', () => {
     });
 
     describe('[SUCCESS]', () => {
-        it('그 업체 호실을 찾아 같은 업체의 다른 그룹으로 옮기고 호실명 · 층을 통째로 바꾼다(상태 · 업체는 그대로)', async () => {
+        it('그 업체 호실을 찾아 호실명 · 층을 통째로 바꾼다(그룹 · 상태 · 업체는 그대로, 그룹 조회 없음)', async () => {
             const {decision, result} = await runCommand(dispatcher, {type: ROOM_COMMAND.UPDATE, payload: PAYLOAD, actor: MANAGER_ACTOR});
 
             expect(decision.action).toBe('ack');
@@ -38,14 +36,23 @@ describe('admin.room.update — 호실 수정 (큐 경로)', () => {
             expect(result).toEqual({result: null, error: null});
             expect(repo.findManagerStore).toHaveBeenCalledWith(MANAGER_ACTOR.user_id, true);
             expect(repo.findRoom).toHaveBeenCalledWith({room_id: ROOM_ID, store_id: STORE_ID});
-            expect(repo.findRoomGroup).toHaveBeenCalledWith({room_group_id: OTHER_GROUP_ID, store_id: STORE_ID});
+            expect(repo.findRoomGroup).not.toHaveBeenCalled();
             expect(repo.updateRoom).toHaveBeenCalledTimes(1);
             const [where, entity] = repo.updateRoom.mock.calls[0] as [unknown, RoomEntity];
             expect(where).toEqual({room_id: ROOM_ID});
             expect(entity).toBeInstanceOf(RoomEntity);
-            expect(entity).toMatchObject({room_group_id: OTHER_GROUP_ID, room_name: '201호', floor: 2});
+            expect(entity).toMatchObject({room_name: '201호', floor: 2});
+            expect(entity.room_group_id).toBeUndefined();
             expect(entity.room_state_id).toBeUndefined();
             expect(entity.store_id).toBeUndefined();
+        });
+
+        it('예전 클라이언트가 room_group_id 를 보내도 그룹은 바꾸지 않는다', async () => {
+            await runCommand(dispatcher, {type: ROOM_COMMAND.UPDATE, payload: {...PAYLOAD, room_group_id: 'a'.repeat(32)}, actor: MANAGER_ACTOR});
+
+            expect(repo.findRoomGroup).not.toHaveBeenCalled();
+            const [, entity] = repo.updateRoom.mock.calls[0] as [unknown, RoomEntity];
+            expect(entity.room_group_id).toBeUndefined();
         });
     });
 
@@ -56,15 +63,6 @@ describe('admin.room.update — 호실 수정 (큐 경로)', () => {
             const {result} = await runCommand(dispatcher, {type: ROOM_COMMAND.UPDATE, payload: PAYLOAD, actor: MANAGER_ACTOR});
 
             expect(result?.error).toEqual({status_code: 404, body: {message: '호실을 찾을 수 없습니다.', validation_errors: null}});
-            expect(repo.updateRoom).not.toHaveBeenCalled();
-        });
-
-        it('옮길 그룹이 없으면(다른 업체 그룹 · 지운 그룹) failed 404, 수정 없음', async () => {
-            repo.findRoomGroup.mockResolvedValueOnce(null);
-
-            const {result} = await runCommand(dispatcher, {type: ROOM_COMMAND.UPDATE, payload: PAYLOAD, actor: MANAGER_ACTOR});
-
-            expect(result?.error).toEqual({status_code: 404, body: {message: '객실 그룹을 찾을 수 없습니다.', validation_errors: null}});
             expect(repo.updateRoom).not.toHaveBeenCalled();
         });
 
@@ -91,7 +89,7 @@ describe('admin.room.update — 호실 수정 (큐 경로)', () => {
 
     describe('[FAIL:validation] 게이트웨이 ValidationPipe', () => {
         it('층 201 → floor', async () => {
-            await expect(validateBody(RoomUpdateDto, {room_group_id: OTHER_GROUP_ID, room_name: '201호', floor: 201})).resolves.toEqual({
+            await expect(validateBody(RoomUpdateDto, {room_name: '201호', floor: 201})).resolves.toEqual({
                 message: '층은 -10 ~ 200 사이로 입력해주세요.',
                 validation_errors: [{property: 'floor', message: '층은 -10 ~ 200 사이로 입력해주세요.'}],
             });

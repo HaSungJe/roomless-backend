@@ -30,7 +30,7 @@ export const ROOM_COMMAND = {
     GROUP_PLAN_PRICE_DELETE: 'admin.room.group-plan-price-delete',
     /** 호실 등록 (업체 관리자) */
     CREATE: 'admin.room.create',
-    /** 호실 수정 — 그룹 이동 포함 (업체 관리자) */
+    /** 호실 수정 — 호실명 · 층(그룹은 바꾸지 않는다) (업체 관리자) */
     UPDATE: 'admin.room.update',
     /** 호실 삭제 (업체 관리자) */
     DELETE: 'admin.room.delete',

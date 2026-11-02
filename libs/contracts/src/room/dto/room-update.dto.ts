@@ -12,14 +12,9 @@ export class RoomUpdateParamDto {
 }
 
 /**
- * 호실 수정 — 등록과 같은 필드를 통째로(그룹 이동 포함 — 내 업체의 지워지지 않은 그룹만, 없으면 404). 업체 안 지워지지 않은 호실명이 같으면 400
+ * 호실 수정 — 호실명 · 층을 통째로. 그룹은 등록 때만 정한다(바꾸지 않는다 — 잘못 등록했으면 지우고 다시 등록). 업체 안 지워지지 않은 호실명이 같으면 400
  */
 export class RoomUpdateDto {
-    @ApiProperty({description: '객실 그룹 ID'})
-    @Matches(/^[a-f0-9]{32}$/, {message: '객실 그룹 ID가 올바르지 않습니다.'})
-    @IsNotEmpty({message: '객실 그룹 ID를 입력해주세요.'})
-    room_group_id: string;
-
     @ApiProperty({description: '호실명 (50자 — 예: 101호, 업체 안에서 유일)'})
     @MaxLength(50, {message: '호실명은 50자 이내로 입력해주세요.'})
     @IsNotEmpty({message: '호실명을 입력해주세요.'})

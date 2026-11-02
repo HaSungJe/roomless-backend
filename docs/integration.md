@@ -1,6 +1,6 @@
 # 외부 연동 (`libs/integration`)
 
-> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 문 열기 · 닫기(문 정보 — Redis), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 을 import 한다). AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md).
+> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 문 열기 · 닫기(문 정보 — Redis), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 을 import 한다). 결제(`PaymentModule`)는 예약 기능(Phase 17)에서 처음 쓴다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md), 토스는 [guides/toss-setup.md](guides/toss-setup.md).
 
 ## 원칙
 
@@ -16,22 +16,24 @@
   2. 클라이언트가 `upload_url` 로 PUT — 요청 때 보낸 `content_type` 과 같은 `Content-Type` 헤더로(서명에 들어간다)
   3. 등록 명령에 키만 보낸다 → service 가 `exists(key)` 확인 후 저장
   4. 열람 주소는 파일 용도 룩업의 `is_private` 로 고른다 — 0 이면 `getPublicUrl(key)`(CDN 공개 주소), 1 이면 `createDownloadUrl(key)`(서명된 열람 주소, `STORAGE_DOWNLOAD_URL_TTL_SECONDS` 600초)
+- **결제는 `PAYMENT_GATEWAY`(토스페이먼츠)** — 결제창 · 승인은 프론트(Next.js), 서버는 토스에서 다시 읽어 검증(`getPayment` · `findByPaymentId`)하고 환불(`cancel` — `Idempotency-Key: cancel-<payment_id>`)한다. 프론트가 넘긴 값만 믿지 않는다.
 - service 는 포트(Symbol 토큰 + 인터페이스)만 안다. AWS SDK · 자격증명은 어댑터 안에만 둔다.
 
 ## 구성
 
 | 파일 | 내용 |
 |---|---|
-| `integration.symbols.ts` | `SMS_SENDER` · `STORAGE_GATEWAY` · `DOOR_STORE` |
-| `interfaces/integration.interface.ts` | `SmsSenderInterface` · `SmsMessage` · `StorageGatewayInterface` · `StorageUploadInput` · `StorageUploadResult` · `StorageDownloadResult` · `DoorStoreInterface` · `DoorRecord` · `DoorState` |
-| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` · `STORAGE_DOWNLOAD_URL_TTL_SECONDS` · `REDIS_UNAVAILABLE_MESSAGE` · `DOOR_QR_ISSUE_FAILED_MESSAGE` · `DOOR_STATE` · `DOOR_TIME_NONE` · `DOOR_QR_ISSUE_ATTEMPTS` |
-| `integration.util.ts` | `toE164KrPhone` — 국내 번호 → `+82…` |
+| `integration.symbols.ts` | `SMS_SENDER` · `STORAGE_GATEWAY` · `DOOR_STORE` · `PAYMENT_GATEWAY` |
+| `interfaces/integration.interface.ts` | `SmsSenderInterface` · `SmsMessage` · `StorageGatewayInterface` · `StorageUploadInput` · `StorageUploadResult` · `StorageDownloadResult` · `DoorStoreInterface` · `DoorRecord` · `DoorState` · `PaymentGatewayInterface` · `PaymentEnvironment` · `PaymentLookupResult` · `PaymentCancelInput` · `PaymentCancelResult` |
+| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` · `STORAGE_DOWNLOAD_URL_TTL_SECONDS` · `REDIS_UNAVAILABLE_MESSAGE` · `DOOR_QR_ISSUE_FAILED_MESSAGE` · `DOOR_STATE` · `DOOR_TIME_NONE` · `DOOR_QR_ISSUE_ATTEMPTS` · `PAYMENT_UNAVAILABLE_MESSAGE` · `PAYMENT_FAILED_MESSAGE` · `TOSS_API_BASE_URL` · `PAYMENT_REQUEST_TIMEOUT_MS` |
+| `integration.util.ts` | `toE164KrPhone` — 국내 번호 → `+82…` · `classifyTossFailure` — 토스 실패 → 업무 · 일시 · 결제 없음 |
 | `sms/sns-sms.sender.ts` · `sms/sms.module.ts` | `SnsSmsSender`(SNS `Publish`, Transactional) · `SmsModule`(`@Global`) |
 | `storage/s3-storage.gateway.ts` · `storage/storage.module.ts` | `S3StorageGateway`(presigned PutObject — Content-Type 서명 · presigned GetObject · HeadObject · DeleteObject) · `StorageModule`(`@Global`) |
 | `redis/redis.connection.ts` · `redis/redis.module.ts` | `RedisConnection`(node-redis — 부팅을 막지 않는 연결 · 끊긴 동안 명령을 쌓지 않음 · 준비 전 503) · `RedisModule`(`@Global`) |
 | `door/redis-door.store.ts` · `door/door-store.module.ts` | `RedisDoorStore`(Lua 스크립트 3개 — 열기 · 닫기 · QR 발급) · `DoorStoreModule`(`@Global`, RedisModule 포함) |
+| `payment/toss-payment.gateway.ts` · `payment/payment.module.ts` | `TossPaymentGateway`(fetch — Basic 인증 · 30초 제한 · 조회 · 전액 취소) · `PaymentModule`(`@Global`, 앱 등록은 Phase 17) |
 
-설정은 `.env` 의 `AWS_REGION` · `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_S3_BUCKET` · `AWS_S3_PUBLIC_URL`(AWS — 자격증명은 SDK 기본 체인이 읽는다, IAM 역할이면 키를 비운다)과 `REDIS_URL`(Redis) 이다.
+설정은 `.env` 의 `AWS_REGION` · `AWS_ACCESS_KEY_ID` · `AWS_SECRET_ACCESS_KEY` · `AWS_S3_BUCKET` · `AWS_S3_PUBLIC_URL`(AWS — 자격증명은 SDK 기본 체인이 읽는다, IAM 역할이면 키를 비운다), `REDIS_URL`(Redis), `TOSS_SECRET_KEY`(토스 — 비어 있으면 부팅 경고 · 결제 요청만 503) 이다.
 
 ## S3 클라이언트 설정
 
@@ -69,6 +71,7 @@ await this.smsSender.send({to: phone, text: `[roomless] 인증번호 ${code}`});
 
 - AWS 가 접수하지 못하거나 닿지 못하면, 어댑터가 오류를 로그로 남기고 `ServiceUnavailableException({message: SMS_UNAVAILABLE_MESSAGE | STORAGE_UNAVAILABLE_MESSAGE})`(503)를 던진다. 형제는 `RabbitMqConnection.publish` 의 503 이다.
 - Redis 가 준비되지 않았거나 명령이 실패하면 `ServiceUnavailableException({message: REDIS_UNAVAILABLE_MESSAGE})`(503, "상태 저장소에 연결할 수 없습니다") — `RedisConnection.ready()` · `RedisDoorStore` 가 던진다. QR 발급이 겹치지 않는 값을 3번 안에 못 잡으면 `InternalServerErrorException({message: DOOR_QR_ISSUE_FAILED_MESSAGE})`(500).
+- 결제는 둘로 나눈다 — 토스 업무 실패(4xx)는 `BadRequestException({message: 토스 메시지, payment_error_code: 토스 code})`(400 — 큐 재시도 없음), 일시 실패(5xx · `PROVIDER_ERROR` · 409 · 401 · 네트워크 · 30초 초과 · 키 없음)는 `ServiceUnavailableException({message: PAYMENT_UNAVAILABLE_MESSAGE})`(503 — 재시도, 환불은 멱등키로 중복 없음). 조회의 결제 없음(404 `NOT_FOUND_PAYMENT`)은 null, 취소의 결제 없음은 400.
 - `exists` 만 예외다. 404 면 false 를 돌려준다.
 - `getPublicUrl` 은 `AWS_S3_PUBLIC_URL` 이 비어 있으면 `InternalServerErrorException({message: STORAGE_PUBLIC_URL_MISSING_MESSAGE})`(500, "설정된 파일 공개 주소가 없습니다") 를 던진다.
 - service 는 잡지 않는다. 큐 경로에서는 5xx 라 재시도(최대 3회) 후 failed + DLQ 로 간다.

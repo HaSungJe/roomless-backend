@@ -675,7 +675,7 @@ export class RoomRepository implements RoomRepositoryInterface {
     }
 
     /**
-     * 호실 수정 — 호실명 · 층 · 그룹(이동) · 상태. 같은 업체의 지워지지 않은 다른 호실과 호실명이 같으면 400
+     * 호실 수정 — 호실명 · 층 · 상태(그룹은 바꾸지 않는다). 같은 업체의 지워지지 않은 다른 호실과 호실명이 같으면 400
      *
      * @param where 수정 조건
      * @param entity 바꿀 필드만 할당한 엔티티

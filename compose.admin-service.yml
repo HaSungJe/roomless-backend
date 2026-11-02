@@ -6,7 +6,7 @@
 # 설정 원칙 — compose.user-service.yml 과 같다
 #   - 환경 값(NODE_ENV · DATABASE_URL · RABBITMQ_HOST · 비밀값 …)은 .env 를 그대로 쓴다. compose 는 바꾸지 않고, 필수값이 비어 있으면 띄우지 않는다.
 #   - 서버 구성(컨테이너 안 포트 · 바인딩 주소 · TZ)만 아래에 고정한다 — 어느 환경이든 같다.
-#   - 쓰지 않는 비밀값(gateway · user-service 브로커 비밀번호 · 브로커 관리자 비밀번호)은 빈 값으로 덮어 전달하지 않는다.
+#   - 쓰지 않는 비밀값(gateway · user-service 브로커 비밀번호 · 브로커 관리자 비밀번호 · 토스 시크릿 키)은 빈 값으로 덮어 전달하지 않는다.
 #
 # 부하 분산
 #   - 큐(명령): 모든 인스턴스가 같은 q.admin.cmd(admin.#)를 소비 → 브로커가 나눠 준다(경쟁 소비)
@@ -54,6 +54,7 @@ services:
             RABBITMQ_PASSWORD: ''
             REDIS_URL: ''
             REDIS_PASSWORD: ''
+            TOSS_SECRET_KEY: ''
         deploy:
             replicas: ${ADMIN_SERVICE_REPLICAS:-1}
         expose:

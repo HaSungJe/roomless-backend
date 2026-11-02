@@ -1,6 +1,9 @@
 import {randomUUID} from 'node:crypto';
 import type {DataSource, EntityTarget, ObjectLiteral} from 'typeorm';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
+import {PaymentStateEntity} from '../entities/payment/payment-state.entity.js';
+import {ReservationDetailTypeEntity} from '../entities/reservation/reservation-detail-type.entity.js';
+import {ReservationStateEntity} from '../entities/reservation/reservation-state.entity.js';
 import {RoomPlanTypeEntity} from '../entities/room/room-plan-type.entity.js';
 import {RoomStateEntity} from '../entities/room/room-state.entity.js';
 import {StoreApplicationStateEntity} from '../entities/store/store-application-state.entity.js';
@@ -96,6 +99,36 @@ export const ROOM_PLAN_TYPE_SEED_DATA: RoomPlanTypeEntity[] = [
 ];
 
 /**
+ * 예약 상태(t_reservation_state) 기본 데이터 — 점유(배타 제약)는 PENDING · CONFIRMED · CHECKED_IN.
+ * 이용 완료는 체크아웃 · 이용 시간 경과(Phase 19), 결제 대기 만료는 DB 에만 남고 이용자 이력에서 숨긴다(Phase 17).
+ */
+export const RESERVATION_STATE_SEED_DATA: ReservationStateEntity[] = [
+    {reservation_state_id: 'PENDING', reservation_state_name: '결제 대기'},
+    {reservation_state_id: 'CONFIRMED', reservation_state_name: '예약 확정'},
+    {reservation_state_id: 'CHECKED_IN', reservation_state_name: '이용 중'},
+    {reservation_state_id: 'COMPLETED', reservation_state_name: '이용 완료'},
+    {reservation_state_id: 'CANCELED', reservation_state_name: '취소'},
+    {reservation_state_id: 'EXPIRED', reservation_state_name: '결제 대기 만료'},
+];
+
+/** 예약 구간 종류(t_reservation_detail_type) 기본 데이터 */
+export const RESERVATION_DETAIL_TYPE_SEED_DATA: ReservationDetailTypeEntity[] = [
+    {reservation_detail_type_id: 'BASE', reservation_detail_type_name: '기본'},
+    {reservation_detail_type_id: 'EXTENSION', reservation_detail_type_name: '연장'},
+];
+
+/** 결제 상태(t_payment_state) 기본 데이터 — 환불은 100% 만이라 부분 환불 상태는 없다 */
+export const PAYMENT_STATE_SEED_DATA: PaymentStateEntity[] = [
+    {payment_state_id: 'READY', payment_state_name: '결제 대기'},
+    {payment_state_id: 'DONE', payment_state_name: '결제 완료'},
+    {payment_state_id: 'FAILED', payment_state_name: '결제 실패'},
+    {payment_state_id: 'EXPIRED', payment_state_name: '결제 만료'},
+    {payment_state_id: 'REFUND_REQUESTED', payment_state_name: '환불 신청'},
+    {payment_state_id: 'REFUNDED', payment_state_name: '환불 완료'},
+    {payment_state_id: 'REFUND_FAILED', payment_state_name: '환불 실패'},
+];
+
+/**
  * 첫 총관리자 `admin` / `1234` — 비밀번호는 시드 시점에 bcrypt + pepper 로 해시하고, 첫 로그인 때 변경 필요로 둔다.
  * login_id 로 이미 있는지 확인하므로(SEED_TARGETS 의 key), 비밀번호를 바꾼 뒤에는 덮지 않는다.
  *
@@ -163,6 +196,9 @@ export const SEED_TARGETS: SeedTarget[] = [
     {entity: StoreFilePurposeEntity, data: STORE_FILE_PURPOSE_SEED_DATA},
     {entity: RoomStateEntity, data: ROOM_STATE_SEED_DATA},
     {entity: RoomPlanTypeEntity, data: ROOM_PLAN_TYPE_SEED_DATA},
+    {entity: ReservationStateEntity, data: RESERVATION_STATE_SEED_DATA},
+    {entity: ReservationDetailTypeEntity, data: RESERVATION_DETAIL_TYPE_SEED_DATA},
+    {entity: PaymentStateEntity, data: PAYMENT_STATE_SEED_DATA},
     {entity: UserEntity, data: buildSuperAdminSeed, key: 'login_id'},
     {entity: UserSettingEntity, data: buildSuperAdminSettingSeed, key: 'user_id'},
 ];

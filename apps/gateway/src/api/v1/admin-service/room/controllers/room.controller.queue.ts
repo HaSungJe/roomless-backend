@@ -290,7 +290,7 @@ export class RoomQueueController {
     }
 
     /**
-     * 호실 수정 (업체 관리자) — 그룹(이동 포함) · 호실명 · 층 통째로. done 의 data 는 null.
+     * 호실 수정 (업체 관리자) — 호실명 · 층 통째로(그룹은 바꾸지 않는다 — 잘못 등록했으면 지우고 다시 등록). done 의 data 는 null.
      */
     @Patch('/:room_id')
     @UseGuards(PassportJwtManagerAuthGuard)

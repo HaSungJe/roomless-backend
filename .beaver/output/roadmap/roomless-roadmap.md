@@ -28,7 +28,7 @@ flowchart LR
   P11 --> P13["Phase 13 · 객실 관리 (6)"]:::done
   P12 --> P13
   P12 --> P14["Phase 14 · 문 상태 (3)"]:::done
-  P12 --> P16["Phase 16 · reservation 기반 (4)"]:::todo
+  P12 --> P16["Phase 16 · reservation 기반 (4)"]:::inprog
   P13 --> P17["Phase 17 · 예약·결제 (7)"]:::todo
   P16 --> P17
   P14 --> P15["Phase 15 · 문 관리·QR 확인 (3)"]:::todo
@@ -70,7 +70,7 @@ flowchart LR
 - Phase 12 — room 스키마 · 유닛 7개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room · store, libs/database/src/migrations, libs/database/src/soft-delete.ts, apps/*/repositories · done
 - Phase 13 — 객실 관리 · 유닛 6개 · 의존: Phase 11, 12 · 푼다: Phase 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · done
 - Phase 14 — 문 상태 · 유닛 3개 · 의존: Phase 12 · 푼다: Phase 15, 23 · 파일 집합: libs/integration/src/{redis,door}, apps/user-service/src/door, apps/gateway/src/api/v1/user-service/door, libs/contracts/src/door, compose.redis.yml, compose.*.yml, scripts/docker-network.mjs, package.json, .env.example, README.md, AGENTS.md, docs/ · done
-- Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/reservation, libs/database/src/migrations, apps/user-service/src/reservation(포트) · todo
+- Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/reservation, libs/database/src/migrations, apps/user-service/src/reservation(포트) · in-progress
 - Phase 17 — 예약·결제 · 유닛 7개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
 - Phase 15 — 문 관리·QR 확인 · 유닛 3개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/door(업체 문 목록 · 바로 열기), apps/user-service/src/reservation(내 예약 방 · QR), apps/gateway/src/api/v1/{admin-service,user-service}, libs/contracts/src/{door,reservation} · todo
 - Phase 18 — discovery · 유닛 4개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/admin-service/src/discovery, apps/gateway/src/api/v1/admin-service/discovery, libs/contracts/src/discovery · todo
@@ -83,7 +83,7 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 16
+지금: Phase 16 진행 중 · Next up: Phase 16
 
 ## 지금 할 일
 Phase 16 reservation 기반 시작하기
@@ -377,12 +377,14 @@ report: `.beaver/output/report/door/door-state-report.md` · review: `main-revie
 ### Phase 16 — reservation 기반 (예약 · 결제 스키마 · 결제 포트) · depends: Phase 12
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 63 | `t_reservation_state` 룩업 + 시드 | 결제 대기 · 결제 완료 · 체크인 · 완료 · 취소 | — | — | todo |
-| 64 | `t_reservation` | 호실 · 상품 · 적용 가격 · `start_at` · `end_at` · `blocked_until` · 연장 앞 예약, 점유 구간 배타 제약(활성 상태만) | `btree_gist` 확장 · `db:check`(PGlite) 지원 | 50, 51, 63 | todo |
-| 65 | `t_payment` | PG 식별자 · 수단 · 금액 · 상태 · 환불 금액 | — | 64 | todo |
-| 66 | `PaymentGateway` 포트 + 토스페이먼츠 어댑터 | 결제 · 환불 — 개발은 토스 테스트 키로 | — | 65 | todo |
+| 63 | `t_reservation_state` 룩업 + 시드 | 결제 대기 · 결제 완료 · 체크인 · 완료 · 취소 | — | — | in-progress |
+| 64 | `t_reservation` | 호실 · 상품 · 적용 가격 · `start_at` · `end_at` · `blocked_until` · 연장 앞 예약, 점유 구간 배타 제약(활성 상태만) | `btree_gist` 확장 · `db:check`(PGlite) 지원 | 50, 51, 63 | in-progress |
+| 65 | `t_payment` | PG 식별자 · 수단 · 금액 · 상태 · 환불 금액 | — | 64 | in-progress |
+| 66 | `PaymentGateway` 포트 + 토스페이먼츠 어댑터 | 결제 · 환불 — 개발은 토스 테스트 키로 | — | 65 | in-progress |
 
 **Expected data contract**: `t_reservation_state` · `t_reservation` · `t_payment`, 포트 `PaymentGateway`.
+
+build 완료 — report: `.beaver/output/report/reservation/reservation-schema-report.md`. 마이그레이션 `ReservationSchema`(테이블 6개 — 구간 `t_reservation_detail` · 룩업 3개 포함), 포트 `PAYMENT_GATEWAY`(조회 검증 · 환불 — 승인은 프론트), 호실 그룹 고정.
 
 ### Phase 17 — 예약·결제 (가용성 · 예약 · 취소 · 업체 측 변경) · depends: Phase 13, Phase 16 (+ Phase 3, Phase 11)
 | # | Unit | Goal | Key decision | Depends | Status |

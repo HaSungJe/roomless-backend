@@ -122,7 +122,17 @@ function registerMigration(className, fileName) {
     const lastImportIndex = lines.reduce((last, line, index) => (line.startsWith('import ') ? index : last), -1);
     lines.splice(lastImportIndex + 1, 0, importLine);
     let source = lines.join('\n');
-    source = source.replace(/export const MIGRATIONS = \[([^\]]*)\];/, (_m, items) => `export const MIGRATIONS = [${items.trim() ? `${items.trim()}, ` : ''}${className}];`);
+    // 한 줄에 하나씩(Prettier 가 200자를 넘는 배열을 펼친 모양) — 한 줄 · 여러 줄(끝 쉼표) 어느 쪽이든 읽는다
+    source = source.replace(/export const MIGRATIONS = \[([^\]]*)\];/, (_m, items) => {
+        const names = [
+            ...items
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean),
+            className,
+        ];
+        return `export const MIGRATIONS = [\n${names.map((name) => `    ${name},`).join('\n')}\n];`;
+    });
     writeFileSync(MIGRATIONS_REGISTRY, source);
 }
 

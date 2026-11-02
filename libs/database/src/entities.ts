@@ -1,4 +1,10 @@
 import {ApiLogEntity} from './entities/api-log/api-log.entity.js';
+import {PaymentStateEntity} from './entities/payment/payment-state.entity.js';
+import {PaymentEntity} from './entities/payment/payment.entity.js';
+import {ReservationDetailTypeEntity} from './entities/reservation/reservation-detail-type.entity.js';
+import {ReservationDetailEntity} from './entities/reservation/reservation-detail.entity.js';
+import {ReservationStateEntity} from './entities/reservation/reservation-state.entity.js';
+import {ReservationEntity} from './entities/reservation/reservation.entity.js';
 import {RoomGroupImageEntity} from './entities/room/room-group-image.entity.js';
 import {RoomGroupPlanPriceEntity} from './entities/room/room-group-plan-price.entity.js';
 import {RoomGroupPlanEntity} from './entities/room/room-group-plan.entity.js';
@@ -52,6 +58,12 @@ export const ENTITIES = [
     RoomEntity,
     RoomGroupPlanEntity,
     RoomGroupPlanPriceEntity,
+    ReservationStateEntity,
+    ReservationDetailTypeEntity,
+    PaymentStateEntity,
+    PaymentEntity,
+    ReservationEntity,
+    ReservationDetailEntity,
     UserEntity,
     UserSettingEntity,
     SessionEntity,

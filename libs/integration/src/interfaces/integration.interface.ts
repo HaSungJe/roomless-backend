@@ -133,3 +133,78 @@ export interface DoorStoreInterface {
      */
     close(room_id: string, changed_at: string): Promise<void>;
 }
+
+/** 결제 환경 — TEST: 토스 테스트 키(test_), LIVE: 실결제 */
+export type PaymentEnvironment = 'TEST' | 'LIVE';
+
+/** 토스에서 다시 읽은 결제 1건 — 프론트가 넘긴 결과를 이것과 대조해 검증한다 */
+export interface PaymentLookupResult {
+    /** 토스 결제 키 */
+    payment_key: string;
+    /** 주문번호 — 우리 payment_id */
+    order_id: string;
+    /** 토스 결제 상태(READY · IN_PROGRESS · DONE · CANCELED · PARTIAL_CANCELED · ABORTED · EXPIRED …) */
+    status: string;
+    /** 결제 금액(원 — 취소해도 바뀌지 않는 원래 금액) */
+    total_amount: number;
+    /** 결제 수단(카드 · 간편결제 등) — 승인 전이면 null */
+    method: string | null;
+    /** 승인 시각 — 승인 전이면 null */
+    approved_at: Date | null;
+    /** 영수증 주소 — 없으면 null */
+    receipt_url: string | null;
+}
+
+/** 환불(전액 취소) 요청 */
+export interface PaymentCancelInput {
+    /** 우리 결제 ID — 멱등키(cancel-<payment_id>)에 쓴다 */
+    payment_id: string;
+    /** 토스 결제 키 */
+    payment_key: string;
+    /** 취소 사유(토스 cancelReason, 200자) */
+    reason: string;
+}
+
+/** 환불 결과 */
+export interface PaymentCancelResult {
+    /** 취소된 금액(원) */
+    canceled_amount: number;
+    /** 취소 시각 */
+    canceled_at: Date;
+}
+
+/**
+ * 결제 포트(토스페이먼츠) — 결제창 · 승인은 프론트(Next.js)가 하고, 서버는 토스에서 다시 읽어 검증(getPayment · findByPaymentId)하고 환불(cancel)한다.
+ * 업무 실패는 400 `{message: 토스 메시지, payment_error_code: 토스 code}`(재시도해도 소용없다), 일시 실패는 503 `{message: PAYMENT_UNAVAILABLE_MESSAGE}`(큐 재시도).
+ */
+export interface PaymentGatewayInterface {
+    /**
+     * 결제 환경 — 시크릿 키 접두사로 정한다(test_ → TEST, 그 밖 → LIVE). 결제 행을 만들 때 environment 에 넣는다.
+     *
+     * @throws ServiceUnavailableException `{message: PAYMENT_UNAVAILABLE_MESSAGE}` — 시크릿 키가 없을 때
+     */
+    environment(): PaymentEnvironment;
+
+    /**
+     * 결제 키로 토스에서 결제를 다시 읽는다(GET /v1/payments/{paymentKey}).
+     *
+     * @returns 결제 — 토스에 없으면 null
+     * @throws BadRequestException 업무 실패 · ServiceUnavailableException 일시 실패
+     */
+    getPayment(payment_key: string): Promise<PaymentLookupResult | null>;
+
+    /**
+     * 주문번호(우리 payment_id)로 토스에서 결제를 읽는다(GET /v1/payments/orders/{orderId}) — 프론트가 결과를 못 넘긴 결제의 재확인용.
+     *
+     * @returns 결제 — 토스에 없으면 null
+     * @throws BadRequestException 업무 실패 · ServiceUnavailableException 일시 실패
+     */
+    findByPaymentId(payment_id: string): Promise<PaymentLookupResult | null>;
+
+    /**
+     * 전액 취소(환불) — Idempotency-Key cancel-<payment_id> 를 붙여 재시도가 중복 취소를 만들지 않는다.
+     *
+     * @throws BadRequestException 업무 실패(이미 취소 · 취소 불가 금액 · 결제 없음 등) · ServiceUnavailableException 일시 실패
+     */
+    cancel(input: PaymentCancelInput): Promise<PaymentCancelResult>;
+}
