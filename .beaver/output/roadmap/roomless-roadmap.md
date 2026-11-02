@@ -28,8 +28,8 @@ flowchart LR
   P11 --> P13["Phase 13 · 객실 관리 (6)"]:::done
   P12 --> P13
   P12 --> P14["Phase 14 · 문 상태 (3)"]:::done
-  P12 --> P16["Phase 16 · reservation 기반 (4)"]:::inprog
-  P13 --> P17["Phase 17 · 예약·결제 (7)"]:::todo
+  P12 --> P16["Phase 16 · reservation 기반 (4)"]:::done
+  P13 --> P17["Phase 17 · 예약·결제 (8)"]:::todo
   P16 --> P17
   P14 --> P15["Phase 15 · 문 관리·QR 확인 (3)"]:::todo
   P17 --> P15
@@ -70,8 +70,8 @@ flowchart LR
 - Phase 12 — room 스키마 · 유닛 7개 · 의존: Phase 8 · 푼다: Phase 13, 14, 16 · 파일 집합: libs/database/src/entities/room · store, libs/database/src/migrations, libs/database/src/soft-delete.ts, apps/*/repositories · done
 - Phase 13 — 객실 관리 · 유닛 6개 · 의존: Phase 11, 12 · 푼다: Phase 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · done
 - Phase 14 — 문 상태 · 유닛 3개 · 의존: Phase 12 · 푼다: Phase 15, 23 · 파일 집합: libs/integration/src/{redis,door}, apps/user-service/src/door, apps/gateway/src/api/v1/user-service/door, libs/contracts/src/door, compose.redis.yml, compose.*.yml, scripts/docker-network.mjs, package.json, .env.example, README.md, AGENTS.md, docs/ · done
-- Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/reservation, libs/database/src/migrations, apps/user-service/src/reservation(포트) · in-progress
-- Phase 17 — 예약·결제 · 유닛 7개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
+- Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/{reservation,payment}, libs/database/src/migrations, libs/integration/src/payment · done
+- Phase 17 — 예약·결제 · 유닛 8개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
 - Phase 15 — 문 관리·QR 확인 · 유닛 3개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/door(업체 문 목록 · 바로 열기), apps/user-service/src/reservation(내 예약 방 · QR), apps/gateway/src/api/v1/{admin-service,user-service}, libs/contracts/src/{door,reservation} · todo
 - Phase 18 — discovery · 유닛 4개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/admin-service/src/discovery, apps/gateway/src/api/v1/admin-service/discovery, libs/contracts/src/discovery · todo
 - Phase 19 — 이용 · 유닛 5개 · 의존: Phase 5, 15, 17 · 푼다: Phase 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation(crontabs), apps/gateway/src/api/v1/user-service/reservation · todo
@@ -83,15 +83,24 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: Phase 16 진행 중 · Next up: Phase 16
+지금: 진행 중 없음 · Next up: Phase 17
 
 ## 지금 할 일
-Phase 16 reservation 기반 시작하기
-- #63 t_reservation_state 룩업 + 시드
-- #64 t_reservation
-- #65 t_payment
-- #66 PaymentGateway 포트 + 토스페이먼츠 어댑터
+Phase 17 예약·결제 시작하기
+- #67 가용성 · 가격 · 환불 util
+- #68 호실별 예약 가능 시간 조회
+- #69 예약 생성
+- #70 예약 취소
+- #71 내 예약 목록 · 상세
+- #72 업체 예약 현황
+- #73 업체 측 예약 취소 · 호실 이동
+- #113 결제 확인
+- 시작 전에 정하기
+  예약 · 조회가 객실 데이터를 읽는 방법 — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
+  영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약 — 업체 취소(100% 환불 + 알림)로 처리할지, 일시 예약불가처럼 특수 표시로 둘지. (Phase 9 · 11 → Phase 17 기획 때 — #41 · #46 · #94)
+  결제 대기 유지 시간 — 추천: 10분. (Phase 17)
 - ok → 다음
+- 사용자 — 마이그레이션 `ReservationSchema` 적용(`RoomState` 뒤 — 예약 · 구간 · 결제 테이블과 룩업 3개, 새 테이블 6개만 생기고 기존 데이터는 바뀌지 않는다), `.env` 에 `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — docs/guides/toss-setup.md). 키는 Phase 17 에서 처음 쓰여 지금은 비어 있어도 영향이 없다
 - 사용자 — `.env` 에 `REDIS_PASSWORD` · `REDIS_URL` 추가(`.env.example` 의 Redis 절) → `npm run docker:network` · `npm run docker:redis` → user-service 묶음 다시 띄우기(이제 `REDIS_URL` 없이는 뜨지 않는다). 로컬 실행은 hosts 에 `127.0.0.1 redis` — docs/guides/redis-setup.md
 - 사용자 — 마이그레이션 `RoomState` 적용(`RoomSchema` 뒤 — 데이터만 바꾼다: 호실 상태에 예약가능 · 예약완료가 생기고, 스탠바이 호실은 예약가능으로 옮겨진 뒤 스탠바이가 지워지며, 이용중이 사용중으로 바뀐다)
 - 사용자 — 마이그레이션 `RoomSchema` 적용(`StoreReservationPolicy` 뒤 — 적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한이 필요하다(RDS 13+ 는 DB 의 CREATE 권한). 기존 업체마다 업체 상품 설정 3행이 들어가고, 업체 편의시설(`store_detail`)은 사라지며, store 테이블 5개가 소프트 삭제로 바뀐다)
@@ -377,14 +386,14 @@ report: `.beaver/output/report/door/door-state-report.md` · review: `main-revie
 ### Phase 16 — reservation 기반 (예약 · 결제 스키마 · 결제 포트) · depends: Phase 12
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 63 | `t_reservation_state` 룩업 + 시드 | 결제 대기 · 결제 완료 · 체크인 · 완료 · 취소 | — | — | in-progress |
-| 64 | `t_reservation` | 호실 · 상품 · 적용 가격 · `start_at` · `end_at` · `blocked_until` · 연장 앞 예약, 점유 구간 배타 제약(활성 상태만) | `btree_gist` 확장 · `db:check`(PGlite) 지원 | 50, 51, 63 | in-progress |
-| 65 | `t_payment` | PG 식별자 · 수단 · 금액 · 상태 · 환불 금액 | — | 64 | in-progress |
-| 66 | `PaymentGateway` 포트 + 토스페이먼츠 어댑터 | 결제 · 환불 — 개발은 토스 테스트 키로 | — | 65 | in-progress |
+| 63 | 예약 상태 · 구간 종류 · 결제 상태 룩업 + 시드 | 예약 6(결제 대기 · 예약 확정 · 이용 중 — 점유 · 이용 완료 · 취소 · 결제 대기 만료) · 구간 2(기본 · 연장) · 결제 7 | — | — | done(836fb5b) |
+| 64 | `t_reservation` · `t_reservation_detail` | 예약 1건(호실 · 기본 상품 · 입실 · 최종 체크아웃 · 정비시간 · 점유 끝 · 합계 · 환불 마감 · 취소 주체와 사유) + 구간(기본 1 + 연장 n — 구간마다 결제 FK), 점유 구간 배타 제약(활성 상태만) | `btree_gist` 확장 · `db:check`(PGlite) 지원 | 50, 51, 63 | done(836fb5b) |
+| 65 | `t_payment` | 결제 시도마다 1행 — `payment_id` = 토스 orderId · 주문명 · 금액 스냅샷 · 결제 환경(TEST · LIVE) · 결제 키 · 환불 · 실패 사유, 상태별 CHECK | — | 64 | done(836fb5b) |
+| 66 | `PAYMENT_GATEWAY` 포트 + 토스페이먼츠 어댑터 | 결제창 · 승인은 프론트, 서버는 토스 조회로 검증 · 전액 취소(환불) — 개발은 토스 테스트 키로 | — | 65 | done(836fb5b) |
 
-**Expected data contract**: `t_reservation_state` · `t_reservation` · `t_payment`, 포트 `PaymentGateway`.
+**Data contract**: `t_reservation_state` · `t_reservation_detail_type` · `t_payment_state` · `t_reservation` · `t_reservation_detail` · `t_payment`, 포트 `PAYMENT_GATEWAY`(libs/integration).
 
-build 완료 — report: `.beaver/output/report/reservation/reservation-schema-report.md`. 마이그레이션 `ReservationSchema`(테이블 6개 — 구간 `t_reservation_detail` · 룩업 3개 포함), 포트 `PAYMENT_GATEWAY`(조회 검증 · 환불 — 승인은 프론트), 호실 그룹 고정.
+report: `.beaver/output/report/reservation/reservation-schema-report.md` · review: `main-review-261102.md`. 마이그레이션 `ReservationSchema`(테이블 6개 — 구간 `t_reservation_detail` · 룩업 3개 포함), 포트 `PAYMENT_GATEWAY`(조회 검증 · 환불 — 승인은 프론트), 호실 그룹 고정.
 
 ### Phase 17 — 예약·결제 (가용성 · 예약 · 취소 · 업체 측 변경) · depends: Phase 13, Phase 16 (+ Phase 3, Phase 11)
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -396,6 +405,7 @@ build 완료 — report: `.beaver/output/report/reservation/reservation-schema-r
 | 71 | 내 예약 목록 · 상세 | 동기 | — | 69 | todo |
 | 72 | 업체 예약 현황 | 호실별 시간표 | — | 69 | todo |
 | 73 | 업체 측 예약 취소 · 호실 이동 | 100% 환불 · 이용자 SMS 필수 (큐) | 호실 이동 범위(같은 그룹만) | 17, 69 | todo |
+| 113 | 결제 확인 | 프론트가 토스 승인 뒤 넘긴 결과를 토스 조회로 대조(상태 DONE · 금액 · orderId = `payment_id`)해 결제 · 구간 · 예약을 확정 (큐) | 대조 실패 · 금액 불일치 처리 · 만료 전 재확인(`findByPaymentId`) | 66, 69 | todo |
 
 **Expected APIs** (가칭):
 
@@ -407,6 +417,7 @@ build 완료 — report: `.beaver/output/report/reservation/reservation-schema-r
 | #71 | GET | `/api/v1/user-service/reservation` · `/:reservation_id` | 내 예약 (이용자 가드) |
 | #72 | GET | `/api/v1/user-service/reservation/store` | 업체 예약 현황 (매니저 가드) |
 | #73 | PATCH | `/api/v1/user-service/reservation/:reservation_id/store-cancel` · `/room` | 업체 취소 · 호실 이동 (SSE, 매니저 가드) |
+| #113 | POST | `/api/v1/user-service/reservation/payment-confirm` | 결제 확인 (SSE, 이용자 가드) |
 
 ### Phase 18 — discovery (이용자 진입 동선 — 활성 업체만) · depends: Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -480,10 +491,10 @@ build 완료 — report: `.beaver/output/report/reservation/reservation-schema-r
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 73/105 units done (14/24 phases)
-**Next up**: Phase 16 reservation 기반 — 의존(Phase 12) 모두 완료
+**Progress**: 77/106 units done (15/24 phases)
+**Next up**: Phase 17 예약·결제 — 의존(Phase 13, Phase 3) 모두 완료
 
-함께 시작할 수 있는 것: reservation 기반(Phase 16) · 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 14 와 파일이 겹치지 않는다. 16 · 22 는 둘 다 마이그레이션을 더해 서로는 동시에 돌리지 않는다.
+함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
 
 ## Cross-Cutting Rules
 
