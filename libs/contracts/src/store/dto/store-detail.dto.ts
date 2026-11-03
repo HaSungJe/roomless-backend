@@ -92,8 +92,11 @@ export class StoreDetailResultDto {
     @ApiProperty({description: '예약 가능 시작(시간) — 이용 시작 n시간 전부터 예약'})
     booking_open_hours: number;
 
-    @ApiProperty({description: '100% 환불 기준(시간) — 이용 시작 n시간 전까지 환불 신청, 이후 환불 불가'})
-    refund_deadline_hours: number;
+    @ApiProperty({description: '100% 환불 마감(분) — 이용 시작 n분 전까지 취소하면 100% 환불'})
+    refund_deadline_minutes: number;
+
+    @ApiProperty({description: '마감 뒤 환불 비율(%) — 환불 마감 뒤 ~ 이용 시작 전 취소'})
+    late_refund_percent: number;
 
     @ApiProperty({description: '정지 사유 (영업중지일 때만)', nullable: true, type: String})
     suspend_comment: string | null;

@@ -280,7 +280,7 @@ describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 ·
         '"s"."owner_name" AS "s_owner_name", "s"."phone" AS "s_phone", "s"."address" AS "s_address", "s"."address_detail" AS "s_address_detail", "s"."latitude" AS "s_latitude", ' +
         '"s"."longitude" AS "s_longitude", "s"."introduction" AS "s_introduction", "s"."is_always_open" AS "s_is_always_open", ' +
         '"s"."is_open" AS "s_is_open", "s"."maintenance_minutes" AS "s_maintenance_minutes", "s"."booking_open_hours" AS "s_booking_open_hours", ' +
-        '"s"."refund_deadline_hours" AS "s_refund_deadline_hours", "s"."suspend_comment" AS "s_suspend_comment", "s"."is_deleted" AS "s_is_deleted", "s"."delete_backup" AS "s_delete_backup", ' +
+        '"s"."refund_deadline_minutes" AS "s_refund_deadline_minutes", "s"."late_refund_percent" AS "s_late_refund_percent", "s"."suspend_comment" AS "s_suspend_comment", "s"."is_deleted" AS "s_is_deleted", "s"."delete_backup" AS "s_delete_backup", ' +
         '"s"."created_at" AS "s_created_at", "s"."updated_at" AS "s_updated_at", "s"."store_state_id" AS "s_store_state_id" FROM "t_store" "s"';
 
     const PERIOD_SELECT =

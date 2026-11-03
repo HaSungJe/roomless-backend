@@ -1,6 +1,6 @@
 # 외부 연동 (`libs/integration`)
 
-> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 문 열기 · 닫기(문 정보 — Redis), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 을 import 한다). 결제(`PaymentModule`)는 예약 기능(Phase 17)에서 처음 쓴다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md), 토스는 [guides/toss-setup.md](guides/toss-setup.md).
+> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 문 열기 · 닫기(문 정보 — Redis), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 을 import 한다). 결제(`PaymentModule`)는 user-service 예약(결제 환경 · 결제 확인 `getPayment`)과 scheduler(결제 대기 만료 · 늦은 승인 재확인 `findByPaymentId` · 환불 `cancel`)가 쓴다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md), 토스는 [guides/toss-setup.md](guides/toss-setup.md).
 
 ## 원칙
 
@@ -16,7 +16,7 @@
   2. 클라이언트가 `upload_url` 로 PUT — 요청 때 보낸 `content_type` 과 같은 `Content-Type` 헤더로(서명에 들어간다)
   3. 등록 명령에 키만 보낸다 → service 가 `exists(key)` 확인 후 저장
   4. 열람 주소는 파일 용도 룩업의 `is_private` 로 고른다 — 0 이면 `getPublicUrl(key)`(CDN 공개 주소), 1 이면 `createDownloadUrl(key)`(서명된 열람 주소, `STORAGE_DOWNLOAD_URL_TTL_SECONDS` 600초)
-- **결제는 `PAYMENT_GATEWAY`(토스페이먼츠)** — 결제창 · 승인은 프론트(Next.js), 서버는 토스에서 다시 읽어 검증(`getPayment` · `findByPaymentId`)하고 환불(`cancel` — `Idempotency-Key: cancel-<payment_id>`)한다. 프론트가 넘긴 값만 믿지 않는다.
+- **결제는 `PAYMENT_GATEWAY`(토스페이먼츠)** — 결제창 · 승인은 프론트(Next.js), 서버는 토스에서 다시 읽어 `verifyPaymentLookup`(결제됨 · 미결제 · 금액 불일치 · 다른 주문)으로 대조하고, 환불은 금액을 지정한 취소(`cancel({…, amount})` — 전액 또는 일부, `Idempotency-Key: cancel-<payment_id>`)로 한다. 서버 요청 안에서는 환불 신청만 기록하고 토스 취소는 scheduler crontab 이 한다. 프론트가 넘긴 값만 믿지 않는다.
 - service 는 포트(Symbol 토큰 + 인터페이스)만 안다. AWS SDK · 자격증명은 어댑터 안에만 둔다.
 
 ## 구성
@@ -25,8 +25,8 @@
 |---|---|
 | `integration.symbols.ts` | `SMS_SENDER` · `STORAGE_GATEWAY` · `DOOR_STORE` · `PAYMENT_GATEWAY` |
 | `interfaces/integration.interface.ts` | `SmsSenderInterface` · `SmsMessage` · `StorageGatewayInterface` · `StorageUploadInput` · `StorageUploadResult` · `StorageDownloadResult` · `DoorStoreInterface` · `DoorRecord` · `DoorState` · `PaymentGatewayInterface` · `PaymentEnvironment` · `PaymentLookupResult` · `PaymentCancelInput` · `PaymentCancelResult` |
-| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` · `STORAGE_DOWNLOAD_URL_TTL_SECONDS` · `REDIS_UNAVAILABLE_MESSAGE` · `DOOR_QR_ISSUE_FAILED_MESSAGE` · `DOOR_STATE` · `DOOR_TIME_NONE` · `DOOR_QR_ISSUE_ATTEMPTS` · `PAYMENT_UNAVAILABLE_MESSAGE` · `PAYMENT_FAILED_MESSAGE` · `TOSS_API_BASE_URL` · `PAYMENT_REQUEST_TIMEOUT_MS` |
-| `integration.util.ts` | `toE164KrPhone` — 국내 번호 → `+82…` · `classifyTossFailure` — 토스 실패 → 업무 · 일시 · 결제 없음 |
+| `integration.constants.ts` | `SMS_UNAVAILABLE_MESSAGE` · `STORAGE_UNAVAILABLE_MESSAGE` · `STORAGE_PUBLIC_URL_MISSING_MESSAGE` · `STORAGE_UPLOAD_URL_TTL_SECONDS` · `STORAGE_DOWNLOAD_URL_TTL_SECONDS` · `REDIS_UNAVAILABLE_MESSAGE` · `DOOR_QR_ISSUE_FAILED_MESSAGE` · `DOOR_STATE` · `DOOR_TIME_NONE` · `DOOR_QR_ISSUE_ATTEMPTS` · `PAYMENT_UNAVAILABLE_MESSAGE` · `PAYMENT_FAILED_MESSAGE` · `TOSS_API_BASE_URL` · `PAYMENT_REQUEST_TIMEOUT_MS` · `TOSS_PAYMENT_STATUS_DONE` |
+| `integration.util.ts` | `toE164KrPhone` — 국내 번호 → `+82…` · `classifyTossFailure` — 토스 실패 → 업무 · 일시 · 결제 없음 · `verifyPaymentLookup` — 토스 조회 결과 ↔ 우리 결제 행 대조 |
 | `sms/sns-sms.sender.ts` · `sms/sms.module.ts` | `SnsSmsSender`(SNS `Publish`, Transactional) · `SmsModule`(`@Global`) |
 | `storage/s3-storage.gateway.ts` · `storage/storage.module.ts` | `S3StorageGateway`(presigned PutObject — Content-Type 서명 · presigned GetObject · HeadObject · DeleteObject) · `StorageModule`(`@Global`) |
 | `redis/redis.connection.ts` · `redis/redis.module.ts` | `RedisConnection`(node-redis — 부팅을 막지 않는 연결 · 끊긴 동안 명령을 쌓지 않음 · 준비 전 503) · `RedisModule`(`@Global`) |

@@ -117,7 +117,7 @@ export const RESERVATION_DETAIL_TYPE_SEED_DATA: ReservationDetailTypeEntity[] = 
     {reservation_detail_type_id: 'EXTENSION', reservation_detail_type_name: '연장'},
 ];
 
-/** 결제 상태(t_payment_state) 기본 데이터 — 환불은 100% 만이라 부분 환불 상태는 없다 */
+/** 결제 상태(t_payment_state) 기본 데이터 — 환불 금액은 전액 또는 일부라 부분 환불 상태를 따로 두지 않는다 */
 export const PAYMENT_STATE_SEED_DATA: PaymentStateEntity[] = [
     {payment_state_id: 'READY', payment_state_name: '결제 대기'},
     {payment_state_id: 'DONE', payment_state_name: '결제 완료'},

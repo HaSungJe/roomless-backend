@@ -1,9 +1,12 @@
 import {BadRequestException, Injectable, InternalServerErrorException} from '@nestjs/common';
 import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
+import {In} from 'typeorm';
 import type {FindOptionsWhere, Repository, SelectQueryBuilder} from 'typeorm';
 import {createValidationError} from '@app/common/utils/validation.js';
+import {RESERVATION_OCCUPYING_STATES} from '@app/contracts/reservation/reservation.constants.js';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
+import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import {RoomGroupImageEntity} from '@app/database/entities/room/room-group-image.entity.js';
 import {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import {RoomGroupPlanEntity} from '@app/database/entities/room/room-group-plan.entity.js';
@@ -34,6 +37,11 @@ export class RoomRepository implements RoomRepositoryInterface {
      * @param txHost 트랜잭션 전파용 EntityManager 홀더
      */
     constructor(private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>) {}
+
+    /** t_reservation — 호실 · 그룹 삭제 전 점유 예약 확인(예약 표를 room 어휘로 읽기만) */
+    private get reservations(): Repository<ReservationEntity> {
+        return this.txHost.tx.getRepository(ReservationEntity);
+    }
 
     /** t_store repository (현재 트랜잭션 기준) — 매니저의 소속 업체 */
     private get stores(): Repository<StoreEntity> {
@@ -136,6 +144,8 @@ export class RoomRepository implements RoomRepositoryInterface {
             .addSelect('p.usage_hours', 'usage_hours')
             .addSelect('p.check_in_time', 'check_in_time')
             .addSelect('p.check_out_time', 'check_out_time')
+            .addSelect('p.min_nights', 'min_nights')
+            .addSelect('p.max_nights', 'max_nights')
             .innerJoin(RoomPlanTypeEntity, 't', 't.room_plan_type_id = p.room_plan_type_id')
             .where('p.store_id = :store_id', {store_id});
     }
@@ -720,5 +730,48 @@ export class RoomRepository implements RoomRepositoryInterface {
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
+    }
+
+    /**
+     * 호실의 점유 예약(결제 대기 · 확정 · 이용 중) 수
+     *
+     * @param room_id 호실 ID
+     * @returns 개수
+     */
+    async countRoomActiveReservations(room_id: string): Promise<number> {
+        try {
+            return await this.reservations.count({where: {room_id, reservation_state_id: In(RESERVATION_OCCUPYING_STATES)}});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 그룹 호실들의 점유 예약 수
+     *
+     * @param room_group_id 객실 그룹 ID
+     * @returns 개수
+     */
+    async countGroupActiveReservations(room_group_id: string): Promise<number> {
+        try {
+            return await this.buildGroupActiveReservationsQuery(room_group_id).getCount();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 그룹 점유 예약 쿼리 — 지워지지 않은 그룹 호실 조인 · 점유 상태 IN. 매핑 민감(조인 · IN)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param room_group_id 객실 그룹 ID
+     * @returns 쿼리 빌더
+     */
+    buildGroupActiveReservationsQuery(room_group_id: string): SelectQueryBuilder<ReservationEntity> {
+        return this.reservations
+            .createQueryBuilder('v')
+            .innerJoin(RoomEntity, 'r', 'r.room_id = v.room_id')
+            .where('r.room_group_id = :room_group_id', {room_group_id})
+            .andWhere('r.is_deleted = 0')
+            .andWhere('v.reservation_state_id IN (:...states)', {states: RESERVATION_OCCUPYING_STATES});
     }
 }

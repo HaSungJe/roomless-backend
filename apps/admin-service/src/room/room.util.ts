@@ -177,6 +177,8 @@ export function toRoomPlanItem(row: RoomPlanRow): RoomPlanItemResultDto {
         usage_hours: row.usage_hours === null ? null : Number(row.usage_hours),
         check_in_time: toTimeOfDay(row.check_in_time),
         check_out_time: toTimeOfDay(row.check_out_time),
+        min_nights: row.min_nights === null ? null : Number(row.min_nights),
+        max_nights: row.max_nights === null ? null : Number(row.max_nights),
     };
 }
 

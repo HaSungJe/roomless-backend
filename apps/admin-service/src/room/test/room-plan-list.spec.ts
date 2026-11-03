@@ -12,7 +12,17 @@ describe('GET /internal/v1/admin-service/room/plan — 업체 상품 설정 조�
         repo = createRoomRepositoryMock();
         repo.findManagerStore.mockResolvedValue(storeRow());
         repo.findRoomPlanRows.mockResolvedValue([
-            planRow({room_plan_id: '3'.repeat(32), room_plan_type_id: 'LONG', room_plan_type_name: '연박', is_used: 0, days_of_week: 65, check_in_time: '16:00:00', check_out_time: '12:00:00'}),
+            planRow({
+                room_plan_id: '3'.repeat(32),
+                room_plan_type_id: 'LONG',
+                room_plan_type_name: '연박',
+                is_used: 0,
+                days_of_week: 65,
+                check_in_time: '16:00:00',
+                check_out_time: '12:00:00',
+                min_nights: 2,
+                max_nights: 14,
+            }),
             planRow({room_plan_id: '1'.repeat(32), room_plan_type_id: 'HOURLY', room_plan_type_name: '시간 이용', usage_hours: 3, check_in_time: null, check_out_time: null}),
             planRow(),
         ]);
@@ -35,9 +45,39 @@ describe('GET /internal/v1/admin-service/room/plan — 업체 상품 설정 조�
             expect(repo.findRoomPlanRows).toHaveBeenCalledWith(STORE_ID);
             expect(res.body).toEqual({
                 list: [
-                    {room_plan_type_id: 'HOURLY', room_plan_type_name: '시간 이용', is_used: 1, days_of_week: 127, usage_hours: 3, check_in_time: null, check_out_time: null},
-                    {room_plan_type_id: 'NIGHT', room_plan_type_name: '1박', is_used: 1, days_of_week: 127, usage_hours: null, check_in_time: '15:00', check_out_time: '11:00'},
-                    {room_plan_type_id: 'LONG', room_plan_type_name: '연박', is_used: 0, days_of_week: 65, usage_hours: null, check_in_time: '16:00', check_out_time: '12:00'},
+                    {
+                        room_plan_type_id: 'HOURLY',
+                        room_plan_type_name: '시간 이용',
+                        is_used: 1,
+                        days_of_week: 127,
+                        usage_hours: 3,
+                        check_in_time: null,
+                        check_out_time: null,
+                        min_nights: null,
+                        max_nights: null,
+                    },
+                    {
+                        room_plan_type_id: 'NIGHT',
+                        room_plan_type_name: '1박',
+                        is_used: 1,
+                        days_of_week: 127,
+                        usage_hours: null,
+                        check_in_time: '15:00',
+                        check_out_time: '11:00',
+                        min_nights: null,
+                        max_nights: null,
+                    },
+                    {
+                        room_plan_type_id: 'LONG',
+                        room_plan_type_name: '연박',
+                        is_used: 0,
+                        days_of_week: 65,
+                        usage_hours: null,
+                        check_in_time: '16:00',
+                        check_out_time: '12:00',
+                        min_nights: 2,
+                        max_nights: 14,
+                    },
                 ],
             });
         });

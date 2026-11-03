@@ -22,8 +22,14 @@ export class RoomPlanItemResultDto {
     @ApiProperty({description: '입실 시각 (HH:mm, 한국 시각) — 1박 · 연박(첫날)만, 시간 이용은 null', nullable: true, type: String})
     check_in_time: string | null;
 
-    @ApiProperty({description: '퇴실 시각 (HH:mm, 한국 시각 — 1박은 입실보다 이르면 다음 날, 연박은 마지막 날) — 시간 이용은 null', nullable: true, type: String})
+    @ApiProperty({description: '퇴실 시각 (HH:mm, 한국 시각 — 1박은 항상 다음 날, 연박은 마지막 날) — 시간 이용은 null', nullable: true, type: String})
     check_out_time: string | null;
+
+    @ApiProperty({description: '최소 박수 — 연박만, 시간 이용 · 1박은 null', nullable: true, type: Number})
+    min_nights: number | null;
+
+    @ApiProperty({description: '최대 박수 — 연박만, 시간 이용 · 1박은 null', nullable: true, type: Number})
+    max_nights: number | null;
 }
 
 /**

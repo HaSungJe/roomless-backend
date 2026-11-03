@@ -107,6 +107,8 @@ export function createRoomRepositoryMock(): RoomRepositoryMock {
         updateRoom: vi.fn(),
         deleteRoom: vi.fn(),
         deleteRooms: vi.fn(),
+        countRoomActiveReservations: vi.fn().mockResolvedValue(0),
+        countGroupActiveReservations: vi.fn().mockResolvedValue(0),
     };
 }
 
@@ -241,7 +243,8 @@ export function storeRow(override: Record<string, unknown> = {}): Record<string,
         is_open: 0,
         maintenance_minutes: 0,
         booking_open_hours: 72,
-        refund_deadline_hours: 1,
+        refund_deadline_minutes: 60,
+        late_refund_percent: 50,
         suspend_comment: null,
         is_deleted: 0,
         delete_backup: null,
@@ -268,6 +271,8 @@ export function planRow(override: Partial<RoomPlanRow> = {}): RoomPlanRow {
         usage_hours: null,
         check_in_time: '15:00:00',
         check_out_time: '11:00:00',
+        min_nights: null,
+        max_nights: null,
         ...override,
     };
 }

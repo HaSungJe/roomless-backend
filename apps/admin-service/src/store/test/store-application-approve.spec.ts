@@ -70,14 +70,15 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
                 is_open: 0,
                 maintenance_minutes: 0,
                 booking_open_hours: 72,
-                refund_deadline_hours: 1,
+                refund_deadline_minutes: 60,
+                late_refund_percent: 50,
                 suspend_comment: null,
                 is_deleted: 0,
                 delete_backup: null,
             });
             expect(store).not.toHaveProperty('store_detail');
 
-            // 업체 상품 설정 — 새 업체에 상품 종류마다 1행(판매 · 매일 · 기본 이용 시간 · 입실 · 퇴실 시각)
+            // 업체 상품 설정 — 새 업체에 상품 종류마다 1행(판매 · 매일 · 기본 이용 시간 · 입실 · 퇴실 시각 · 연박 박수)
             expect(repo.insertStorePlans).toHaveBeenCalledTimes(1);
             const plans = repo.insertStorePlans.mock.calls[0][0] as RoomPlanEntity[];
             expect(plans).toHaveLength(3);
@@ -86,10 +87,19 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
                 expect(plan.room_plan_id).toMatch(/^[a-f0-9]{32}$/);
                 expect(plan).toMatchObject({store_id: store.store_id, is_used: 1, days_of_week: 127});
             }
-            expect(plans.map(({room_plan_type_id, usage_hours, check_in_time, check_out_time}) => ({room_plan_type_id, usage_hours, check_in_time, check_out_time}))).toEqual([
-                {room_plan_type_id: 'HOURLY', usage_hours: 3, check_in_time: null, check_out_time: null},
-                {room_plan_type_id: 'NIGHT', usage_hours: null, check_in_time: '22:00', check_out_time: '09:00'},
-                {room_plan_type_id: 'LONG', usage_hours: null, check_in_time: '15:00', check_out_time: '11:00'},
+            expect(
+                plans.map(({room_plan_type_id, usage_hours, check_in_time, check_out_time, min_nights, max_nights}) => ({
+                    room_plan_type_id,
+                    usage_hours,
+                    check_in_time,
+                    check_out_time,
+                    min_nights,
+                    max_nights,
+                })),
+            ).toEqual([
+                {room_plan_type_id: 'HOURLY', usage_hours: 3, check_in_time: null, check_out_time: null, min_nights: null, max_nights: null},
+                {room_plan_type_id: 'NIGHT', usage_hours: null, check_in_time: '22:00', check_out_time: '09:00', min_nights: null, max_nights: null},
+                {room_plan_type_id: 'LONG', usage_hours: null, check_in_time: '15:00', check_out_time: '11:00', min_nights: 1, max_nights: 30},
             ]);
 
             // 파일 → 업체

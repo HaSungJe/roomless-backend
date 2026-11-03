@@ -10,6 +10,7 @@ import {StoreReservationPolicy1793260428802} from './migrations/1793260428802-St
 import {RoomSchema1793386485207} from './migrations/1793386485207-RoomSchema.js';
 import {RoomState1793400000000} from './migrations/1793400000000-RoomState.js';
 import {ReservationSchema1793603504255} from './migrations/1793603504255-ReservationSchema.js';
+import {ReservationBooking1793700505373} from './migrations/1793700505373-ReservationBooking.js';
 
 /**
  * DataSource 에 등록할 마이그레이션 목록 (실행 순서 = 클래스명 끝의 타임스탬프 순).
@@ -28,4 +29,5 @@ export const MIGRATIONS = [
     RoomSchema1793386485207,
     RoomState1793400000000,
     ReservationSchema1793603504255,
+    ReservationBooking1793700505373,
 ];

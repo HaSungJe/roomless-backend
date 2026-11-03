@@ -8,8 +8,8 @@ import {PaymentStateEntity} from './payment-state.entity.js';
  * 서버는 토스 조회로 진짜인지(DONE · 금액 · orderId) 확인한 뒤 payment_key · method · approved_at · receipt_url 을 채운다. 환불은 서버가 토스 취소 API 로.
  * order_name · amount 는 결제 행을 만들 때의 스냅샷이다 — 상품 · 가격이 나중에 바뀌어도 그때 무엇을 얼마에 결제했는지가 남는다.
  * environment 는 기본값이 없다 — 결제 행을 만드는 service 가 빠뜨리면 insert 가 실패해 드러난다(TEST 결제가 매출 · 통계에 섞이지 않게).
- * refund_amount 는 환불이 없으면 null 이다(0 원 환불과 구분).
- * 불변식(CHECK): DONE · 환불 3종 ⟹ payment_key · approved_at 있음 / REFUNDED ⟹ refund_amount = amount · refunded_at 있음 / FAILED · REFUND_FAILED ⟹ failure_message 있음.
+ * refund_amount 는 환불이 없으면 null 이다(0 원 환불과 구분). 환불은 전액 또는 일부(마감 뒤 비율 환불)다.
+ * 불변식(CHECK): DONE · 환불 3종 ⟹ payment_key · approved_at 있음 / REFUNDED ⟹ 0 < refund_amount ≤ amount · refunded_at 있음 / FAILED · REFUND_FAILED ⟹ failure_message 있음.
  * 지우지 않는다(기록).
  */
 @Entity({name: 't_payment', comment: '결제(토스페이먼츠)'})
@@ -17,7 +17,7 @@ import {PaymentStateEntity} from './payment-state.entity.js';
 @Index('IDX_Payment_UserIdCreatedAt', ['user_id', 'created_at'])
 @Check('CHK_Payment_Environment', `"environment" IN ('TEST', 'LIVE')`)
 @Check('CHK_Payment_Approved', `"payment_state_id" NOT IN ('DONE', 'REFUND_REQUESTED', 'REFUNDED', 'REFUND_FAILED') OR ("payment_key" IS NOT NULL AND "approved_at" IS NOT NULL)`)
-@Check('CHK_Payment_Refunded', `"payment_state_id" <> 'REFUNDED' OR ("refund_amount" = "amount" AND "refunded_at" IS NOT NULL)`)
+@Check('CHK_Payment_RefundedAmount', `"payment_state_id" <> 'REFUNDED' OR ("refund_amount" > 0 AND "refund_amount" <= "amount" AND "refunded_at" IS NOT NULL)`)
 @Check('CHK_Payment_Failure', `"payment_state_id" NOT IN ('FAILED', 'REFUND_FAILED') OR "failure_message" IS NOT NULL`)
 export class PaymentEntity {
     @PrimaryColumn({name: 'payment_id', length: 32, comment: '결제 ID — 토스 orderId 로 그대로 쓴다', primaryKeyConstraintName: 'PK_Payment'})
@@ -52,7 +52,7 @@ export class PaymentEntity {
     @Column({name: 'receipt_url', type: 'varchar', length: 500, nullable: true, comment: '토스 영수증 주소'})
     receipt_url: string | null;
 
-    @Column({name: 'refund_amount', type: 'integer', nullable: true, comment: '환불 금액(원 — 환불이 없으면 null)'})
+    @Column({name: 'refund_amount', type: 'integer', nullable: true, comment: '환불 금액(원 — 전액 또는 일부, 환불이 없으면 null)'})
     refund_amount: number | null;
 
     @Column({name: 'refund_reason', type: 'varchar', length: 200, nullable: true, comment: '환불 사유(토스 cancelReason, 200자)'})

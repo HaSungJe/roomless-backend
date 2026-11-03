@@ -10,6 +10,7 @@ import {ReservationStateEntity} from './reservation-state.entity.js';
  * end_at 은 최종 체크아웃(연장이 확정되면 늘어난다), blocked_until 은 end_at + 정비시간(예약 때 업체 값 maintenance_minutes)으로 호실을 점유하는 끝이다.
  * 같은 호실의 [start_at, blocked_until) 이 겹치는 활성 예약(결제 대기 · 확정 · 이용 중)은 DB 배타 제약(EXC_ — btree_gist)이 막는다. 끝과 시작이 맞닿는 것은 된다.
  * 합계(total_price) · 기본 상품(room_plan_type_id)은 목록 · 조회가 구간을 모으지 않게 여기에도 둔다. 객실 그룹은 두지 않는다 — 호실로 찾는다(호실의 그룹은 바뀌지 않는다).
+ * 환불 마감(refund_deadline_at) · 마감 뒤 환불 비율(late_refund_percent)은 예약 때 업체 값 — 업체가 규정을 바꿔도 이 예약은 그대로다.
  * 지우지 않는다 — 취소는 상태(CANCELED)이고, 취소 주체(USER · STORE)와 사유를 함께 남긴다(CHECK).
  */
 @Entity({name: 't_reservation', comment: '예약'})
@@ -65,6 +66,9 @@ export class ReservationEntity {
 
     @Column({name: 'refund_deadline_at', type: 'timestamptz', nullable: false, comment: '환불 마감 — 이 시각 전까지 환불 신청 가능(예약 때 업체 환불 기준으로 계산)'})
     refund_deadline_at: Date;
+
+    @Column({name: 'late_refund_percent', type: 'smallint', nullable: false, comment: '마감 뒤 환불 비율(%) — 예약 때 업체 값, 환불 마감 뒤 ~ 이용 시작 전 취소에 쓴다(0 ~ 100)'})
+    late_refund_percent: number;
 
     @Column({name: 'checked_in_at', type: 'timestamptz', nullable: true, comment: '체크인 시각(이용 시간 안의 첫 문 열기)'})
     checked_in_at: Date | null;

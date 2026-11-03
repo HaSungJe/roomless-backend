@@ -62,13 +62,22 @@ export class StoreEntity {
     booking_open_hours: number;
 
     @Column({
-        name: 'refund_deadline_hours',
+        name: 'refund_deadline_minutes',
         type: 'smallint',
         nullable: false,
-        default: 1,
-        comment: '100% 환불 기준(시간) — 이용 시작 n시간 전까지 환불 신청을 받아 100% 환불, 이후 환불 신청 불가(0 ~ 168). 예약할 때 값을 예약에 저장한다',
+        default: 60,
+        comment: '100% 환불 마감(분) — 이용 시작 n분 전까지 취소하면 100% 환불(0 ~ 10,080). 예약할 때 마감 시각을 예약에 저장한다',
     })
-    refund_deadline_hours: number;
+    refund_deadline_minutes: number;
+
+    @Column({
+        name: 'late_refund_percent',
+        type: 'smallint',
+        nullable: false,
+        default: 50,
+        comment: '마감 뒤 환불 비율(%) — 환불 마감 뒤 ~ 이용 시작 전 취소의 환불 비율(0 ~ 100, 원 단위 내림 — 0 이면 환불 없이 취소). 예약할 때 값을 예약에 저장한다',
+    })
+    late_refund_percent: number;
 
     @Column({name: 'suspend_comment', type: 'varchar', length: 255, nullable: true, comment: '정지 사유 — 영업중지(SUSPEND)일 때만, 업체 관리자에게 보인다'})
     suspend_comment: string | null;

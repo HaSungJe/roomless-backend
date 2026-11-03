@@ -63,9 +63,10 @@ import {
     STORE_LEAVE_LOCKED_MESSAGE,
     STORE_MANAGER_STORE_NOT_FOUND_MESSAGE,
     STORE_NOT_FOUND_MESSAGE,
+    STORE_LATE_REFUND_PERCENT_DEFAULT,
     STORE_PLAN_DAYS_OF_WEEK_ALL,
     STORE_PLAN_DEFAULTS,
-    STORE_REFUND_DEADLINE_HOURS_DEFAULT,
+    STORE_REFUND_DEADLINE_MINUTES_DEFAULT,
     STORE_SAME_STATE_MESSAGE,
     STORE_STATE,
 } from './store.constants.js';
@@ -462,7 +463,8 @@ export class StoreService {
         store.is_open = 0;
         store.maintenance_minutes = 0;
         store.booking_open_hours = STORE_BOOKING_OPEN_HOURS_DEFAULT;
-        store.refund_deadline_hours = STORE_REFUND_DEADLINE_HOURS_DEFAULT;
+        store.refund_deadline_minutes = STORE_REFUND_DEADLINE_MINUTES_DEFAULT;
+        store.late_refund_percent = STORE_LATE_REFUND_PERCENT_DEFAULT;
         store.suspend_comment = null;
         store.is_deleted = 0;
         store.delete_backup = null;
@@ -479,6 +481,8 @@ export class StoreService {
             plan.usage_hours = defaults.usage_hours;
             plan.check_in_time = defaults.check_in_time;
             plan.check_out_time = defaults.check_out_time;
+            plan.min_nights = defaults.min_nights;
+            plan.max_nights = defaults.max_nights;
             return plan;
         });
         await this.storeRepository.insertStorePlans(plans);
@@ -1013,10 +1017,10 @@ export class StoreService {
     }
 
     /**
-     * 내 업체 예약 · 환불 규정 설정 (업체 관리자) — 이용 시작 n시간 전부터 예약, n시간 전까지 환불 신청(100%). 적용은 예약 기능(Phase 17)이 한다. (RabbitMQ: admin.store.mine-reservation-policy)
+     * 내 업체 예약 · 환불 규정 설정 (업체 관리자) — 이용 시작 n시간 전부터 예약, n분 전까지 취소 100% 환불, 그 뒤 ~ 이용 시작 전 취소는 비율 환불. 예약할 때 값을 예약에 저장한다(예약 기능). (RabbitMQ: admin.store.mine-reservation-policy)
      *
      * @param user_id 로그인 매니저 ID
-     * @param dto 예약 가능 시작 · 100% 환불 기준(시간)
+     * @param dto 예약 가능 시작(시간) · 100% 환불 마감(분) · 마감 뒤 환불 비율(%)
      */
     @Transactional()
     async changeMyStoreReservationPolicy(user_id: string, dto: StoreMineReservationPolicyDto): Promise<void> {
@@ -1026,7 +1030,8 @@ export class StoreService {
         }
         const storeEntity = new StoreEntity();
         storeEntity.booking_open_hours = dto.booking_open_hours;
-        storeEntity.refund_deadline_hours = dto.refund_deadline_hours;
+        storeEntity.refund_deadline_minutes = dto.refund_deadline_minutes;
+        storeEntity.late_refund_percent = dto.late_refund_percent;
         await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
     }
 

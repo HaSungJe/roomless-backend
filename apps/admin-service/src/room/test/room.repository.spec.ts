@@ -1,8 +1,10 @@
 import {BadRequestException, InternalServerErrorException} from '@nestjs/common';
 import type {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import {DataSource, ILike, QueryFailedError} from 'typeorm';
+import {DataSource, ILike, In, QueryFailedError} from 'typeorm';
+import type {EntityTarget, FindManyOptions, ObjectLiteral} from 'typeorm';
 import {ENTITIES} from '@app/database/entities.js';
+import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import {RoomGroupImageEntity} from '@app/database/entities/room/room-group-image.entity.js';
 import {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import {RoomGroupPlanEntity} from '@app/database/entities/room/room-group-plan.entity.js';
@@ -15,7 +17,19 @@ import {RoomRepository} from '../repositories/room.repository.js';
 import {buildPlanPriceOverlapWhere} from '../room.util.js';
 
 /** RoomPlanRow 키 — raw select 별칭과 비교 */
-const ROOM_PLAN_ROW_KEYS: (keyof RoomPlanRow)[] = ['room_plan_id', 'store_id', 'room_plan_type_id', 'room_plan_type_name', 'is_used', 'days_of_week', 'usage_hours', 'check_in_time', 'check_out_time'];
+const ROOM_PLAN_ROW_KEYS: (keyof RoomPlanRow)[] = [
+    'room_plan_id',
+    'store_id',
+    'room_plan_type_id',
+    'room_plan_type_name',
+    'is_used',
+    'days_of_week',
+    'usage_hours',
+    'check_in_time',
+    'check_out_time',
+    'min_nights',
+    'max_nights',
+];
 
 /** RoomGroupRow 키 */
 const ROOM_GROUP_ROW_KEYS: (keyof RoomGroupRow)[] = ['room_group_id', 'room_group_name', 'created_at', 'room_count', 'cover_file_key'];
@@ -25,6 +39,19 @@ const ROOM_GROUP_PLAN_ROW_KEYS: (keyof RoomGroupPlanRow)[] = ['room_group_plan_i
 
 /** RoomRow 키 */
 const ROOM_ROW_KEYS: (keyof RoomRow)[] = ['room_id', 'room_group_id', 'room_group_name', 'room_name', 'floor', 'room_state_id', 'room_state_name', 'created_at'];
+
+/**
+ * repository 가 manager.find · count 에 넘긴 옵션을 SQL 로 빌드한다 — EntityManager.find · count 와 같은 방식(실행만 뺀다).
+ *
+ * @param dataSource 메타데이터만 만든 DataSource
+ * @param call 가로챈 호출 인자(대상 엔티티, 옵션)
+ * @returns 공백을 하나로 줄인 SQL 과 파라미터
+ */
+function buildFindQuery(dataSource: DataSource, call: unknown[]): [string, unknown[]] {
+    const [target, options] = call as [EntityTarget<ObjectLiteral>, FindManyOptions<ObjectLiteral>];
+    const [sql, parameters] = dataSource.manager.createQueryBuilder(target, dataSource.getMetadata(target).name).setFindOptions(options).getQueryAndParameters();
+    return [sql.replace(/\s+/g, ' '), parameters];
+}
 
 /**
  * PostgreSQL 드라이버가 던지는 것과 같은 모양의 제약 위반 오류.
@@ -59,6 +86,7 @@ function makeRepository() {
         [RoomGroupImageEntity, fake()],
         [RoomGroupPlanPriceEntity, fake()],
         [RoomEntity, fake()],
+        [ReservationEntity, fake()],
     ]);
     const txHost = {tx: {getRepository: (entity: unknown) => repos.get(entity)}} as unknown as TransactionHost<TransactionalAdapterTypeOrm>;
     return {
@@ -70,6 +98,7 @@ function makeRepository() {
         image: repos.get(RoomGroupImageEntity)!,
         price: repos.get(RoomGroupPlanPriceEntity)!,
         room: repos.get(RoomEntity)!,
+        reservation: repos.get(ReservationEntity)!,
     };
 }
 
@@ -274,14 +303,28 @@ describe('RoomRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         ['findRoomGroupImages', 'buildRoomGroupImagesQuery', ['g1']],
         ['findRoomGroupPlanPriceList', 'buildRoomGroupPlanPriceListQuery', [{room_group_plan_id: 'gp1'}, 20, 0]],
         ['findRoomRows', 'buildRoomRowsQuery', [{store_id: 's1', floor: null, room_group_id: null}, 20, 0]],
+        ['countGroupActiveReservations', 'buildGroupActiveReservationsQuery', ['g1']],
     ] as const)('%s 는 같은 인자로 %s 를 실행하고, 실패는 통일 500', async (method, builder, args) => {
         const {repository} = makeRepository();
-        const failing = {getOne: vi.fn().mockRejectedValue(new Error('db')), getMany: vi.fn().mockRejectedValue(new Error('db')), getRawMany: vi.fn().mockRejectedValue(new Error('db'))};
+        const failing = {
+            getOne: vi.fn().mockRejectedValue(new Error('db')),
+            getMany: vi.fn().mockRejectedValue(new Error('db')),
+            getRawMany: vi.fn().mockRejectedValue(new Error('db')),
+            getCount: vi.fn().mockRejectedValue(new Error('db')),
+        };
         const spy = vi.spyOn(repository as unknown as Record<string, (...params: unknown[]) => unknown>, builder).mockReturnValue(failing);
 
         await expect((repository[method] as (...params: unknown[]) => Promise<unknown>)(...args)).rejects.toBeInstanceOf(InternalServerErrorException);
         expect(spy).toHaveBeenCalledTimes(1);
         expect(spy).toHaveBeenCalledWith(...args);
+    });
+
+    it('[SUCCESS] countRoomActiveReservations — 호실 · 점유 상태(결제 대기 · 확정 · 이용 중) IN', async () => {
+        const {repository, reservation} = makeRepository();
+
+        await repository.countRoomActiveReservations('r1');
+
+        expect(reservation.count).toHaveBeenCalledWith({where: {room_id: 'r1', reservation_state_id: In(['PENDING', 'CONFIRMED', 'CHECKED_IN'])}});
     });
 });
 
@@ -291,10 +334,10 @@ describe('[SMOKE:data-access] 소속 업체 · 상품 설정 · 그룹 목록 ·
 
     /** 매니저의 소속 업체(잠금 절 제외) — 형제 store buildStoreByManagerQuery 와 같은 문자열이어야 한다(STORE_SELECT + t_user 조인 + 조건) */
     const MANAGER_STORE_SQL =
-        'SELECT "s"."store_id" AS "s_store_id", "s"."store_code" AS "s_store_code", "s"."store_name" AS "s_store_name", "s"."business_number" AS "s_business_number", "s"."owner_name" AS "s_owner_name", "s"."phone" AS "s_phone", "s"."address" AS "s_address", "s"."address_detail" AS "s_address_detail", "s"."latitude" AS "s_latitude", "s"."longitude" AS "s_longitude", "s"."introduction" AS "s_introduction", "s"."is_always_open" AS "s_is_always_open", "s"."is_open" AS "s_is_open", "s"."maintenance_minutes" AS "s_maintenance_minutes", "s"."booking_open_hours" AS "s_booking_open_hours", "s"."refund_deadline_hours" AS "s_refund_deadline_hours", "s"."suspend_comment" AS "s_suspend_comment", "s"."is_deleted" AS "s_is_deleted", "s"."delete_backup" AS "s_delete_backup", "s"."created_at" AS "s_created_at", "s"."updated_at" AS "s_updated_at", "s"."store_state_id" AS "s_store_state_id" FROM "t_store" "s" INNER JOIN "t_user" "u" ON "u"."store_id" = "s"."store_id" WHERE "u"."user_id" = $1 AND "u"."login_scope" = $2 AND "s"."store_state_id" <> $3 AND "s"."is_deleted" = 0';
+        'SELECT "s"."store_id" AS "s_store_id", "s"."store_code" AS "s_store_code", "s"."store_name" AS "s_store_name", "s"."business_number" AS "s_business_number", "s"."owner_name" AS "s_owner_name", "s"."phone" AS "s_phone", "s"."address" AS "s_address", "s"."address_detail" AS "s_address_detail", "s"."latitude" AS "s_latitude", "s"."longitude" AS "s_longitude", "s"."introduction" AS "s_introduction", "s"."is_always_open" AS "s_is_always_open", "s"."is_open" AS "s_is_open", "s"."maintenance_minutes" AS "s_maintenance_minutes", "s"."booking_open_hours" AS "s_booking_open_hours", "s"."refund_deadline_minutes" AS "s_refund_deadline_minutes", "s"."late_refund_percent" AS "s_late_refund_percent", "s"."suspend_comment" AS "s_suspend_comment", "s"."is_deleted" AS "s_is_deleted", "s"."delete_backup" AS "s_delete_backup", "s"."created_at" AS "s_created_at", "s"."updated_at" AS "s_updated_at", "s"."store_state_id" AS "s_store_state_id" FROM "t_store" "s" INNER JOIN "t_user" "u" ON "u"."store_id" = "s"."store_id" WHERE "u"."user_id" = $1 AND "u"."login_scope" = $2 AND "s"."store_state_id" <> $3 AND "s"."is_deleted" = 0';
     /** 업체 상품 설정 행 */
     const ROOM_PLAN_ROWS_SQL =
-        'SELECT "p"."room_plan_id" AS "room_plan_id", "p"."store_id" AS "store_id", "p"."room_plan_type_id" AS "room_plan_type_id", "p"."is_used" AS "is_used", "p"."days_of_week" AS "days_of_week", "p"."usage_hours" AS "usage_hours", "p"."check_in_time" AS "check_in_time", "p"."check_out_time" AS "check_out_time", "t"."room_plan_type_name" AS "room_plan_type_name" FROM "t_room_plan" "p" INNER JOIN "t_room_plan_type" "t" ON "t"."room_plan_type_id" = "p"."room_plan_type_id" WHERE "p"."store_id" = $1';
+        'SELECT "p"."room_plan_id" AS "room_plan_id", "p"."store_id" AS "store_id", "p"."room_plan_type_id" AS "room_plan_type_id", "p"."is_used" AS "is_used", "p"."days_of_week" AS "days_of_week", "p"."usage_hours" AS "usage_hours", "p"."check_in_time" AS "check_in_time", "p"."check_out_time" AS "check_out_time", "p"."min_nights" AS "min_nights", "p"."max_nights" AS "max_nights", "t"."room_plan_type_name" AS "room_plan_type_name" FROM "t_room_plan" "p" INNER JOIN "t_room_plan_type" "t" ON "t"."room_plan_type_id" = "p"."room_plan_type_id" WHERE "p"."store_id" = $1';
     /** 객실 그룹 목록 — 검색어 없음 */
     const ROOM_GROUP_ROWS_SQL =
         'SELECT "g"."room_group_id" AS "room_group_id", "g"."room_group_name" AS "room_group_name", "g"."created_at" AS "created_at", (SELECT CAST(COUNT(*) AS integer) FROM "t_room" "r" WHERE "r"."room_group_id" = "g"."room_group_id" AND "r"."is_deleted" = 0) AS "room_count", (SELECT "i"."file_key" FROM "t_room_group_image" "i" WHERE "i"."room_group_id" = "g"."room_group_id" AND "i"."is_deleted" = 0 ORDER BY "i"."sort_order" ASC, "i"."created_at" ASC LIMIT 1) AS "cover_file_key" FROM "t_room_group" "g" WHERE (("g"."store_id" = $1) AND ("g"."is_deleted" = $2)) ORDER BY "g"."created_at" DESC LIMIT 10 OFFSET 20';
@@ -475,5 +518,26 @@ describe('[SMOKE:data-access] 소속 업체 · 상품 설정 · 그룹 목록 ·
         }
         expect(flat).toContain('"r"."is_deleted" = 0');
         expect(flat).toBe(expectedSql);
+    });
+
+    it('그룹 점유 예약 — 지워지지 않은 그룹 호실 조인 · 점유 상태 IN', () => {
+        const [sql, parameters] = repository.buildGroupActiveReservationsQuery('g1').getQueryAndParameters();
+        const flat = sql.replace(/\s+/g, ' ');
+
+        expect(parameters).toEqual(['g1', 'PENDING', 'CONFIRMED', 'CHECKED_IN']);
+        expect(flat).toContain('INNER JOIN "t_room" "r" ON "r"."room_id" = "v"."room_id"');
+        expect(flat).toContain('"r"."is_deleted" = 0');
+        expect(flat).toContain('"v"."reservation_state_id" IN ($2, $3, $4)');
+    });
+
+    it('호실 점유 예약 — count 에 넘긴 조건(호실 · 점유 상태 IN) 그대로', async () => {
+        const count = vi.spyOn(dataSource.manager, 'count').mockResolvedValue(0);
+
+        await repository.countRoomActiveReservations('r1');
+        const [sql, parameters] = buildFindQuery(dataSource, count.mock.calls[0]);
+        count.mockRestore();
+
+        expect(parameters).toEqual(['r1', 'PENDING', 'CONFIRMED', 'CHECKED_IN']);
+        expect(sql).toContain('WHERE (("ReservationEntity"."room_id" = $1) AND ("ReservationEntity"."reservation_state_id" IN ($2, $3, $4)))');
     });
 });

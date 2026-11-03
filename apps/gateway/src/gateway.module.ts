@@ -7,6 +7,7 @@ import {ManagerModule} from './api/v1/admin-service/manager/manager.module.js';
 import {RoomModule} from './api/v1/admin-service/room/room.module.js';
 import {StoreModule} from './api/v1/admin-service/store/store.module.js';
 import {DoorModule} from './api/v1/user-service/door/door.module.js';
+import {ReservationModule} from './api/v1/user-service/reservation/reservation.module.js';
 import {UserModule} from './api/v1/user-service/user/user.module.js';
 
 /**
@@ -17,6 +18,7 @@ import {UserModule} from './api/v1/user-service/user/user.module.js';
  * - PassportJwtAuthModule: JWT 전략 (guards/)
  * - 로그인 그룹별 라우트: UserModule(/api/v1/user-service/user) · ManagerModule(/api/v1/admin-service/manager) · AdminModule(/api/v1/admin-service/admin) · StoreModule(/api/v1/admin-service/store — 이용자 · 관리자 가드) · RoomModule(/api/v1/admin-service/room — 매니저 가드)
  * - 문 라우트: DoorModule(/api/v1/user-service/door — 가드 없음, 문 쪽 타 업체 프로그램이 QR 로 부른다)
+ * - 예약 라우트: ReservationModule(/api/v1/user-service/reservation — 예약 가능 시간은 가드 없음, 내 예약 · 예약 쓰기는 이용자 가드, 업체 현황 · 업체 취소 · 호실 이동은 매니저 가드)
  */
-@Module({imports: [MessagingModule.forGateway(), TransportModule, PassportJwtAuthModule, UserModule, ManagerModule, AdminModule, StoreModule, RoomModule, DoorModule]})
+@Module({imports: [MessagingModule.forGateway(), TransportModule, PassportJwtAuthModule, UserModule, ManagerModule, AdminModule, StoreModule, RoomModule, DoorModule, ReservationModule]})
 export class GatewayModule {}

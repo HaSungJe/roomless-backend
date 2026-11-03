@@ -155,7 +155,7 @@ export interface PaymentLookupResult {
     receipt_url: string | null;
 }
 
-/** 환불(전액 취소) 요청 */
+/** 환불(취소) 요청 — 금액만큼(전액 또는 일부) */
 export interface PaymentCancelInput {
     /** 우리 결제 ID — 멱등키(cancel-<payment_id>)에 쓴다 */
     payment_id: string;
@@ -163,6 +163,8 @@ export interface PaymentCancelInput {
     payment_key: string;
     /** 취소 사유(토스 cancelReason, 200자) */
     reason: string;
+    /** 취소 금액(원 — 토스 cancelAmount, 결제 금액 이하) */
+    amount: number;
 }
 
 /** 환불 결과 */
@@ -202,7 +204,7 @@ export interface PaymentGatewayInterface {
     findByPaymentId(payment_id: string): Promise<PaymentLookupResult | null>;
 
     /**
-     * 전액 취소(환불) — Idempotency-Key cancel-<payment_id> 를 붙여 재시도가 중복 취소를 만들지 않는다.
+     * 취소(환불) — 금액만큼(전액 또는 일부). Idempotency-Key cancel-<payment_id> 를 붙여 재시도가 중복 취소를 만들지 않는다(결제 1건에 환불 1번).
      *
      * @throws BadRequestException 업무 실패(이미 취소 · 취소 불가 금액 · 결제 없음 등) · ServiceUnavailableException 일시 실패
      */

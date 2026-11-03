@@ -13,6 +13,7 @@ export class RoomPlanUpdateParamDto {
 
 /**
  * 업체 상품 설정 수정 — 종류별. 시간 이용(HOURLY)은 이용 시간 필수 · 시각은 받지 않고, 1박 · 연박은 입실 · 퇴실 시각 필수(서로 달라야 한다) · 이용 시간은 받지 않는다.
+ * 연박(LONG)은 최소 · 최대 박수도 필수(1 ~ 180, 최소 ≤ 최대) · 시간 이용 · 1박은 받지 않는다.
  * 종류가 경로라 종류별 값은 선택 필드로 두고 service 가 종류로 가른다(없으면 400 — validation_errors 에 그 필드)
  */
 export class RoomPlanUpdateDto {
@@ -40,8 +41,25 @@ export class RoomPlanUpdateDto {
     @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {message: '입실 시각을 HH:mm 으로 입력해주세요.'})
     check_in_time?: string;
 
-    @ApiProperty({description: '퇴실 시각 (HH:mm, 한국 시각 — 1박은 입실보다 이르면 다음 날) — 1박 · 연박이면 입실 시각과 세트로 필수(입실과 달라야 한다), 시간 이용은 받지 않는다', required: false})
+    @ApiProperty({
+        description: '퇴실 시각 (HH:mm, 한국 시각 — 1박은 항상 다음 날, 연박은 마지막 날) — 1박 · 연박이면 입실 시각과 세트로 필수(입실과 달라야 한다), 시간 이용은 받지 않는다',
+        required: false,
+    })
     @IsOptional()
     @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {message: '퇴실 시각을 HH:mm 으로 입력해주세요.'})
     check_out_time?: string;
+
+    @ApiProperty({description: '최소 박수 (1 ~ 180) — 연박이면 최대 박수와 세트로 필수(최대 이하), 시간 이용 · 1박은 받지 않는다', required: false})
+    @IsOptional()
+    @IsInt({message: '최소 박수는 정수로 입력해주세요.'})
+    @Min(1, {message: '최소 박수는 1 ~ 180박 사이로 입력해주세요.'})
+    @Max(180, {message: '최소 박수는 1 ~ 180박 사이로 입력해주세요.'})
+    min_nights?: number;
+
+    @ApiProperty({description: '최대 박수 (1 ~ 180) — 연박이면 최소 박수와 세트로 필수, 시간 이용 · 1박은 받지 않는다', required: false})
+    @IsOptional()
+    @IsInt({message: '최대 박수는 정수로 입력해주세요.'})
+    @Min(1, {message: '최대 박수는 1 ~ 180박 사이로 입력해주세요.'})
+    @Max(180, {message: '최대 박수는 1 ~ 180박 사이로 입력해주세요.'})
+    max_nights?: number;
 }

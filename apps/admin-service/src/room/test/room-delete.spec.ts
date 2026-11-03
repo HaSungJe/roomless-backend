@@ -39,6 +39,16 @@ describe('admin.room.delete — 호실 삭제 (큐 경로)', () => {
     });
 
     describe('[FAIL:service]', () => {
+        it('점유 예약(결제 대기 · 확정 · 이용 중)이 있는 호실은 failed 400, 삭제 없음', async () => {
+            repo.countRoomActiveReservations.mockResolvedValueOnce(1);
+
+            const {result} = await runCommand(dispatcher, {type: ROOM_COMMAND.DELETE, payload: PAYLOAD, actor: MANAGER_ACTOR});
+
+            expect(result?.error).toEqual({status_code: 400, body: {message: '예약이 있는 호실은 지울 수 없습니다.', validation_errors: null}});
+            expect(repo.countRoomActiveReservations).toHaveBeenCalledWith(ROOM_ID);
+            expect(repo.deleteRoom).not.toHaveBeenCalled();
+        });
+
         it('호실이 없으면(다른 업체 · 이미 지운 호실) failed 404, 삭제 없음', async () => {
             repo.findRoom.mockResolvedValueOnce(null);
 

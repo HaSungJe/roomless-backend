@@ -4,15 +4,19 @@ import {RoomPlanTypeEntity} from './room-plan-type.entity.js';
 
 /**
  * 업체 상품 설정 — 업체 × 상품 종류(t_room_plan_type)마다 반드시 1행(입점 승인 때 3행). 업체의 모든 객실 공통이고, 행은 지우지 않는다.
- * 사용 여부(is_used — 판매 여부) · 예약 가능 요일(비트 — 일 1 · 월 2 · 화 4 · 수 8 · 목 16 · 금 32 · 토 64, 매일 127)은 모든 종류에,
- * 이용 시간은 시간 이용(HOURLY)만, 입실 · 퇴실 시각(한국 시각, 분 단위)은 1박(NIGHT) · 연박(LONG)만 둔다.
- * 1박은 퇴실이 입실보다 이르면 다음 날 퇴실이고, 연박은 첫날 입실 · 마지막 날 퇴실이다. 가격 · 그룹별 사용 여부는 그룹 상품(t_room_group_plan).
+ * 사용 여부(is_used — 판매 여부) · 예약 가능 요일(입실일 기준 비트 — 일 1 · 월 2 · 화 4 · 수 8 · 목 16 · 금 32 · 토 64, 매일 127)은 모든 종류에,
+ * 이용 시간은 시간 이용(HOURLY)만, 입실 · 퇴실 시각(한국 시각, 분 단위)은 1박(NIGHT) · 연박(LONG)만, 최소 · 최대 박수는 연박만 둔다.
+ * 1박은 항상 다음 날 퇴실이고(퇴실 시각이 입실보다 늦어도 — 사용자 결정 2026-11-03), 연박은 첫날 입실 · 마지막 날 퇴실이다. 가격 · 그룹별 사용 여부는 그룹 상품(t_room_group_plan).
  */
 @Entity({name: 't_room_plan', comment: '업체 상품 설정'})
 @Unique('UK_RoomPlan_StoreIdRoomPlanTypeId', ['store_id', 'room_plan_type_id'])
 @Check(
     'CHK_RoomPlan_UsageHoursCheckInOutTime',
     `("room_plan_type_id" = 'HOURLY' AND "usage_hours" IS NOT NULL AND "check_in_time" IS NULL AND "check_out_time" IS NULL) OR ("room_plan_type_id" <> 'HOURLY' AND "usage_hours" IS NULL AND "check_in_time" IS NOT NULL AND "check_out_time" IS NOT NULL)`,
+)
+@Check(
+    'CHK_RoomPlan_LongNights',
+    `("room_plan_type_id" = 'LONG' AND "min_nights" IS NOT NULL AND "max_nights" IS NOT NULL AND "min_nights" >= 1 AND "min_nights" <= "max_nights") OR ("room_plan_type_id" <> 'LONG' AND "min_nights" IS NULL AND "max_nights" IS NULL)`,
 )
 export class RoomPlanEntity {
     @PrimaryColumn({name: 'room_plan_id', length: 32, comment: '업체 상품 설정 ID', primaryKeyConstraintName: 'PK_RoomPlan'})
@@ -38,13 +42,14 @@ export class RoomPlanEntity {
     @Column({name: 'check_in_time', type: 'time', nullable: true, comment: '입실 시각(한국 시각, 분 단위) — 1박 · 연박(첫날)만, check_out_time 과 세트. 시간 이용은 NULL'})
     check_in_time: string | null;
 
-    @Column({
-        name: 'check_out_time',
-        type: 'time',
-        nullable: true,
-        comment: '퇴실 시각(한국 시각, 분 단위) — 1박(입실보다 이르면 다음 날) · 연박(마지막 날)만, check_in_time 과 세트. 시간 이용은 NULL',
-    })
+    @Column({name: 'check_out_time', type: 'time', nullable: true, comment: '퇴실 시각(한국 시각, 분 단위) — 1박(항상 다음 날) · 연박(마지막 날)만, check_in_time 과 세트. 시간 이용은 NULL'})
     check_out_time: string | null;
+
+    @Column({name: 'min_nights', type: 'smallint', nullable: true, comment: '최소 박수 — 연박(LONG)만(1 ~ 180, 최대 박수 이하). 시간 이용 · 1박은 NULL'})
+    min_nights: number | null;
+
+    @Column({name: 'max_nights', type: 'smallint', nullable: true, comment: '최대 박수 — 연박(LONG)만(1 ~ 180). 시간 이용 · 1박은 NULL'})
+    max_nights: number | null;
 
     @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
     created_at: Date;

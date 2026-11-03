@@ -2,7 +2,7 @@ import type {RoomGroupDetail} from '@app/database/entities/room/room-group.entit
 
 /**
  * 호실 상태 — t_room_state PK (seeder.targets.ts 의 ROOM_STATE_SEED_DATA 와 같다).
- * 예약 → 예약완료(Phase 17) · 체크인 → 사용중 · 체크아웃 → 정비중(Phase 19) · 정비 완료 → 예약가능(업체 관리자), 사용중지는 업체 관리자가 켜고 끈다.
+ * 호실 상태와 예약 상태는 따로다(사용자 결정 2026-11-03) — 예약 시간에 맞춘 사용중 · 정비중 전환은 Phase 19, 정비 완료 → 예약가능 · 사용중지는 업체 관리자.
  */
 export const ROOM_STATE = {AVAILABLE: 'AVAILABLE', RESERVED: 'RESERVED', IN_USE: 'IN_USE', MAINTENANCE: 'MAINTENANCE', DISABLED: 'DISABLED'} as const;
 
@@ -85,3 +85,9 @@ export const ROOM_PLAN_PRICE_DATE_ORDER_MESSAGE = '종료 날짜는 시작 날�
 
 /** 업체 관리자가 바꿀 수 없는 호실 상태 전환 (canChangeRoomState 가 false) */
 export const ROOM_STATE_CHANGE_INVALID_MESSAGE = '지금 상태에서는 바꿀 수 없습니다.';
+
+/** 점유 예약(결제 대기 · 확정 · 이용 중)이 있는 호실 삭제 */
+export const ROOM_HAS_RESERVATION_MESSAGE = '예약이 있는 호실은 지울 수 없습니다.';
+
+/** 점유 예약이 있는 객실 그룹 삭제 */
+export const ROOM_GROUP_HAS_RESERVATION_MESSAGE = '예약이 있는 객실 그룹은 지울 수 없습니다.';

@@ -86,6 +86,18 @@ describe('admin.room.group-delete — 객실 그룹 삭제 (큐 경로)', () => 
     });
 
     describe('[FAIL:service]', () => {
+        it('그룹 호실에 점유 예약이 있으면 failed 400, 호실 · 사진 · 그룹 삭제와 저장소 삭제 없음', async () => {
+            repo.countGroupActiveReservations.mockResolvedValueOnce(2);
+
+            const {result} = await runCommand(dispatcher, {type: ROOM_COMMAND.GROUP_DELETE, payload: PAYLOAD, actor: MANAGER_ACTOR});
+
+            expect(result?.error).toEqual({status_code: 400, body: {message: '예약이 있는 객실 그룹은 지울 수 없습니다.', validation_errors: null}});
+            expect(repo.countGroupActiveReservations).toHaveBeenCalledWith(ROOM_GROUP_ID);
+            expect(repo.deleteRooms).not.toHaveBeenCalled();
+            expect(repo.deleteRoomGroup).not.toHaveBeenCalled();
+            expect(storage.remove).not.toHaveBeenCalled();
+        });
+
         it('그룹이 없으면(다른 업체 · 이미 지운 그룹) failed 404, 삭제 · S3 삭제 없음', async () => {
             repo.findRoomGroup.mockResolvedValueOnce(null);
 

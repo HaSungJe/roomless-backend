@@ -57,17 +57,20 @@ export const STORE_SAME_STATE_MESSAGE = '이미 같은 상태입니다.';
 /** 예약 가능 시작 기본값(시간) — 입점 승인 때 · 기존 업체(DB 기본값) */
 export const STORE_BOOKING_OPEN_HOURS_DEFAULT = 72;
 
-/** 100% 환불 기준 기본값(시간) — 입점 승인 때 · 기존 업체(DB 기본값) */
-export const STORE_REFUND_DEADLINE_HOURS_DEFAULT = 1;
+/** 100% 환불 마감 기본값(분) — 입점 승인 때 · 기존 업체(DB 기본값) */
+export const STORE_REFUND_DEADLINE_MINUTES_DEFAULT = 60;
+
+/** 마감 뒤 환불 비율 기본값(%) — 입점 승인 때 · 기존 업체(DB 기본값) */
+export const STORE_LATE_REFUND_PERCENT_DEFAULT = 50;
 
 /** 업체 상품 설정 예약 가능 요일 기본값 — 매일(비트 — 일 1 · 월 2 · 화 4 · 수 8 · 목 16 · 금 32 · 토 64) */
 export const STORE_PLAN_DAYS_OF_WEEK_ALL = 127;
 
-/** 업체 상품 설정 기본값 — 입점 승인 때 상품 종류(t_room_plan_type)마다 1행, 판매 · 매일. 기존 업체는 마이그레이션 RoomSchema 가 같은 값을 넣는다 */
-export const STORE_PLAN_DEFAULTS: Pick<RoomPlanEntity, 'room_plan_type_id' | 'usage_hours' | 'check_in_time' | 'check_out_time'>[] = [
-    {room_plan_type_id: 'HOURLY', usage_hours: 3, check_in_time: null, check_out_time: null},
-    {room_plan_type_id: 'NIGHT', usage_hours: null, check_in_time: '22:00', check_out_time: '09:00'},
-    {room_plan_type_id: 'LONG', usage_hours: null, check_in_time: '15:00', check_out_time: '11:00'},
+/** 업체 상품 설정 기본값 — 입점 승인 때 상품 종류(t_room_plan_type)마다 1행, 판매 · 매일. 연박은 최소 1박 · 최대 30박(기존 업체는 마이그레이션 RoomSchema · ReservationBooking 이 같은 값을 넣는다) */
+export const STORE_PLAN_DEFAULTS: Pick<RoomPlanEntity, 'room_plan_type_id' | 'usage_hours' | 'check_in_time' | 'check_out_time' | 'min_nights' | 'max_nights'>[] = [
+    {room_plan_type_id: 'HOURLY', usage_hours: 3, check_in_time: null, check_out_time: null, min_nights: null, max_nights: null},
+    {room_plan_type_id: 'NIGHT', usage_hours: null, check_in_time: '22:00', check_out_time: '09:00', min_nights: null, max_nights: null},
+    {room_plan_type_id: 'LONG', usage_hours: null, check_in_time: '15:00', check_out_time: '11:00', min_nights: 1, max_nights: 30},
 ];
 
 /** 일시 예약불가 입력 형식 — 한국 시각 분 단위 (dayjs 형식 문자열) */

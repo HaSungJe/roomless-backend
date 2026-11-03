@@ -39,3 +39,6 @@ export const TOSS_API_BASE_URL = 'https://api.tosspayments.com';
 
 /** 토스 API 요청 제한 시간(ms) — 넘기면 503(재시도) */
 export const PAYMENT_REQUEST_TIMEOUT_MS = 30000;
+
+/** 토스 결제 상태 — 승인 완료 */
+export const TOSS_PAYMENT_STATUS_DONE = 'DONE';

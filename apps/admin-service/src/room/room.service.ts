@@ -40,7 +40,9 @@ import {
     ROOM_GROUP_IMAGE_LIMIT,
     ROOM_GROUP_IMAGE_LIMIT_MESSAGE,
     ROOM_GROUP_IMAGE_NOT_FOUND_MESSAGE,
+    ROOM_GROUP_HAS_RESERVATION_MESSAGE,
     ROOM_GROUP_NOT_FOUND_MESSAGE,
+    ROOM_HAS_RESERVATION_MESSAGE,
     ROOM_MANAGER_STORE_NOT_FOUND_MESSAGE,
     ROOM_NOT_FOUND_MESSAGE,
     ROOM_PLAN_NOT_FOUND_MESSAGE,
@@ -111,13 +113,14 @@ export class RoomService {
     }
 
     /**
-     * 업체 상품 설정 수정 — 종류별. 사용 여부 · 예약 가능 요일은 모든 종류, 종류에 필요한 값은 service 가 가른다(CHK_RoomPlan_UsageHoursCheckInOutTime 과 같은 조합). (RabbitMQ: admin.room.plan-update)
-     * - 시간 이용(HOURLY): 이용 시간 필수(없으면 400 validation_errors.usage_hours), 입실 · 퇴실 시각은 보내도 NULL
+     * 업체 상품 설정 수정 — 종류별. 사용 여부 · 예약 가능 요일은 모든 종류, 종류에 필요한 값은 service 가 가른다(CHK_RoomPlan_* 와 같은 조합). (RabbitMQ: admin.room.plan-update)
+     * - 시간 이용(HOURLY): 이용 시간 필수(없으면 400 validation_errors.usage_hours), 입실 · 퇴실 시각 · 박수는 보내도 NULL
      * - 1박 · 연박: 입실 · 퇴실 시각 필수(없는 필드로 400), 둘이 같으면 400(validation_errors.check_out_time), 이용 시간은 NULL
+     * - 연박: 최소 · 최대 박수 필수(없는 필드로 400), 최소 > 최대면 400(validation_errors.min_nights). 1박 · 시간 이용의 박수는 NULL
      *
      * @param user_id 로그인 매니저 ID
      * @param room_plan_type_id 상품 종류 (HOURLY · NIGHT · LONG)
-     * @param dto 사용 여부 · 예약 가능 요일 · 이용 시간 · 입실 · 퇴실 시각
+     * @param dto 사용 여부 · 예약 가능 요일 · 이용 시간 · 입실 · 퇴실 시각 · 최소 · 최대 박수
      */
     @Transactional()
     async updateMyRoomPlan(user_id: string, room_plan_type_id: string, dto: RoomPlanUpdateDto): Promise<void> {
@@ -138,7 +141,7 @@ export class RoomService {
         entity.is_used = dto.is_used;
         entity.days_of_week = dto.days_of_week;
 
-        // 4. 종류별 값 — 시간 이용은 이용 시간만, 1박 · 연박은 입실 · 퇴실 시각만
+        // 4. 종류별 값 — 시간 이용은 이용 시간만, 1박 · 연박은 입실 · 퇴실 시각, 연박은 박수도
         if (room_plan_type_id === ROOM_PLAN_TYPE.HOURLY) {
             const usage_hours = dto.usage_hours ?? null;
             if (usage_hours === null) {
@@ -162,6 +165,27 @@ export class RoomService {
             entity.usage_hours = null;
             entity.check_in_time = check_in_time;
             entity.check_out_time = check_out_time;
+        }
+        if (room_plan_type_id === ROOM_PLAN_TYPE.LONG) {
+            const min_nights = dto.min_nights ?? null;
+            const max_nights = dto.max_nights ?? null;
+            if (min_nights === null) {
+                throw new BadRequestException({message: '연박은 최소 박수를 입력해주세요.', validation_errors: createValidationError('min_nights', '연박은 최소 박수를 입력해주세요.')});
+            }
+            if (max_nights === null) {
+                throw new BadRequestException({message: '연박은 최대 박수를 입력해주세요.', validation_errors: createValidationError('max_nights', '연박은 최대 박수를 입력해주세요.')});
+            }
+            if (min_nights > max_nights) {
+                throw new BadRequestException({
+                    message: '최소 박수는 최대 박수보다 클 수 없습니다.',
+                    validation_errors: createValidationError('min_nights', '최소 박수는 최대 박수보다 클 수 없습니다.'),
+                });
+            }
+            entity.min_nights = min_nights;
+            entity.max_nights = max_nights;
+        } else {
+            entity.min_nights = null;
+            entity.max_nights = null;
         }
 
         // 5. 수정
@@ -287,7 +311,7 @@ export class RoomService {
 
     /**
      * 객실 그룹 삭제 — 그룹 · 그 그룹의 호실 · 사진을 소프트 삭제하고(사용자 결정 2026-10-31) 사진 저장소 파일을 실제로 지운다(마지막). 그룹 상품 · 기간 가격 행은 남지만 그룹이 지워져 닿을 수 없다. (RabbitMQ: admin.room.group-delete)
-     * - 미래 예약 확인은 예약 기능(Phase 17)이 생길 때
+     * - 그룹 호실에 점유 예약(결제 대기 · 확정 · 이용 중)이 있으면 400
      *
      * @param user_id 로그인 매니저 ID
      * @param room_group_id 객실 그룹 ID
@@ -306,15 +330,20 @@ export class RoomService {
             throw new NotFoundException({message: ROOM_GROUP_NOT_FOUND_MESSAGE});
         }
 
-        // 3. 지울 저장소 파일 키
+        // 3. 점유 예약 — 있으면 지울 수 없다
+        if ((await this.roomRepository.countGroupActiveReservations(group.room_group_id)) > 0) {
+            throw new BadRequestException({message: ROOM_GROUP_HAS_RESERVATION_MESSAGE});
+        }
+
+        // 4. 지울 저장소 파일 키
         const images = await this.roomRepository.findRoomGroupImages(group.room_group_id);
 
-        // 4. 호실 → 사진 → 그룹 소프트 삭제(is_deleted = 1)
+        // 5. 호실 → 사진 → 그룹 소프트 삭제(is_deleted = 1)
         await this.roomRepository.deleteRooms({room_group_id: group.room_group_id});
         await this.roomRepository.deleteRoomGroupImages({room_group_id: group.room_group_id});
         await this.roomRepository.deleteRoomGroup({room_group_id: group.room_group_id});
 
-        // 5. 저장소 파일 삭제 (마지막)
+        // 6. 저장소 파일 삭제 (마지막)
         for (const image of images) {
             await this.storageGateway.remove(image.file_key);
         }
@@ -804,8 +833,7 @@ export class RoomService {
     }
 
     /**
-     * 호실 삭제 — 그 업체의 호실만 소프트 삭제(is_deleted = 1). (RabbitMQ: admin.room.delete)
-     * - 미래 예약 확인은 예약 기능(Phase 17)이 생길 때
+     * 호실 삭제 — 그 업체의 호실만 소프트 삭제(is_deleted = 1). 점유 예약(결제 대기 · 확정 · 이용 중)이 있으면 400. (RabbitMQ: admin.room.delete)
      *
      * @param user_id 로그인 매니저 ID
      * @param room_id 호실 ID
@@ -819,6 +847,9 @@ export class RoomService {
         const room = await this.roomRepository.findRoom({room_id, store_id: store.store_id});
         if (!room) {
             throw new NotFoundException({message: ROOM_NOT_FOUND_MESSAGE});
+        }
+        if ((await this.roomRepository.countRoomActiveReservations(room.room_id)) > 0) {
+            throw new BadRequestException({message: ROOM_HAS_RESERVATION_MESSAGE});
         }
         await this.roomRepository.deleteRoom({room_id: room.room_id});
     }

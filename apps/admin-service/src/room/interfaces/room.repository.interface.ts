@@ -18,6 +18,8 @@ export interface RoomPlanRow {
     usage_hours: number | null;
     check_in_time: string | null;
     check_out_time: string | null;
+    min_nights: number | null;
+    max_nights: number | null;
 }
 
 /** 객실 그룹 목록 행 — 그룹 컬럼 + 지워지지 않은 호실 수 · 대표 사진(지워지지 않은 사진 중 정렬 순서 · 등록일이 가장 앞) 저장 키 (QueryBuilder raw — 서브쿼리) */
@@ -130,4 +132,8 @@ export interface RoomRepositoryInterface {
     deleteRoom(where: FindOptionsWhere<RoomEntity>): Promise<void>;
     /** 호실 여러 건 삭제 (그룹 삭제) — 삭제 표시(소프트 삭제) */
     deleteRooms(where: FindOptionsWhere<RoomEntity>): Promise<void>;
+    /** 호실의 점유 예약(결제 대기 · 확정 · 이용 중) 수 */
+    countRoomActiveReservations(room_id: string): Promise<number>;
+    /** 그룹 호실들의 점유 예약 수 — 지워지지 않은 호실 */
+    countGroupActiveReservations(room_group_id: string): Promise<number>;
 }

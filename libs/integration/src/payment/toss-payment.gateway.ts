@@ -43,7 +43,7 @@ function toLookupResult(payment: TossPayment): PaymentLookupResult {
 
 /**
  * 결제 어댑터 — 토스페이먼츠 API(https://api.tosspayments.com). 시크릿 키 TOSS_SECRET_KEY 를 Basic 인증(`키:` 를 base64)으로 쓴다.
- * 결제창 · 승인은 프론트가 하고, 여기서는 조회(검증) · 전액 취소(환불)만 한다. 취소는 Idempotency-Key cancel-<payment_id> 로 재시도해도 한 번만 된다.
+ * 결제창 · 승인은 프론트가 하고, 여기서는 조회(검증) · 취소(환불 — 전액 또는 일부)만 한다. 취소는 Idempotency-Key cancel-<payment_id> 로 재시도해도 한 번만 된다.
  * 실패 분류는 classifyTossFailure — 업무 400(토스 메시지 · code) / 일시 503 / 결제 없음(조회 null · 취소 400).
  * 세팅: docs/guides/toss-setup.md
  */
@@ -90,13 +90,18 @@ export class TossPaymentGateway implements PaymentGatewayInterface, OnApplicatio
     }
 
     /**
-     * 전액 취소(환불).
+     * 취소(환불) — 금액만큼(토스 cancelAmount).
      *
-     * @param input 결제 ID · 결제 키 · 사유
+     * @param input 결제 ID · 결제 키 · 사유 · 금액
      * @returns 취소 금액 · 시각
      */
     async cancel(input: PaymentCancelInput): Promise<PaymentCancelResult> {
-        const response = await this.request('POST', `/v1/payments/${encodeURIComponent(input.payment_key)}/cancel`, {cancelReason: input.reason}, `cancel-${input.payment_id}`);
+        const response = await this.request(
+            'POST',
+            `/v1/payments/${encodeURIComponent(input.payment_key)}/cancel`,
+            {cancelReason: input.reason, cancelAmount: input.amount},
+            `cancel-${input.payment_id}`,
+        );
         if (!response.ok) {
             throw this.toException(response, '환불');
         }

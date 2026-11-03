@@ -21,9 +21,9 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | 앱 | 역할 | 외부 노출 |
 |---|---|---|
 | `apps/gateway` | 유일한 진입점. JWT · DTO 검증, 경로 선택(동기 / 큐), 요청 단위 SSE, Swagger | O (GATEWAY_PORT) |
-| `apps/user-service` | 이용자 도메인(`user`). DB(PostgreSQL) 소유, 룩업 시드 · 마이그레이션 | X (내부망, INTERNAL_API_TOKEN) |
+| `apps/user-service` | 이용자 서버 — `user`(회원) · `door`(문) · `reservation`(예약 — 공유 DB 의 업체 · 객실 · 상품 · 영업시간을 읽는다). DB(PostgreSQL) 소유, 룩업 시드 · 마이그레이션 | X (내부망, INTERNAL_API_TOKEN) |
 | `apps/admin-service` | 매니저(`manager`) · 관리자(`admin`) · 업체(`store` — 입점 신청 · 승인 · 업체 관리) 도메인. 공유 DB 를 직접 쓴다(마이그레이션 · 시드는 user-service 묶음) | X (내부망, INTERNAL_API_TOKEN) |
-| `apps/scheduler` | crontab 전용(탈퇴 자동처리). 들어오는 연결 없음 — listen · 큐 소비 · 컨트롤러가 없고 DB 에만 붙는다 | X (연결을 받지 않음) |
+| `apps/scheduler` | crontab 전용(`user` 탈퇴 자동처리 · `reservation` 결제 대기 만료 · 늦은 승인 재확인 · 환불 — 토스). 들어오는 연결 없음 — listen · 큐 소비 · 컨트롤러가 없고 DB 에만 붙는다 | X (연결을 받지 않음) |
 
 - **모노레포 ≠ 모놀리스** — `nest build gateway` · `nest build user-service` · `nest build admin-service` · `nest build scheduler` 로 따로 빌드되고 독립 프로세스로 뜬다. 트래픽이 몰리는 앱만 인스턴스를 늘린다. 산출물: `dist/apps/<app>/apps/<app>/src/main.js`.
 - 게이트웨이는 DB 를 쓰지 않는다. 로그인 회원의 상태도 그 그룹의 서비스(이용자 → user-service, 매니저 · 관리자 → admin-service)에 내부 HTTP 로 묻는다.
@@ -37,7 +37,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | `libs/common` | `ApiFailResultDto` · `toFailResult` · `CustomErrorFilter` · `validationExceptionFactory` · `PaginationDto`/`PaginationResultDto` · 순수 util(bcrypt/hash/cipher/jwt/validation/fail-result/retry/pagination/env/id/dayjs/search) · `InternalAuthGuard` · `@ClientIp` · `@InternalActor`(정의만, 사용 0) | 모든 앱 |
 | `libs/contracts` | 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type · 큐 이름 · 내부 경로 상수, 메시지 봉투, `Actor`, 내부 헤더, SSE 이벤트 이름 | 모든 앱 |
 | `libs/database` | `entities/<domain>/` · `entities.ts`(ENTITIES) · `migrations/` · `migrations.ts`(MIGRATIONS) · `typeorm.config.ts` · `DatabaseModule`(TypeORM + 트랜잭션, 전역) · `JobLockService`(`job-lock/`) · `isUniqueViolation`/`isForeignKeyViolation` · `notDeleted`(소프트 삭제 조건) · seeder · `data-source`(마이그레이션 실행용) | DB 소유 서비스 |
-| `libs/integration` | 외부 연동 포트 `SMS_SENDER`(Amazon SNS) · `STORAGE_GATEWAY`(Amazon S3, presigned URL) · `DOOR_STORE`(Redis — 문 정보) · `PAYMENT_GATEWAY`(토스페이먼츠 — 조회 검증 · 환불) · `SmsModule` · `StorageModule` · `RedisModule` · `DoorStoreModule` · `PaymentModule`(전역) — [integration.md](integration.md) · [guides/aws-setup.md](guides/aws-setup.md) · [guides/redis-setup.md](guides/redis-setup.md) · [guides/toss-setup.md](guides/toss-setup.md) | 포트를 쓰는 서비스(SMS: user-service 휴대폰 인증 · 아이디 찾기, admin-service 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내 / 파일: admin-service 업체 정보 파일 / 문 정보: user-service 문 열기 · 닫기 / 결제: 예약(Phase 17)) |
+| `libs/integration` | 외부 연동 포트 `SMS_SENDER`(Amazon SNS) · `STORAGE_GATEWAY`(Amazon S3, presigned URL) · `DOOR_STORE`(Redis — 문 정보) · `PAYMENT_GATEWAY`(토스페이먼츠 — 조회 검증 · 환불) · `SmsModule` · `StorageModule` · `RedisModule` · `DoorStoreModule` · `PaymentModule`(전역) — [integration.md](integration.md) · [guides/aws-setup.md](guides/aws-setup.md) · [guides/redis-setup.md](guides/redis-setup.md) · [guides/toss-setup.md](guides/toss-setup.md) | 포트를 쓰는 서비스(SMS: user-service 휴대폰 인증 · 아이디 찾기, admin-service 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내 / 파일: admin-service 업체 정보 파일 / 문 정보: user-service 문 열기 · 닫기 / 결제: user-service 예약 · scheduler 결제 대기 만료 · 환불) |
 | `libs/messaging` | `RabbitMqConnection` · 명령 발행 · 결과 구독 · 명령 소비 · `@OnCommand` · `CommandDispatcher` · `MessagingModule.forGateway()/forService()`(둘 다 전역) | 게이트웨이 · 서비스 |
 
 - import 는 `@app/<lib>/<경로>.js` (barrel 없음). 앱 · 도메인 내부는 상대경로. 라이브러리 안의 import 방식은 [conventions.md](conventions.md).

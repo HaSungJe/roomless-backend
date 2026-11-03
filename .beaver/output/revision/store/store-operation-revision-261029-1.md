@@ -445,3 +445,5 @@ export const STORE_REFUND_DEADLINE_HOURS_DEFAULT = 1;
 - [x] 관리자 영업중 여부 전환은 잠금 없이 `findStore`(형제 관리자 쓰기와 같다), 정비시간은 관리자 대상 아님 (Claude 제안 — 검토)
 - [x] 로드맵(ship): Phase 11 에 유닛 추가(#99 예약 · 환불 규정 · #100 관리자 영업중 여부 · #101 정지 사유), 공통 규칙 "취소 · 환불" · "사전 예약" 을 업체별 규정으로, Open Decision "취소 규정의 끝"(시작 이후 환불 없음) · "결제 수단"(토스페이먼츠) 해결 표시, Phase 17 #67(환불 util) · #69(예약 생성 — 예약 가능 시작 · 환불 기준 스냅샷) · #70(예약 취소 — "1시간 전 100% · 이후 50%" → 업체 기준까지 100% · 이후 환불 신청 불가, 백그라운드 환불) 메모 (Claude 제안 — 검토)
 - [x] 이 리비전은 마이그레이션을 더한다(`StoreReservationPolicy`) — 다른 마이그레이션 Phase(12 · 14 · 16 · 22)와 동시에 돌리지 않는다
+
+> 2026-11-03 Phase 17 에서 변경 — 환불 기준은 분 단위 `refund_deadline_minutes`(0 ~ 10,080, 기본 60), 마감 뒤 ~ 이용 시작 전 취소는 업체 비율 환불 `late_refund_percent`(0 ~ 100, 기본 50). 근거: [reservation-booking-spec.md](../../spec/reservation/reservation-booking-spec.md)

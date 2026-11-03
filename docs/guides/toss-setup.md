@@ -5,14 +5,19 @@
 ## 1. 역할
 
 ```
-이용자 → (프론트) 결제창(클라이언트 키 test_ck_…) → 토스 인증
-       → (프론트 서버) 승인 API POST /v1/payments/confirm(시크릿 키) → 결과 paymentKey · orderId · amount 를 서버로
-       → (서버) GET /v1/payments/{paymentKey} 로 다시 읽어 대조(상태 DONE · 금액 · orderId = payment_id) → 기록
-환불   → (서버) POST /v1/payments/{paymentKey}/cancel (Idempotency-Key cancel-<payment_id>)
+이용자 → (서버) 예약 생성 POST /api/v1/user-service/reservation → payment_id(orderId) · amount · order_name · 결제 대기 5분
+       → (프론트) 결제창(클라이언트 키 test_ck_…) → 토스 인증
+       → (프론트 서버) 승인 API POST /v1/payments/confirm(시크릿 키) → paymentKey 를 서버로
+       → (서버) 결제 확인 POST /api/v1/user-service/reservation/payment-confirm {payment_id, payment_key}
+                → GET /v1/payments/{paymentKey} 로 다시 읽어 대조(상태 DONE · 금액 · orderId = payment_id) → 확정
+5분 지남 → (scheduler) GET /v1/payments/orders/{orderId} — 승인됐으면 확정, 아니면 만료(호실이 풀린다)
+환불   → (서버) 환불 신청만 기록 → (scheduler, 1분마다) POST /v1/payments/{paymentKey}/cancel {cancelReason, cancelAmount}(Idempotency-Key cancel-<payment_id>)
 ```
 
-- 주문번호(orderId)는 서버가 만든 결제 ID(`payment_id`, 32자)를 그대로 쓴다 — 결제 행을 먼저 만들고 그 ID · 금액 · 주문명을 프론트에 준다(Phase 17).
-- 프론트가 넘긴 값만 믿지 않는다 — 금액 · 상태를 토스에서 다시 읽어 맞춰 본다.
+- 주문번호(orderId)는 서버가 만든 결제 ID(`payment_id`, 32자)를 그대로 쓴다 — 결제 행을 먼저 만들고 그 ID · 금액 · 주문명을 프론트에 준다.
+- 프론트가 넘긴 값만 믿지 않는다 — 금액 · 상태를 토스에서 다시 읽어 맞춰 본다. 금액이 다르면 자동 환불, 주문번호가 다른 결제(다른 주문)는 환불하지 않고 거절한다.
+- 환불 금액은 전액 또는 일부다(환불 마감 뒤 업체 비율 — `cancelAmount`). 결제 1건에 환불은 1번이다(멱등키가 결제 ID 하나).
+- scheduler 도 `TOSS_SECRET_KEY` 를 쓴다(결제 대기 만료 조회 · 늦은 승인 재확인 · 환불). crontab 은 운영(`NODE_ENV=production`)에서만 돈다 — 테스트 키로 끝까지 시험하려면 scheduler 를 production 으로 띄운다.
 
 ## 2. 키 받기
 
@@ -44,3 +49,10 @@
 | 부팅 경고 `TOSS_SECRET_KEY 가 비어 있어` | `.env` 의 `TOSS_SECRET_KEY` |
 | 로그 `토스 조회 일시 실패: 401 UNAUTHORIZED_KEY` | 시크릿 키가 틀렸거나 테스트 · 라이브가 섞였다(프론트와 같은 상점 · 같은 환경 키인지) |
 | 조회가 결제 없음(null) | 프론트가 승인하지 않았거나 다른 상점 키로 승인했다 |
+
+## 6. 시험 순서 (테스트 키)
+
+1. 예약 생성 → done 의 `payment_id` · `amount` · `order_name` 으로 프론트 결제창을 연다.
+2. 토스 테스트 카드로 결제 → 프론트 서버 승인 → 결제 확인 API → 내 예약 상세가 `CONFIRMED`.
+3. 취소 → 결제가 `REFUND_REQUESTED` → 1분 안에 `REFUNDED`(scheduler).
+4. 결제창을 열고 결제하지 않으면 5분 뒤 `EXPIRED`, 같은 호실은 10분 동안 다시 예약할 수 없다.

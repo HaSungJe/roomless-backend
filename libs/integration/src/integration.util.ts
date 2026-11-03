@@ -1,3 +1,6 @@
+import {TOSS_PAYMENT_STATUS_DONE} from './integration.constants.js';
+import type {PaymentLookupResult} from './interfaces/integration.interface.js';
+
 /**
  * 국내 휴대폰 번호를 E.164 로 바꾼다 — `010-1234-5678` · `01012345678` → `+821012345678`.
  * 이미 `+` 로 시작하면 국가번호가 붙은 것으로 보고 숫자만 남긴다. 번호 형식 검증은 입력 DTO 몫이다.
@@ -45,4 +48,29 @@ export function classifyTossFailure(status: number, body: unknown): TossFailure 
         return {kind: 'RETRY', code, message};
     }
     return {kind: 'BUSINESS', code, message};
+}
+
+/** 토스 조회 대조 결과 — PAID: 결제됨, NOT_PAID: 미결제(없음 · 승인 전 · 취소 · 중단), MISMATCH: 금액 다름(환불), FOREIGN: 다른 주문의 결제(환불하지 않는다) */
+export type PaymentLookupVerdict = 'PAID' | 'NOT_PAID' | 'MISMATCH' | 'FOREIGN';
+
+/**
+ * 토스에서 다시 읽은 결제를 우리 결제 행과 대조한다 — 결제 확인(user-service) · 결제 대기 만료(scheduler)가 같은 판정을 쓴다.
+ * 승인 완료(DONE)가 아니면 미결제, 주문번호가 다르면 다른 주문(다른 이용자일 수 있어 환불하지 않는다), 금액이 다르면 불일치(환불).
+ *
+ * @param lookup 토스 조회 결과(없으면 null)
+ * @param payment_id 우리 결제 ID(= 토스 orderId)
+ * @param amount 우리 결제 금액(원)
+ * @returns 대조 결과
+ */
+export function verifyPaymentLookup(lookup: PaymentLookupResult | null, payment_id: string, amount: number): PaymentLookupVerdict {
+    if (!lookup || lookup.status !== TOSS_PAYMENT_STATUS_DONE) {
+        return 'NOT_PAID';
+    }
+    if (lookup.order_id !== payment_id) {
+        return 'FOREIGN';
+    }
+    if (lookup.total_amount !== amount) {
+        return 'MISMATCH';
+    }
+    return 'PAID';
 }
