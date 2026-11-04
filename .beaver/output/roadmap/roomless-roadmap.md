@@ -29,7 +29,7 @@ flowchart LR
   P12 --> P13
   P12 --> P14["Phase 14 · 문 상태 (3)"]:::done
   P12 --> P16["Phase 16 · reservation 기반 (4)"]:::done
-  P13 --> P17["Phase 17 · 예약·결제 (8)"]:::inprog
+  P13 --> P17["Phase 17 · 예약·결제 (8)"]:::done
   P16 --> P17
   P14 --> P15["Phase 15 · 문 관리·QR 확인 (3)"]:::todo
   P17 --> P15
@@ -71,7 +71,7 @@ flowchart LR
 - Phase 13 — 객실 관리 · 유닛 6개 · 의존: Phase 11, 12 · 푼다: Phase 17 · 파일 집합: apps/admin-service/src/room, apps/gateway/src/api/v1/admin-service/room, libs/contracts/src/room · done
 - Phase 14 — 문 상태 · 유닛 3개 · 의존: Phase 12 · 푼다: Phase 15, 23 · 파일 집합: libs/integration/src/{redis,door}, apps/user-service/src/door, apps/gateway/src/api/v1/user-service/door, libs/contracts/src/door, compose.redis.yml, compose.*.yml, scripts/docker-network.mjs, package.json, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/{reservation,payment}, libs/database/src/migrations, libs/integration/src/payment · done
-- Phase 17 — 예약·결제 · 유닛 8개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · in-progress
+- Phase 17 — 예약·결제 · 유닛 8개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation, libs/integration/src/payment, apps/admin-service/src/{store,room}(환불 규정 · 연박 박수 · 삭제 금지), libs/database(entities · migrations) · done
 - Phase 15 — 문 관리·QR 확인 · 유닛 3개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/door(업체 문 목록 · 바로 열기), apps/user-service/src/reservation(내 예약 방 · QR), apps/gateway/src/api/v1/{admin-service,user-service}, libs/contracts/src/{door,reservation} · todo
 - Phase 18 — discovery · 유닛 4개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/admin-service/src/discovery, apps/gateway/src/api/v1/admin-service/discovery, libs/contracts/src/discovery · todo
 - Phase 19 — 이용 · 유닛 5개 · 의존: Phase 5, 15, 17 · 푼다: Phase 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation(crontabs), apps/gateway/src/api/v1/user-service/reservation · todo
@@ -83,24 +83,17 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: Phase 17 진행 중 · Next up: Phase 17
+지금: 진행 중 없음 · Next up: Phase 15
 
 ## 지금 할 일
-Phase 17 예약·결제 시작하기
-- #67 가용성 · 가격 · 환불 util
-- #68 호실별 예약 가능 시간 조회
-- #69 예약 생성
-- #70 예약 취소
-- #71 내 예약 목록 · 상세
-- #72 업체 예약 현황
-- #73 업체 측 예약 취소 · 호실 이동
-- #113 결제 확인
-- 시작 전에 정하기
-  예약 · 조회가 객실 데이터를 읽는 방법 — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
-  영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약 — 업체 취소(100% 환불 + 알림)로 처리할지, 일시 예약불가처럼 특수 표시로 둘지. (Phase 9 · 11 → Phase 17 기획 때 — #41 · #46 · #94)
-  결제 대기 유지 시간 — 추천: 10분. (Phase 17)
+Phase 15 문 관리 시작하기
+- #110 업체 문 목록
+- #111 관리자 바로 열기
+- #112 내 예약 방 목록 · QR 확인
 - ok → 다음
-- 사용자 — 마이그레이션 `ReservationSchema` 적용(`RoomState` 뒤 — 예약 · 구간 · 결제 테이블과 룩업 3개, 새 테이블 6개만 생기고 기존 데이터는 바뀌지 않는다), `.env` 에 `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — docs/guides/toss-setup.md). 키는 Phase 17 에서 처음 쓰여 지금은 비어 있어도 영향이 없다
+- 사용자 — 마이그레이션 `ReservationBooking` 적용(`ReservationSchema` 뒤 — 업체 환불 기준 `refund_deadline_hours` → `refund_deadline_minutes`(값 × 60) · 마감 뒤 환불 비율 `late_refund_percent`(기본 50) · 연박 행 박수 1 · 30 · 예약에 비율 저장 · 결제 부분 환불 CHECK) → user-service · admin-service 를 새 이미지로, scheduler 묶음도 다시 띄우기(이제 `TOSS_SECRET_KEY` 로 결제 대기 만료 · 늦은 승인 · 환불 crontab 이 돈다 — 운영 `NODE_ENV=production` 에서만)
+- 사용자 — 프론트: 업체 예약 규정 필드 `refund_deadline_hours` → `refund_deadline_minutes` + `late_refund_percent`, 업체 상품 설정 연박 `min_nights` · `max_nights`, 결제창 orderId = 예약 결과의 `payment_id` → 토스 승인 뒤 `POST /api/v1/user-service/reservation/payment-confirm`. 토스 테스트 키로 docs/guides/toss-setup.md 6절 순서대로 확인
+- 사용자 — 마이그레이션 `ReservationSchema` 적용(`RoomState` 뒤 — 예약 · 구간 · 결제 테이블과 룩업 3개, 새 테이블 6개만 생기고 기존 데이터는 바뀌지 않는다), `.env` 에 `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — docs/guides/toss-setup.md). 키는 user-service(예약 — 결제 환경 판별 · 결제 확인 조회) · scheduler(만료 조회 · 환불)가 쓴다 — 비어 있으면 예약 · 결제 요청만 503
 - 사용자 — `.env` 에 `REDIS_PASSWORD` · `REDIS_URL` 추가(`.env.example` 의 Redis 절) → `npm run docker:network` · `npm run docker:redis` → user-service 묶음 다시 띄우기(이제 `REDIS_URL` 없이는 뜨지 않는다). 로컬 실행은 hosts 에 `127.0.0.1 redis` — docs/guides/redis-setup.md
 - 사용자 — 마이그레이션 `RoomState` 적용(`RoomSchema` 뒤 — 데이터만 바꾼다: 호실 상태에 예약가능 · 예약완료가 생기고, 스탠바이 호실은 예약가능으로 옮겨진 뒤 스탠바이가 지워지며, 이용중이 사용중으로 바뀐다)
 - 사용자 — 마이그레이션 `RoomSchema` 적용(`StoreReservationPolicy` 뒤 — 적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한이 필요하다(RDS 13+ 는 DB 의 CREATE 권한). 기존 업체마다 업체 상품 설정 3행이 들어가고, 업체 편의시설(`store_detail`)은 사라지며, store 테이블 5개가 소프트 삭제로 바뀐다)
@@ -398,28 +391,28 @@ report: `.beaver/output/report/reservation/reservation-schema-report.md` · revi
 ### Phase 17 — 예약·결제 (가용성 · 예약 · 취소 · 업체 측 변경) · depends: Phase 13, Phase 16 (+ Phase 3, Phase 11)
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 67 | 가용성 · 가격 · 환불 util | 점유 구간 겹침 · 정비시간 · 브레이크타임 · 호실 상태 · 업체 상품 설정(사용 여부 · 예약 가능 요일 · 입퇴실 시각) · 그룹 상품 사용 여부 · 기간 가격 · 환불 규정 | 기간 가격 · 요일 기준일(입실 날짜 · 연박 박마다 — 이용 날짜가 기간에 포함되면 기간 요금) | 64 | in-progress |
-| 68 | 호실별 예약 가능 시간 조회 | 업체 · 날짜 · 상품 기준 (동기) | 객실 데이터 읽는 방법(Open Decisions) | 67 | in-progress |
-| 69 | 예약 생성 | 호실 · 상품 · 시작 시각, 결제 대기 홀드 (큐) | 결제 대기 유지 시간 | 66, 67 | in-progress |
-| 70 | 예약 취소 | 업체 환불 기준(예약 때 저장한 n시간) 전까지 환불 신청 → 100% 환불을 백그라운드에서 토스페이먼츠로, 기준이 지나면 환불 신청 불가 (큐) | 기준 뒤 환불 없는 취소를 받을지 | 69 | in-progress |
-| 71 | 내 예약 목록 · 상세 | 동기 | — | 69 | in-progress |
-| 72 | 업체 예약 현황 | 호실별 시간표 | — | 69 | in-progress |
-| 73 | 업체 측 예약 취소 · 호실 이동 | 100% 환불 · 이용자 SMS 필수 (큐) | 호실 이동 범위(같은 그룹만) | 17, 69 | in-progress |
-| 113 | 결제 확인 | 프론트가 토스 승인 뒤 넘긴 결과를 토스 조회로 대조(상태 DONE · 금액 · orderId = `payment_id`)해 결제 · 구간 · 예약을 확정 (큐) | 대조 실패 · 금액 불일치 처리 · 만료 전 재확인(`findByPaymentId`) | 66, 69 | in-progress |
+| 67 | 가용성 · 가격 · 환불 util | 점유 구간 겹침 · 정비시간 · 브레이크타임 · 호실 상태 · 업체 상품 설정(사용 여부 · 예약 가능 요일 · 입퇴실 시각) · 그룹 상품 사용 여부 · 기간 가격 · 환불 규정 | 기간 가격 · 요일 기준일(입실 날짜 · 연박 박마다 — 이용 날짜가 기간에 포함되면 기간 요금) | 64 | done(e252f8f) |
+| 68 | 호실별 예약 가능 시간 조회 | 업체 · 날짜 · 상품 기준 (동기) | 객실 데이터 읽는 방법(Open Decisions) | 67 | done(e252f8f) |
+| 69 | 예약 생성 | 호실 · 상품 · 시작 시각, 결제 대기 홀드 (큐) | 결제 대기 유지 시간 | 66, 67 | done(e252f8f) |
+| 70 | 예약 취소 | 업체 환불 마감(예약 때 저장한 n분) 전 100% · 마감 뒤 시작 전까지 업체 비율(예약 때 저장) · 시작 뒤 취소 불가, 환불은 백그라운드에서 토스페이먼츠로 (큐) | 마감 뒤 부분 환불(업체별 비율) | 69 | done(e252f8f) |
+| 71 | 내 예약 목록 · 상세 | 동기 | — | 69 | done(e252f8f) |
+| 72 | 업체 예약 현황 | 호실별 시간표 | — | 69 | done(e252f8f) |
+| 73 | 업체 측 예약 취소 · 호실 이동 | 100% 환불 · 이용자 SMS 필수 (큐) | 호실 이동 범위(같은 그룹만) | 17, 69 | done(e252f8f) |
+| 113 | 결제 확인 | 프론트가 토스 승인 뒤 넘긴 결과를 토스 조회로 대조(상태 DONE · 금액 · orderId = `payment_id`)해 결제 · 구간 · 예약을 확정 (큐) | 대조 실패 · 금액 불일치 처리 · 만료 전 재확인(`findByPaymentId`) | 66, 69 | done(e252f8f) |
 
-**Expected APIs** (가칭):
+**APIs** (구현):
 
 | Unit | Method | Path | Purpose |
 |------|--------|------|---------|
-| #68 | GET | `/api/v1/user-service/reservation/availability` | 호실별 가능 시간 |
+| #68 | GET | `/api/v1/user-service/reservation/availability` | 호실별 가능 시간 (비로그인) |
 | #69 | POST | `/api/v1/user-service/reservation` | 예약 생성 (SSE, 이용자 가드) |
-| #70 | DELETE | `/api/v1/user-service/reservation/:reservation_id` | 이용자 취소 (SSE, 이용자 가드) |
+| #70 | PATCH | `/api/v1/user-service/reservation/:reservation_id/cancel` | 이용자 취소 (SSE, 이용자 가드) |
 | #71 | GET | `/api/v1/user-service/reservation` · `/:reservation_id` | 내 예약 (이용자 가드) |
 | #72 | GET | `/api/v1/user-service/reservation/store` | 업체 예약 현황 (매니저 가드) |
 | #73 | PATCH | `/api/v1/user-service/reservation/:reservation_id/store-cancel` · `/room` | 업체 취소 · 호실 이동 (SSE, 매니저 가드) |
 | #113 | POST | `/api/v1/user-service/reservation/payment-confirm` | 결제 확인 (SSE, 이용자 가드) |
 
-build 완료 — report: `.beaver/output/report/reservation/reservation-booking-report.md`. 공개 라우트 9개 · crontab 3개(결제 대기 만료 · 늦은 승인 · 환불) · 마이그레이션 `ReservationBooking`(환불 마감 분 · 비율 · 연박 박수 · 부분 환불).
+ship 완료(e252f8f) — report: `.beaver/output/report/reservation/reservation-booking-report.md` · review: `main-review-261103-2.md`. 공개 라우트 9개 · crontab 3개(결제 대기 만료 · 늦은 승인 재확인 · 환불) · 마이그레이션 `ReservationBooking`(환불 마감 분 · 비율 · 연박 박수 · 부분 환불).
 
 ### Phase 18 — discovery (이용자 진입 동선 — 활성 업체만) · depends: Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -493,8 +486,8 @@ build 완료 — report: `.beaver/output/report/reservation/reservation-booking-
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 77/106 units done (15/24 phases)
-**Next up**: Phase 17 예약·결제 — 의존(Phase 13, Phase 3) 모두 완료
+**Progress**: 85/106 units done (16/24 phases)
+**Next up**: Phase 15 문 관리 — 의존(Phase 14) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
 
@@ -511,13 +504,15 @@ build 완료 — report: `.beaver/output/report/reservation/reservation-booking-
 - **연령 제한** — 성인만 가입한다(청소년보호법 — 만 19세가 되는 해의 1월 1일부터, SNS 가입의 생년월일로 판정). 이용자는 SNS 로만 가입한다 (결정 2026-10-22)
 - **휴대폰 인증** — 이용자는 가입 후 SMS 인증(발송 → 인증 ID + 인증번호 확인)을 마쳐야 그 번호가 회원정보에 저장되고 서비스를 이용할 수 있다. 로그인 그룹 안에서 번호 1개 = 계정 1개. 인증번호 6자리 · 5분 · 3회, 같은 번호 하루(한국 날짜) 10번(`SMS_VERIFICATION_DAILY_LIMIT`). 인증 전 회원을 막는 가드는 회원 전용 기능이 생길 때
 - **객실 모델** — 객실 그룹(객실 유형) 단위로 가격을 정하고 그룹 안 호실은 같은 상품을 쓴다. 상품 종류는 시간 이용(`HOURLY`) · 1박(`NIGHT`) · 연박(`LONG`) 셋 — 시간 규칙 · 판매 여부 · 예약 가능 요일은 업체 공통(`t_room_plan`, 업체 × 종류 1행), 사용 여부 · 요금은 그룹마다(`t_room_group_plan`, 그룹 × 종류 1행), 기간 가격(성수기 등)은 그룹 상품마다. 층은 호실의 정수 `floor`. 상태 · 문(QR · 열림/닫힘)은 호실마다. 객실 상세정보(편의시설)는 그룹의 JSON(사용자 결정 2026-10-30 · 31)
-- **이용 단위 · 사전 예약** — 시간 이용은 업체가 정한 이용 시간만큼(시간 기반), 1박은 업체가 정한 입실 ~ 퇴실 시각 그대로(22:00 ~ 다음 날 09:00 기본), 연박은 첫날 입실 ~ 마지막 날 퇴실(15:00 ~ 11:00 기본, 1박부터). 업체마다 이용 시작 n시간 전부터 예약을 받는다(`t_store.booking_open_hours`, 1 ~ 4,320 — 최대 6개월, 기본 72 · 사용자 결정 2026-10-29 · 31)
-- **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 업체 영업중(`is_open = 1`) + 점유 구간 겹침 없음 + 영업시간 내(연중무휴면 생략) · 브레이크타임 밖 + 호실 사용중지 아님(즉시 입실은 예약가능도). 호실 상태 전환 — 예약 → 예약완료 · 체크인 → 사용중 · 체크아웃 → 정비중은 시스템, 정비 완료(→ 예약가능) · 사용중지 · 사용 재개는 업체 관리자(Phase 13). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다
+- **이용 단위 · 사전 예약** — 시간 이용은 업체가 정한 이용 시간만큼(시간 기반, 시작은 30분 단위), 1박은 업체가 정한 입실 ~ 퇴실 시각(22:00 ~ 다음 날 09:00 기본 — 퇴실은 퇴실 시각이 입실보다 늦어도 **항상 다음 날**), 연박은 입실일을 포함해 첫날 입실 ~ 마지막 날 퇴실(15:00 ~ 11:00 기본), 박수는 업체 설정(`t_room_plan` 연박 행 `min_nights` · `max_nights`, 1 ~ 180, 기본 1 · 30 — 그룹은 판매 여부 · 요금만). 요금은 시간 이용 · 1박이 입실 날짜 기준, 연박은 박마다 기간 요금. 업체마다 이용 시작 n시간 전부터 예약을 받는다(`t_store.booking_open_hours`, 1 ~ 4,320 — 최대 6개월, 기본 72 · 사용자 결정 2026-10-29 · 31 · 2026-11-03)
+- **정비시간 · 재고 판정** — 정비시간은 업체별. 예약은 `종료 + 정비시간`(`blocked_until`, 예약 시점 값을 저장)까지 호실을 점유한다. 재고 = 업체 영업중(`is_open = 1`) + 상품 판매 + 입실일 요일 + 점유 구간 겹침 없음 + 일시 예약불가 밖 + 영업시간 · 브레이크타임(연중무휴면 영업시간 생략 — 시간 이용은 구간 전체가 영업시간 안 · 브레이크 밖, 1박 · 연박은 입실이 [개점, 마감) · 퇴실이 (개점, 마감] 안이고 둘 다 브레이크 밖) + 호실 사용중지 아님(30분 안 즉시 입실은 예약가능 호실만). **호실 상태는 예약 · 결제 상태와 따로 관리한다** — 예약 · 결제는 호실 상태를 바꾸지 않고(Phase 17), 이용 시각에 따른 사용중 · 정비중 → 예약가능 전환은 Phase 19, 정비 완료 · 사용중지 · 사용 재개는 업체 관리자(Phase 13). 동시 예약은 (room_id, 점유 구간) 배타 제약으로 막는다 — 시간 칸을 미리 만들지 않는다 (사용자 결정 2026-11-03)
 - **호실 선택** — 이용자가 호실을 직접 고른다
-- **취소 · 환불** — 업체 취소 100%. 이용자는 업체가 정한 n시간 전까지 환불 신청하면 100%(`t_store.refund_deadline_hours`, 0 ~ 168, 기본 1), 그 뒤에는 환불 신청 자체가 안 된다(50% 구간 없음). 예약할 때의 기준을 예약에 저장하고, 환불은 신청 뒤 백그라운드에서 토스페이먼츠로 처리한다(사용자 결정 2026-10-29)
+- **취소 · 환불** — 업체 취소 100%. 이용자는 시작 n분 전 마감까지 100%(`t_store.refund_deadline_minutes`, 0 ~ 10,080, 기본 60), 마감 뒤 시작 전까지 업체 비율(`t_store.late_refund_percent`, 0 ~ 100, 기본 50 — `floor(금액 × 비율 / 100)`), 시작 뒤에는 취소 불가. 예약할 때의 마감 · 비율을 예약에 저장하고, 취소 명령은 환불 요청으로 표시만 하며 scheduler crontab(1분)이 토스 취소(금액 지정)로 처리한다 (사용자 결정 2026-10-29 · 2026-11-03)
+- **결제 대기** — 예약 뒤 5분 결제 대기. scheduler 가 1분마다 만료 건을 토스 조회(orderId = `payment_id`)로 정리한다 — 승인 · 금액 일치면 확정, 금액 다르면 환불 + 만료, 그 밖은 만료. 만료 뒤 30분은 5분마다 다시 조회해 늦은 승인을 환불한다. 만료 뒤 같은 이용자는 같은 호실을 10분 동안 다시 예약할 수 없다 (사용자 결정 2026-11-03)
+- **설정 변경과 기존 예약** — 영업중지 · 영업시간 · 브레이크 · 일시 예약불가 · 상품 설정을 바꿔도 이미 받은 예약은 그대로 둔다(자동 취소 · 특수 표시 없음 — 필요하면 업체 취소). 점유 예약(결제 대기 · 확정 · 이용 중)이 있는 호실 · 객실 그룹은 지울 수 없다 (사용자 결정 2026-11-03)
 - **문 · QR** — 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 둔다(`door:<room_id>` = `QR:open|close:yyyyMMddHHmmss`, 기록 없음 `00000000000000`). QR 은 예약 건마다 새로 발급하고(이전 QR 무효, 두 문에 겹치지 않음) 예약자는 로그인 웹페이지에서 본다. 문 쪽 타 업체 프로그램이 그 QR 로 문 열기 API 를 부르면 서버는 Redis 만 바꾸고 문은 그 프로그램이 연다. 기기 제어는 하지 않는다 (사용자 결정 2026-11-01 · Phase 14)
 - **체크인 · 연장** — 시작 5분 전 SMS로 QR 확인 웹페이지 링크, 이용 시간 안의 첫 문 열기 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(Phase 19 #81)
-- **업체 측 예약 변경** — 업체 관리자는 예약 취소 · 호실 이동 가능, 이용자에게 반드시 SMS
+- **업체 측 예약 변경** — 업체 관리자는 예약 취소(100% 환불) · 호실 이동(같은 그룹 · 사용중지 아닌 호실 · 시작 전 확정 예약만) 가능, 이용자에게 SMS(인증된 번호가 없으면 건너뜀). 업체 예약 현황은 이용자 이름 · 휴대폰 번호를 보여 준다 (사용자 결정 2026-11-03)
 - **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
 - **발송 채널 · 외부 연동** — 발송은 SMS(AWS SNS) 하나 — 이메일 · 알림톡 · 푸시는 쓰지 않는다. 외부 연동은 mock 없이 실제 서비스에 붙이고 세팅 가이드(`docs/guides/`)를 남긴다 — SMS · 이미지 = AWS(Phase 3), 결제 = 토스(테스트 키), 문 정보 = Redis(Phase 14 — 기기 플랫폼 연동 없음)
 - **목록 · 시드 · 규약** — 모든 목록 API 는 `PaginationDto`(Phase 3 이후). 룩업 기본 데이터는 seeder.targets.ts 한 곳. 규약은 [AGENTS.md](../../../AGENTS.md) 전면 준수
@@ -527,15 +522,15 @@ build 완료 — report: `.beaver/output/report/reservation/reservation-booking-
 
 ## Open Decisions (roadmap-level)
 
-- [ ] **예약 · 조회가 객실 데이터를 읽는 방법** — 예약(user-service)과 discovery 는 업체 · 객실 · 상품 · 영업시간(admin-service 소유)을 읽는다. 공유 DB 를 직접 읽을지, 내부 HTTP 로 받을지. (Phase 17 · 18)
+- [x] **예약 · 조회가 객실 데이터를 읽는 방법** — 공유 DB 를 직접 읽는다: user-service 예약 repository 가 업체 · 객실 · 상품 · 영업시간 엔티티를 소유 도메인 어휘로 읽는다(`findReservationStore` · `findBookableRooms`). discovery(Phase 18)도 이 방식을 따른다. (사용자 결정 2026-11-03 · Phase 17)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
 - [x] **입장 QR 확인 수단** — 문 쪽 타 업체 프로그램이 예약자 QR 화면(로그인 웹페이지)을 읽어 문 열기 API(QR)를 부른다. 서버는 Redis 문 정보만 바꾸고 문을 직접 움직이지 않는다. QR 은 예약 건마다 새로 발급. (사용자 결정 2026-11-01 · Phase 14)
-- [x] **취소 규정의 끝** — 업체 환불 기준(n시간 전)이 지나면 환불 신청 자체가 안 된다 — 시작 이후 · 노쇼 환불 없음. 기준 뒤 환불 없는 취소를 받을지는 Phase 17 #70 기획 때. (사용자 결정 2026-10-29)
-- [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 특수 표시한다. 예약 기능(Phase 17)에서 구현. (사용자 결정 2026-10-27 · #98)
-- [ ] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 업체 취소(100% 환불 + 알림)로 처리할지, 일시 예약불가처럼 특수 표시로 둘지. (Phase 9 · 11 → Phase 17 기획 때 — #41 · #46 · #94)
+- [x] **취소 규정의 끝** — 마감(n분 전) 전 100%, 마감 뒤 시작 전까지 업체 비율(기본 50%) 환불, 시작 이후 · 노쇼는 취소 · 환불 없음. (사용자 결정 2026-10-29 → 2026-11-03 갱신 · Phase 17 #70)
+- [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 그대로 둔다(2026-11-03 갱신: 특수 표시도 두지 않는다 — 아래 설정 변경 결정과 같다). (사용자 결정 2026-10-27 · 2026-11-03 · #98)
+- [x] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 기존 예약은 그대로 둔다(자동 취소 · 특수 표시 없음). 필요하면 업체가 업체 취소(100% 환불 + SMS)로 정리한다. (사용자 결정 2026-11-03 · Phase 17)
 - [ ] **통계 정의** — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 21)
 - [x] **결제 수단** — 토스페이먼츠로 결제 · 환불을 모두 처리한다(개발은 테스트 키). (사용자 결정 2026-10-29)
-- [ ] **결제 대기 유지 시간** — 추천: 10분. (Phase 17)
+- [x] **결제 대기 유지 시간** — 5분. 만료는 scheduler 가 토스 조회로 확정 · 만료(금액 불일치는 환불), 만료 뒤 30분 재확인(늦은 승인 → 환불), 같은 이용자 · 같은 호실 10분 재예약 금지. (사용자 결정 2026-11-03 · Phase 17)
 - [x] **공개 · 내부 경로 규칙** — 서비스 이름으로 시작한다: 공개 `/api/v1/<service>/<domain>/<action>`, 내부 `/internal/v1/<service>/<domain>/<action>`(`/api/v1/user-service/user/login` · `/api/v1/admin-service/manager/login`). 로그인 그룹은 가드로만 가른다. (결정 2026-10-23 · Phase 6 리비전 261023-2)
 - [x] **업체 계정 생성 위치 · admin-service 데이터 접근** — admin-service 가 공유 DB 의 `t_user` · 세션 · SMS 기록을 같은 엔티티로 직접 쓴다(scheduler 와 같은 방식). 입점 승인(#39) · 업체 관리자 관리(#42)의 계정 생성도 admin-service 매니저 도메인이 직접 한다. 마이그레이션 · 시드는 user-service 묶음 한 곳. (결정 2026-10-23 · Phase 6 리비전)
 - [x] **로그인 그룹 = 도메인 · 서버 배치** — user · manager · admin 도메인을 게이트웨이 · contracts · 서비스 전 레이어에서 나누고, 매니저 · 관리자는 admin-service(Phase 7 을 함께)에 둔다. 공통 계정 로직은 새 lib `libs/account`, 명령은 `admin.manager.*` · `admin.admin.*`(큐 `q.admin.cmd`), 게이트웨이 토큰 확인은 그룹별 서비스(전략 · 가드 3쌍). (결정 2026-10-23)
