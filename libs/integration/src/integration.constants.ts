@@ -16,17 +16,17 @@ export const STORAGE_DOWNLOAD_URL_TTL_SECONDS = 600;
 /** Redis(상태 저장소)에 닿지 못했을 때 — 503 */
 export const REDIS_UNAVAILABLE_MESSAGE = '상태 저장소에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.';
 
-/** 새 QR 을 겹치지 않게 발급하지 못했을 때 — 500 (32자 무작위라 사실상 일어나지 않는다) */
-export const DOOR_QR_ISSUE_FAILED_MESSAGE = 'QR 정보를 발급하지 못했습니다. 관리자에게 문의해주세요.';
-
 /** 문 상태 — open: 열림, close: 닫힘 (Redis 문 정보의 상태 칸) */
 export const DOOR_STATE = {OPEN: 'open', CLOSE: 'close'} as const;
 
 /** 한 번도 열거나 닫은 적 없는 문의 시각 */
 export const DOOR_TIME_NONE = '00000000000000';
 
-/** 새 QR 을 겹치지 않게 잡는 최대 시도 횟수 */
-export const DOOR_QR_ISSUE_ATTEMPTS = 3;
+/** 문 명령(관리자 바로 열기 · 시크릿 변경 때 연결 끊기)을 보내는 Redis 채널 — gateway 문 소켓이 구독해 그 업체 연결에 적용한다 */
+export const DOOR_COMMAND_CHANNEL = 'door-commands';
+
+/** 문 명령 종류 — open: 바로 열기(그 업체 연결에 door.open), disconnect: 그 업체 연결을 모두 끊기(시크릿 변경) */
+export const DOOR_COMMAND = {OPEN: 'open', DISCONNECT: 'disconnect'} as const;
 
 /** 토스페이먼츠에 닿지 못했거나 잠시 뒤 다시 하면 되는 실패 — 503, 큐 경로에서는 재시도된다 */
 export const PAYMENT_UNAVAILABLE_MESSAGE = '결제 서비스에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.';

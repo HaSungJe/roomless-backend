@@ -1,4 +1,5 @@
 import type {FindOptionsWhere} from 'typeorm';
+import type {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import type {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import type {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
@@ -157,4 +158,10 @@ export interface ReservationRepositoryInterface {
     findStoreRoomRows(store_id: string): Promise<StoreRoomRow[]>;
     /** 업체 현황 예약 행 — [from, to) 와 겹치는 결제 대기 · 확정 · 이용 중 · 이용 완료, 입실 순 */
     findStoreReservationRows(store_id: string, from: Date, to: Date): Promise<StoreReservationRow[]>;
+    /** 예약의 QR — 예약 1건에 1행 */
+    findRoomQr(where: FindOptionsWhere<RoomQrEntity>): Promise<RoomQrEntity | null>;
+    /** QR 발급 — 같은 예약 · 같은 QR 이 이미 있으면 넣지 않는다(ON CONFLICT DO NOTHING — 트랜잭션을 깨지 않는다, 호출자가 다시 읽는다) */
+    insertRoomQr(entity: RoomQrEntity): Promise<void>;
+    /** QR 수정 — 업체 취소 때 유효 종료 */
+    updateRoomQr(where: FindOptionsWhere<RoomQrEntity>, entity: RoomQrEntity): Promise<void>;
 }

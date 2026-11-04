@@ -4,6 +4,7 @@ import {ReturnedExceptionInterceptor} from '@app/common/exception/returned-excep
 import {InternalAuthGuard} from '@app/common/internal/internal-auth.guard.js';
 import {ADMIN_COMMAND_BINDING, ADMIN_COMMAND_QUEUE} from '@app/contracts/admin/admin.commands.js';
 import {DatabaseModule} from '@app/database/database.module.js';
+import {DoorStoreModule} from '@app/integration/door/door-store.module.js';
 import {SmsModule} from '@app/integration/sms/sms.module.js';
 import {StorageModule} from '@app/integration/storage/storage.module.js';
 import {BROKER_USER} from '@app/messaging/messaging.constants.js';
@@ -21,6 +22,7 @@ import {StoreModule} from './store/store.module.js';
  * - MessagingModule.forService: q.admin.cmd(`admin.#`) 소비 → `@OnCommand` 핸들러 디스패치 (user_id 가 gateway 인 명령만 처리)
  * - SmsModule: SMS 발송 포트(SMS_SENDER, Amazon SNS) — 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내
  * - StorageModule: 파일 저장소 포트(STORAGE_GATEWAY, Amazon S3 · CloudFront 공개 주소) — 업체 정보 파일 · 객실 그룹 사진
+ * - DoorStoreModule: 문 정보 포트(DOOR_STORE, Redis — RedisModule 연결 포함) — 호실 목록 문 상태 · 바로 열기 · 문 소켓 접속 · QR 확인 · 잠금
  * 마이그레이션 · 기본 데이터 시드는 DB 를 소유한 user-service 묶음이 맡는다(이 서비스에는 migrate · SeederService 가 없다).
  */
 @Module({
@@ -29,6 +31,7 @@ import {StoreModule} from './store/store.module.js';
         MessagingModule.forService({queue: ADMIN_COMMAND_QUEUE, binding_keys: [ADMIN_COMMAND_BINDING], broker_user: BROKER_USER.ADMIN_SERVICE}),
         SmsModule,
         StorageModule,
+        DoorStoreModule,
         ManagerModule,
         AdminModule,
         StoreModule,

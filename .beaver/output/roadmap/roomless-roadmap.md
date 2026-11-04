@@ -31,7 +31,7 @@ flowchart LR
   P12 --> P16["Phase 16 · reservation 기반 (4)"]:::done
   P13 --> P17["Phase 17 · 예약·결제 (8)"]:::done
   P16 --> P17
-  P14 --> P15["Phase 15 · 문 관리·QR 확인 (3)"]:::todo
+  P14 --> P15["Phase 15 · 문 관리·QR 확인 (5)"]:::inprog
   P17 --> P15
   P17 --> P18["Phase 18 · discovery (4)"]:::todo
   P15 --> P19["Phase 19 · 이용 (5)"]:::todo
@@ -72,7 +72,7 @@ flowchart LR
 - Phase 14 — 문 상태 · 유닛 3개 · 의존: Phase 12 · 푼다: Phase 15, 23 · 파일 집합: libs/integration/src/{redis,door}, apps/user-service/src/door, apps/gateway/src/api/v1/user-service/door, libs/contracts/src/door, compose.redis.yml, compose.*.yml, scripts/docker-network.mjs, package.json, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/{reservation,payment}, libs/database/src/migrations, libs/integration/src/payment · done
 - Phase 17 — 예약·결제 · 유닛 8개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation, libs/integration/src/payment, apps/admin-service/src/{store,room}(환불 규정 · 연박 박수 · 삭제 금지), libs/database(entities · migrations) · done
-- Phase 15 — 문 관리·QR 확인 · 유닛 3개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/door(업체 문 목록 · 바로 열기), apps/user-service/src/reservation(내 예약 방 · QR), apps/gateway/src/api/v1/{admin-service,user-service}, libs/contracts/src/{door,reservation} · todo
+- Phase 15 — 문 관리·QR 확인 · 유닛 5개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/{room,store}(문 상태 · 바로 열기 · 소켓 처리 · 시크릿), apps/user-service/src/{reservation,door 삭제}(내 예약 QR), apps/scheduler/src/reservation(QR 맞추기), apps/gateway/src/modules/door-socket, libs/integration/src/door, libs/database(t_room_qr · door_secret), libs/contracts/src/{door,room,store,reservation} · in-progress
 - Phase 18 — discovery · 유닛 4개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/admin-service/src/discovery, apps/gateway/src/api/v1/admin-service/discovery, libs/contracts/src/discovery · todo
 - Phase 19 — 이용 · 유닛 5개 · 의존: Phase 5, 15, 17 · 푼다: Phase 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation(crontabs), apps/gateway/src/api/v1/user-service/reservation · todo
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/admin(이용자 · 업체 관리자 관리 — 공유 DB 의 t_user 를 관리자 도메인 repository 가 다룬다), apps/gateway/src/api/v1/admin-service/admin, libs/contracts/src/admin · todo
@@ -83,14 +83,17 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 15
+지금: Phase 15 진행 중 · Next up: Phase 15
 
 ## 지금 할 일
-Phase 15 문 관리 시작하기
-- #110 업체 문 목록
-- #111 관리자 바로 열기
-- #112 내 예약 방 목록 · QR 확인
+Phase 15 문 관리 build 완료 — 리뷰 후 ship
+- #110 업체 문 목록(호실 목록에 문 상태)
+- #111 관리자 바로 열기(소켓 열기 명령)
+- #112 내 예약 QR · QR 이력(t_room_qr + Redis 현재 QR)
+- #114 업체 문 시크릿
+- #115 문 소켓(HTTP 문 열기 · 닫기 대체)
 - ok → 다음
+- 사용자 — 마이그레이션 `RoomQrDoorSecret` 적용(`ReservationBooking` 뒤 — 새 테이블 `t_room_qr` · `t_store.door_secret` 만, 기존 데이터 그대로). gateway · admin-service · scheduler 에도 `REDIS_URL` 필요 → 네 앱 묶음을 새 이미지로 다시 띄우기(gateway-lb 는 `/ws/` 설정). 문 쪽 프로그램에 연동 규격 변경 알리기(HTTP 문 열기 · 닫기 → 문 소켓 — README "문 소켓"), 업체 총관리자가 시크릿을 먼저 정한다. 소켓 확인 순서는 report(door-manage-report.md) 참고
 - 사용자 — 마이그레이션 `ReservationBooking` 적용(`ReservationSchema` 뒤 — 업체 환불 기준 `refund_deadline_hours` → `refund_deadline_minutes`(값 × 60) · 마감 뒤 환불 비율 `late_refund_percent`(기본 50) · 연박 행 박수 1 · 30 · 예약에 비율 저장 · 결제 부분 환불 CHECK) → user-service · admin-service 를 새 이미지로, scheduler 묶음도 다시 띄우기(이제 `TOSS_SECRET_KEY` 로 결제 대기 만료 · 늦은 승인 · 환불 crontab 이 돈다 — 운영 `NODE_ENV=production` 에서만)
 - 사용자 — 프론트: 업체 예약 규정 필드 `refund_deadline_hours` → `refund_deadline_minutes` + `late_refund_percent`, 업체 상품 설정 연박 `min_nights` · `max_nights`, 결제창 orderId = 예약 결과의 `payment_id` → 토스 승인 뒤 `POST /api/v1/user-service/reservation/payment-confirm`. 토스 테스트 키로 docs/guides/toss-setup.md 6절 순서대로 확인
 - 사용자 — 마이그레이션 `ReservationSchema` 적용(`RoomState` 뒤 — 예약 · 구간 · 결제 테이블과 룩업 3개, 새 테이블 6개만 생기고 기존 데이터는 바뀌지 않는다), `.env` 에 `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — docs/guides/toss-setup.md). 키는 user-service(예약 — 결제 환경 판별 · 결제 확인 조회) · scheduler(만료 조회 · 환불)가 쓴다 — 비어 있으면 예약 · 결제 요청만 503
@@ -115,8 +118,8 @@ Phase 15 문 관리 시작하기
 | 업체 총관리자 `HEAD_MANAGER` | 매니저 (admin-service · `manager` 도메인) | 업체 관리자 권한 전부 + 업체 관리자 계정 등록 · 수정 · 삭제 |
 | 업체 관리자 `MANAGER` | 매니저 (admin-service · `manager` 도메인) | 아이디 로그인 · 비밀번호 변경 · 등록된 휴대폰으로 아이디 찾기 · 비밀번호 초기화(총매니저도 같다), 자기 업체 1곳 — 업체 소개 · 영업시간 · 브레이크타임 · 정비시간, 층별 호실 · 객실 그룹 · 상품 · 기간 가격 · 호실 문(상태 확인 · 바로 열기), 호실 상태 전이, 예약 현황 · 예약 취소 · 호실 이동, 자기 업체 통계 |
 | 이용자 `USER` | 이용자 (user-service · `user` 도메인) | 성인만(청소년보호법) SNS 가입 · 로그인(비밀번호 없음) 후 휴대폰 SMS 인증 · SMS로 아이디(가입한 SNS) 찾기, 지도 검색, 호실 · 시간대 선택 예약 · 결제 · 취소, 내 예약 방 · QR 확인(로그인 웹페이지), QR 입장, 연장, 입점 신청 |
-| 문 쪽 타 업체 프로그램 | — (인증 없음 — QR 이 열쇠) | 예약자 QR 을 읽어 문 열기 API 호출, 문 닫기 API 호출 — 문 자체를 여닫는 것은 그 프로그램 몫 |
-| 시스템 | — | scheduler 서버의 crontab(탈퇴 자동처리 · QR 확인 링크 발송 · 이용 종료 자동 완료), 서비스의 브로커 명령 처리 |
+| 문 쪽 타 업체 프로그램 | — (업체 ID + 업체 문 시크릿 — 문 소켓 `/ws/v1/door`) | 업체 단위로 문 소켓에 붙어 예약자 QR 을 서버에 확인받고(`door.verify`), 잠금을 알리고(`door.closed`), 관리자 바로 열기 명령(`door.open`)을 받는다 — 문 자체를 여닫는 것은 그 프로그램 몫 |
+| 시스템 | — | scheduler 서버의 crontab(탈퇴 자동처리 · 결제 대기 만료 · 환불 · QR 동기화 · QR 확인 링크 발송 · 이용 종료 자동 완료), 서비스의 브로커 명령 처리 |
 
 업체 총관리자와 업체 관리자는 객실 관리 권한이 같다. 다른 점은 업체 관리자 계정을 관리할 수 있는지 하나다.
 
@@ -363,6 +366,7 @@ report: `.beaver/output/report/room/room-manage-report.md` · review: `main-revi
 **Expected entry points**: `POST /api/v1/user-service/door/open` · `/close`(가드 없음) → user-service `door` 도메인, 포트 `DOOR_STORE`(`libs/integration/src/door/`) · `RedisModule`(`libs/integration/src/redis/`), `compose.redis.yml`. 기기 제어는 하지 않는다 — 계획이 바뀌어 #58 · #59 는 dropped (사용자 결정 2026-11-01).
 
 report: `.beaver/output/report/door/door-state-report.md` · review: `main-review-261101.md`. 문 API 2개 · Redis Docker 묶음(`npm run docker:redis`) · 실행 가이드. 지운 호실의 Redis 문 키 정리는 Phase 15(#112 QR 발급)에서.
+Phase 15 에서 #109 HTTP 문 열기 · 닫기는 문 소켓(#115)으로 바뀌어 없어지고, Redis 값은 `상태:시각` + `door-qr:<room_id>`(현재 QR)로 바뀐다(사용자 결정 2026-11-04).
 
 ### Phase 15 — 문 관리 · QR 확인 (업체 관리자 · 이용자) · depends: Phase 14, Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -370,11 +374,15 @@ report: `.beaver/output/report/door/door-state-report.md` · review: `main-revie
 | 60 | 사물 등록 · 수정 · 삭제 · 목록 | 호실별 | — | 58 | dropped(기기 제어 제외 — 문 관리로 바뀜, 사용자 결정 2026-11-01) |
 | 61 | 사물 제어 | 큐 경로 | — | 59 | dropped(기기 제어 제외 — 문 관리로 바뀜, 사용자 결정 2026-11-01) |
 | 62 | 사물 상태 조회 | 최근 상태 · 수신 시각 | — | 58 | dropped(기기 제어 제외 — 문 관리로 바뀜, 사용자 결정 2026-11-01) |
-| 110 | 업체 문 목록 | 업체 관리자가 자기 업체 호실 문의 상태(열림/닫힘 · 마지막 시각)를 본다 | 목록 모양(호실 목록과 합칠지) | 108, 54 | todo |
-| 111 | 관리자 바로 열기 | 업체 관리자가 호실 문을 바로 열어 준다 | 실제 문이 열리는 방식 — 서버는 문을 직접 움직이지 않는다(문 쪽 프로그램이 상태를 묻게 할지 · 그쪽 API 를 부를지) | 108, 110 | todo |
-| 112 | 내 예약 방 목록 · QR 확인 | 이용자가 예약한 방 목록과 이용 시간의 QR 을 로그인 웹페이지에서 본다(#71 내 예약 목록에 QR 을 더한다) — 예약 건마다 QR 을 새로 발급(`issueQr`) | QR 발급 시점 · 새로 발급 주기 | 108, 71 | todo |
+| 110 | 업체 문 목록 | 업체 관리자가 자기 업체 호실 문의 상태(열림/닫힘 · 마지막 시각)를 본다 — 따로 두지 않고 기존 호실 목록에 문 상태 · 시각을 더한다(Redis MGET) | 목록 모양 — 호실 목록에 합침(사용자 결정 2026-11-04) | 108, 54 | in-progress |
+| 111 | 관리자 바로 열기 | 업체 관리자가 호실 문을 바로 열어 준다 — Redis 를 open + 시각으로 쓰고 그 업체 문 소켓에 열기 명령(`door.open`) | 실제 문이 열리는 방식 — 소켓 명령(#115) | 108, 110, 115 | in-progress |
+| 112 | 내 예약 QR · QR 이력 | 이용자가 이용 시간에 내 예약 QR 을 본다(없으면 발급). QR 은 DB `t_room_qr` 에 이력(유효 시작 · 종료), Redis `door-qr:<room_id>` 에 호실별 현재 값 — 미래 예약에 미리 주지 않고 이용 시작 때 scheduler 가 발급 · 1분마다 맞춘다, 업체가 이용 중 예약을 취소하면 무효 | QR 발급 시점 · 만료 · 취소 처리(사용자 결정 2026-11-04) | 108, 71 | in-progress |
+| 114 | 업체 문 시크릿 | 업체 총관리자가 문 소켓 접속용 시크릿 코드(영문 · 숫자 16 ~ 64자)를 정한다 — bcrypt 해시로 `t_store.door_secret` | 정하는 사람(업체 총관리자) | 42, 99 | in-progress |
+| 115 | 문 소켓 | 문 쪽 타 업체 프로그램이 업체 ID + 시크릿으로 gateway 표준 WebSocket 에 붙어 QR 확인(`door.verify` — 서버가 Redis 현재 QR 과 비교) · 잠금 알림(`door.closed`) · 바로 열기 명령(`door.open`)을 주고받는다 — HTTP 문 열기 · 닫기(#109)를 대신한다 | 소켓 방식 · 서버 위치 · QR 비교 위치(사용자 결정 2026-11-04) | 108, 114 | in-progress |
 
-**Expected APIs** (가칭): 매니저 가드 `/api/v1/admin-service/door`(#110) · `/:room_id/open`(#111), 이용자 가드 `/api/v1/user-service/reservation/mine`(#112 — 방 목록 · QR). 사물 등록 · 제어 · 상태(#60 ~ #62)는 기기 제어를 빼면서 dropped (사용자 결정 2026-11-01).
+**APIs** (기획 — spec `.beaver/output/spec/door/door-manage-spec.md`): 매니저 가드 `GET /api/v1/admin-service/room`(#110 — 문 상태 추가) · `POST /api/v1/admin-service/room/:room_id/door-open`(#111) · `PATCH /api/v1/admin-service/store/mine/door-secret`(#114 — 업체 총관리자), 이용자 가드 `GET /api/v1/user-service/reservation/:reservation_id/qr`(#112), 소켓 `WS /ws/v1/door`(#115 — 헤더 `x-store-id` · `x-store-secret`), scheduler `reservation-qr-sync`(1분). 삭제: `POST /api/v1/user-service/door/open` · `/close`(#109 → 소켓). 사물 등록 · 제어 · 상태(#60 ~ #62)는 기기 제어를 빼면서 dropped (사용자 결정 2026-11-01).
+
+build 완료 — report: `.beaver/output/report/door/door-manage-report.md`. 전체 97파일 920건 · typecheck · lint · build · db:check 통과. 소켓은 사용자가 띄워서 확인(report 의 확인 순서).
 
 ### Phase 16 — reservation 기반 (예약 · 결제 스키마 · 결제 포트) · depends: Phase 12
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -428,7 +436,7 @@ ship 완료(e252f8f) — report: `.beaver/output/report/reservation/reservation-
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
 | 78 | QR 확인 링크 발송 crontab | 이용 시작 5분 전 SMS로 QR 확인 웹페이지(로그인 — #112) 링크 (scheduler 서버 · 1분 주기 · `JobLockService`) | — | 17, 69, 88, 112 | todo |
-| 79 | 체크인 = 첫 입장 | 이용 시간 안의 첫 문 열기(QR — #109)로 예약 체크인 · 호실 사용중 | 문 열기와 체크인 연결 방식(문 열기 API 는 Redis 만 바꾼다) | 109, 78 | todo |
+| 79 | 체크인 = 첫 입장 | 이용 시간 안의 첫 문 열기(문 소켓 QR 확인 `door.verify` ok — #115)로 예약 체크인 · 호실 사용중 | 문 열기와 체크인 연결 방식(QR 확인은 admin-service 가 Redis 만 바꾼다 — 예약 상태는 user-service) | 115, 78 | todo |
 | 80 | 이용 중 사물 제어 | 내 예약 구간 안에서만 | — | 61, 79 | dropped(기기 제어 제외, 사용자 결정 2026-11-01) |
 | 81 | 연장 | 같은 호실에서 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(단위 기본안: 시간 이용 단위), 정비시간은 마지막 연장 뒤로, 추가 결제 | 1박 · 연박 연장 단위 · 요금 | 69 | todo |
 | 82 | 체크아웃 | 호실 정비중 전이 | — | 79 | todo |
@@ -486,7 +494,7 @@ ship 완료(e252f8f) — report: `.beaver/output/report/reservation/reservation-
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 85/106 units done (16/24 phases)
+**Progress**: 85/108 units done (16/24 phases)
 **Next up**: Phase 15 문 관리 — 의존(Phase 14) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
@@ -510,7 +518,7 @@ ship 완료(e252f8f) — report: `.beaver/output/report/reservation/reservation-
 - **취소 · 환불** — 업체 취소 100%. 이용자는 시작 n분 전 마감까지 100%(`t_store.refund_deadline_minutes`, 0 ~ 10,080, 기본 60), 마감 뒤 시작 전까지 업체 비율(`t_store.late_refund_percent`, 0 ~ 100, 기본 50 — `floor(금액 × 비율 / 100)`), 시작 뒤에는 취소 불가. 예약할 때의 마감 · 비율을 예약에 저장하고, 취소 명령은 환불 요청으로 표시만 하며 scheduler crontab(1분)이 토스 취소(금액 지정)로 처리한다 (사용자 결정 2026-10-29 · 2026-11-03)
 - **결제 대기** — 예약 뒤 5분 결제 대기. scheduler 가 1분마다 만료 건을 토스 조회(orderId = `payment_id`)로 정리한다 — 승인 · 금액 일치면 확정, 금액 다르면 환불 + 만료, 그 밖은 만료. 만료 뒤 30분은 5분마다 다시 조회해 늦은 승인을 환불한다. 만료 뒤 같은 이용자는 같은 호실을 10분 동안 다시 예약할 수 없다 (사용자 결정 2026-11-03)
 - **설정 변경과 기존 예약** — 영업중지 · 영업시간 · 브레이크 · 일시 예약불가 · 상품 설정을 바꿔도 이미 받은 예약은 그대로 둔다(자동 취소 · 특수 표시 없음 — 필요하면 업체 취소). 점유 예약(결제 대기 · 확정 · 이용 중)이 있는 호실 · 객실 그룹은 지울 수 없다 (사용자 결정 2026-11-03)
-- **문 · QR** — 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 둔다(`door:<room_id>` = `QR:open|close:yyyyMMddHHmmss`, 기록 없음 `00000000000000`). QR 은 예약 건마다 새로 발급하고(이전 QR 무효, 두 문에 겹치지 않음) 예약자는 로그인 웹페이지에서 본다. 문 쪽 타 업체 프로그램이 그 QR 로 문 열기 API 를 부르면 서버는 Redis 만 바꾸고 문은 그 프로그램이 연다. 기기 제어는 하지 않는다 (사용자 결정 2026-11-01 · Phase 14)
+- **문 · QR** — 호실 문마다 열림/닫힘 · 마지막 시각(`door:<room_id>` = `open|close:yyyyMMddHHmmss`)과 현재 유효 QR(`door-qr:<room_id>`, 만료 = 이용 끝)을 Redis 에, 모든 QR 은 DB `t_room_qr` 에 이력(유효 시작 · 종료)으로 둔다. QR 은 미래 예약에 미리 주지 않고 이용 시작 때 발급(scheduler · 이용자 조회), 예약자는 로그인 웹페이지에서 본다. 문 쪽 타 업체 프로그램은 업체 ID + 시크릿으로 gateway 문 소켓에 붙어 읽은 QR 을 묻고(`door.verify` — 서버가 Redis 현재 QR 과 비교, QR 값은 밖으로 나가지 않는다) 잠금을 알리고(`door.closed`) 바로 열기 명령(`door.open`)을 받는다. HTTP 문 열기 · 닫기 API 는 없다. 기기 제어는 하지 않는다 (사용자 결정 2026-11-01 · 2026-11-04 · Phase 14 · 15)
 - **체크인 · 연장** — 시작 5분 전 SMS로 QR 확인 웹페이지 링크, 이용 시간 안의 첫 문 열기 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(Phase 19 #81)
 - **업체 측 예약 변경** — 업체 관리자는 예약 취소(100% 환불) · 호실 이동(같은 그룹 · 사용중지 아닌 호실 · 시작 전 확정 예약만) 가능, 이용자에게 SMS(인증된 번호가 없으면 건너뜀). 업체 예약 현황은 이용자 이름 · 휴대폰 번호를 보여 준다 (사용자 결정 2026-11-03)
 - **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
@@ -524,7 +532,7 @@ ship 완료(e252f8f) — report: `.beaver/output/report/reservation/reservation-
 
 - [x] **예약 · 조회가 객실 데이터를 읽는 방법** — 공유 DB 를 직접 읽는다: user-service 예약 repository 가 업체 · 객실 · 상품 · 영업시간 엔티티를 소유 도메인 어휘로 읽는다(`findReservationStore` · `findBookableRooms`). discovery(Phase 18)도 이 방식을 따른다. (사용자 결정 2026-11-03 · Phase 17)
 - [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
-- [x] **입장 QR 확인 수단** — 문 쪽 타 업체 프로그램이 예약자 QR 화면(로그인 웹페이지)을 읽어 문 열기 API(QR)를 부른다. 서버는 Redis 문 정보만 바꾸고 문을 직접 움직이지 않는다. QR 은 예약 건마다 새로 발급. (사용자 결정 2026-11-01 · Phase 14)
+- [x] **입장 QR 확인 수단** — 문 쪽 타 업체 프로그램이 예약자 QR 화면(로그인 웹페이지)을 읽어 문 소켓으로 묻고(`door.verify`), 서버가 Redis 의 그 호실 현재 QR 과 비교해 답한다(`door.verified`). 서버는 Redis 만 바꾸고 문을 직접 움직이지 않는다. QR 은 이용 시작 때 예약 건마다 발급. (사용자 결정 2026-11-01 → 2026-11-04 갱신 · Phase 14 · 15 — HTTP 문 열기 API 에서 소켓으로)
 - [x] **취소 규정의 끝** — 마감(n분 전) 전 100%, 마감 뒤 시작 전까지 업체 비율(기본 50%) 환불, 시작 이후 · 노쇼는 취소 · 환불 없음. (사용자 결정 2026-10-29 → 2026-11-03 갱신 · Phase 17 #70)
 - [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 그대로 둔다(2026-11-03 갱신: 특수 표시도 두지 않는다 — 아래 설정 변경 결정과 같다). (사용자 결정 2026-10-27 · 2026-11-03 · #98)
 - [x] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 기존 예약은 그대로 둔다(자동 취소 · 특수 표시 없음). 필요하면 업체가 업체 취소(100% 환불 + SMS)로 정리한다. (사용자 결정 2026-11-03 · Phase 17)

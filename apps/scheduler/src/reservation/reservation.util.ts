@@ -1,9 +1,12 @@
 import {BadRequestException} from '@nestjs/common';
+import {generateId} from '@app/common/utils/id.js';
 import {PAYMENT_STATE, RESERVATION_STATE} from '@app/contracts/reservation/reservation.constants.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {PaymentLookupResult} from '@app/integration/interfaces/integration.interface.js';
+import type {QrSyncTargetRow} from './interfaces/reservation.repository.interface.js';
 
 /** 결제 대기 전환 — 결제 · 구간 · 예약에 쓸 엔티티 */
 export interface PendingTransition {
@@ -113,4 +116,21 @@ function buildStateEntities(state: string): {detail: ReservationDetailEntity; re
     const reservation = new ReservationEntity();
     reservation.reservation_state_id = state;
     return {detail, reservation};
+}
+
+/**
+ * 이용이 시작된 예약의 QR — 유효 = 이용 시작 ~ 이용 끝, QR 은 32자 무작위(user-service 내 예약 QR 발급과 같은 값).
+ *
+ * @param row 맞추기 대상 예약
+ * @returns QR 엔티티
+ */
+export function buildRoomQr(row: QrSyncTargetRow): RoomQrEntity {
+    const roomQr = new RoomQrEntity();
+    roomQr.room_qr_id = generateId();
+    roomQr.room_id = row.room_id;
+    roomQr.reservation_id = row.reservation_id;
+    roomQr.qr = generateId();
+    roomQr.starts_at = row.start_at;
+    roomQr.ends_at = row.end_at;
+    return roomQr;
 }

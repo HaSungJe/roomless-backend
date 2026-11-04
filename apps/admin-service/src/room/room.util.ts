@@ -5,13 +5,15 @@ import {dayjs} from '@app/common/utils/dayjs.js';
 import type {RoomGroupDetailImageResultDto, RoomGroupDetailPlanResultDto, RoomGroupDetailResultDto} from '@app/contracts/room/dto/room-group-detail.dto.js';
 import type {RoomGroupListItemResultDto} from '@app/contracts/room/dto/room-group-list.dto.js';
 import type {RoomGroupPlanPriceItemResultDto} from '@app/contracts/room/dto/room-group-plan-price-list.dto.js';
+import type {RoomDoorSnapshotItemResultDto} from '@app/contracts/room/dto/room-door-snapshot.dto.js';
 import type {RoomListItemResultDto} from '@app/contracts/room/dto/room-list.dto.js';
 import type {RoomPlanItemResultDto} from '@app/contracts/room/dto/room-plan-list.dto.js';
 import type {RoomGroupImageEntity} from '@app/database/entities/room/room-group-image.entity.js';
 import type {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import {ROOM_GROUP_DETAIL_DEFAULTS} from '@app/database/entities/room/room-group.entity.js';
 import type {RoomGroupDetail, RoomGroupEntity} from '@app/database/entities/room/room-group.entity.js';
-import type {RoomGroupPlanRow, RoomGroupRow, RoomPlanRow, RoomRow} from './interfaces/room.repository.interface.js';
+import type {DoorRecord} from '@app/integration/interfaces/integration.interface.js';
+import type {RoomDoorRow, RoomGroupPlanRow, RoomGroupRow, RoomPlanRow, RoomRow} from './interfaces/room.repository.interface.js';
 import {ROOM_DATE_FORMAT, ROOM_GROUP_DETAIL_KEYS, ROOM_IMAGE_EXTENSION, ROOM_PLAN_TYPE_ORDER, ROOM_STATE_TRANSITIONS} from './room.constants.js';
 
 /**
@@ -246,12 +248,13 @@ export function toRoomGroupPlanPriceItem(price: RoomGroupPlanPriceEntity): RoomG
 }
 
 /**
- * 호실 목록 항목.
+ * 호실 목록 항목 — 문 상태 · 시각은 Redis 문 정보.
  *
  * @param row 호실 목록 행
+ * @param door 그 호실 문 상태
  * @returns 항목
  */
-export function toRoomListItem(row: RoomRow): RoomListItemResultDto {
+export function toRoomListItem(row: RoomRow, door: DoorRecord): RoomListItemResultDto {
     return {
         room_id: row.room_id,
         room_group_id: row.room_group_id,
@@ -261,5 +264,18 @@ export function toRoomListItem(row: RoomRow): RoomListItemResultDto {
         room_state_id: row.room_state_id,
         room_state_name: row.room_state_name,
         created_at: dayjs(row.created_at).toISOString(),
+        door_state: door.state,
+        door_changed_at: door.changed_at,
     };
+}
+
+/**
+ * 문 소켓 접속 항목 — 호실 + 문 상태.
+ *
+ * @param row 업체 호실 문 행
+ * @param door 그 호실 문 상태
+ * @returns 항목
+ */
+export function toRoomDoorSnapshotItem(row: RoomDoorRow, door: DoorRecord): RoomDoorSnapshotItemResultDto {
+    return {room_id: row.room_id, room_name: row.room_name, floor: Number(row.floor), door_state: door.state, door_changed_at: door.changed_at};
 }

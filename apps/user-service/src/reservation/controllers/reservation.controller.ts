@@ -3,6 +3,7 @@ import {InternalActor} from '@app/common/internal/internal-request.decorator.js'
 import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
+import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
 import {ReservationStoreDto, ReservationStoreResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
 import {ReservationService} from '../reservation.service.js';
 
@@ -54,5 +55,14 @@ export class ReservationController {
     @HttpCode(200)
     async getMyReservation(@InternalActor('user_id') user_id: string, @Param() param: ReservationDetailParamDto): Promise<ReservationDetailResultDto> {
         return this.reservationService.getMyReservation(user_id, param.reservation_id);
+    }
+
+    /**
+     * 내 예약 QR (이용자)
+     */
+    @Get('/:reservation_id/qr')
+    @HttpCode(200)
+    async getMyReservationQr(@InternalActor('user_id') user_id: string, @Param() param: ReservationQrParamDto): Promise<ReservationQrResultDto> {
+        return this.reservationService.getMyReservationQr(user_id, param.reservation_id);
     }
 }

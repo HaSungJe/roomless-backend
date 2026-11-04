@@ -14,7 +14,7 @@
 #
 # 네트워크 — "admin-service 는 게이트웨이만 닿는다"
 #   roomless-service (internal) : gateway · admin-service-lb · admin-service (user-service 와 같은 내부망)
-#   roomless-broker / roomless-data : 브로커 / DB 로 나가는 길 (DB 는 user-service 와 같은 공유 DB)
+#   roomless-broker / roomless-data : 브로커 / DB · Redis 로 나가는 길 (DB · Redis 는 user-service 와 같다)
 name: roomless-admin-service
 
 x-logging: &logging
@@ -42,6 +42,8 @@ services:
             JWT_SECRET: '${JWT_SECRET:?.env 에 JWT_SECRET 이 필요합니다}'
             TOKEN_CIPHER_KEY: '${TOKEN_CIPHER_KEY:?.env 에 TOKEN_CIPHER_KEY 가 필요합니다}'
             INTERNAL_API_TOKEN: '${INTERNAL_API_TOKEN:?.env 에 INTERNAL_API_TOKEN 이 필요합니다}'
+            # 문 정보 저장소 — 호실 목록의 문 상태 · 바로 열기 · 문 소켓 QR 확인 · 잠금 알림(user-service 와 같은 Redis)
+            REDIS_URL: '${REDIS_URL:?.env 에 REDIS_URL 이 필요합니다}'
             # ── 서버 구성: 어느 환경이든 같다 ──
             # admin-service-lb 의 upstream 포트(docker/nginx/admin-service.conf)와 같아야 한다
             ADMIN_SERVICE_PORT: 4002
@@ -52,7 +54,6 @@ services:
             RABBITMQ_GATEWAY_PASSWORD: ''
             RABBITMQ_USER_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
-            REDIS_URL: ''
             REDIS_PASSWORD: ''
             TOSS_SECRET_KEY: ''
         deploy:

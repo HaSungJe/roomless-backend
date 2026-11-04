@@ -589,6 +589,7 @@ export function toMineDetail(entity: StoreEntity, hours: StoreMineHourItemResult
         booking_open_hours: entity.booking_open_hours,
         refund_deadline_minutes: entity.refund_deadline_minutes,
         late_refund_percent: entity.late_refund_percent,
+        is_door_secret_set: entity.door_secret ? 1 : 0,
         suspend_comment: entity.suspend_comment ?? null,
         hours,
         breaks,

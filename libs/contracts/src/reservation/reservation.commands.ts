@@ -30,4 +30,6 @@ export const RESERVATION_INTERNAL_PATH = {
     STORE: `${RESERVATION_INTERNAL_BASE}/store`,
     /** 내 예약 상세 (GET, 이용자) */
     detail: (reservation_id: string) => `${RESERVATION_INTERNAL_BASE}/${encodeURIComponent(reservation_id)}`,
+    /** 내 예약 QR (GET, 이용자 — 이용 시간 안이면 QR, 없으면 그 자리에서 발급) */
+    qr: (reservation_id: string) => `${RESERVATION_INTERNAL_BASE}/${encodeURIComponent(reservation_id)}/qr`,
 } as const;

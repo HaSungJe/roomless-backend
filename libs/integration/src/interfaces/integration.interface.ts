@@ -87,51 +87,95 @@ export interface StorageGatewayInterface {
 /** 문 상태 — DOOR_STATE 값 */
 export type DoorState = 'open' | 'close';
 
-/** 호실 문 1개의 정보 — Redis `door:<room_id>` 의 값 `QR:상태:시각` */
+/** 호실 문 1개의 상태 — Redis `door:<room_id>` 의 값 `상태:시각` */
 export interface DoorRecord {
-    /** 지금 유효한 QR 정보 — 아직 발급하지 않았으면 null */
-    qr: string | null;
     /** 문 상태 */
     state: DoorState;
     /** 마지막으로 열거나 닫은 시각 — 한국 시각 yyyyMMddHHmmss, 기록이 없으면 DOOR_TIME_NONE */
     changed_at: string;
 }
 
+/** 바로 열기 명령 — gateway 가 그 업체 소켓에 door.open 을 보낸다 */
+export interface DoorOpenCommand {
+    /** 그 호실의 업체 ID — gateway 가 그 업체 소켓에만 보낸다 */
+    store_id: string;
+    /** 호실 ID */
+    room_id: string;
+    /** 명령 — DOOR_COMMAND.OPEN */
+    command: 'open';
+}
+
+/** 연결 끊기 명령 — 업체 문 시크릿이 바뀌었다. gateway 가 그 업체 소켓을 모두 끊는다(새 시크릿으로 다시 붙는다) */
+export interface DoorDisconnectCommand {
+    /** 업체 ID */
+    store_id: string;
+    /** 명령 — DOOR_COMMAND.DISCONNECT */
+    command: 'disconnect';
+}
+
+/** 문 명령 — Redis 채널 DOOR_COMMAND_CHANNEL 의 메시지(JSON). 밖(Redis · 소켓)으로 나가는 키라 snake_case */
+export type DoorCommand = DoorOpenCommand | DoorDisconnectCommand;
+
 /**
- * 문 정보 포트 — 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 둔다(Redis). QR 은 두 문에 겹치지 않는다.
- * 서버는 문을 직접 움직이지 않는다 — 문 쪽 타 업체 프로그램이 읽은 QR 로 문 열기 API 를 부르고, 그 결과로 문을 연다.
+ * 문 정보 포트 — 호실 문마다 열림/닫힘 · 마지막 시각, 그 호실의 현재 유효 QR(Redis)과 문 명령 채널. QR 이력은 DB(t_room_qr)에 있다.
+ * 서버는 문을 직접 움직이지 않는다 — 문 쪽 타 업체 프로그램이 문 소켓(gateway)의 QR 확인 답 · 열기 명령을 보고 움직인다.
  */
 export interface DoorStoreInterface {
     /**
-     * 문 정보를 읽는다. 기록이 없으면 `{qr: null, state: 'close', changed_at: DOOR_TIME_NONE}`.
+     * 여러 문의 상태를 한 번에 읽는다(MGET) — 받은 순서대로, 기록이 없으면 `{state: 'close', changed_at: DOOR_TIME_NONE}`. 빈 배열이면 Redis 에 묻지 않는다.
      *
      * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
      */
-    get(room_id: string): Promise<DoorRecord>;
+    getMany(room_ids: string[]): Promise<DoorRecord[]>;
 
     /**
-     * 새 QR 을 발급한다 — 겹치지 않는 값으로 바꾸고 이전 QR 은 무효가 된다. 상태 · 시각은 그대로(기록이 없으면 close · DOOR_TIME_NONE).
+     * 그 호실의 현재 QR 을 쓴다 — expires_at 에 저절로 사라진다(PXAT). 같은 값이면 그대로(멱등).
      *
-     * @returns 새 QR (32자)
-     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
-     * @throws InternalServerErrorException `{message: DOOR_QR_ISSUE_FAILED_MESSAGE}` — 겹치지 않는 값을 잡지 못했을 때
-     */
-    issueQr(room_id: string): Promise<string>;
-
-    /**
-     * QR 이 같은 문을 open + changed_at 으로 바꾼다. 찾기와 쓰기를 한 번에 한다(그 사이 QR 이 바뀌어도 옛 QR 로 덮어쓰지 않는다).
-     *
-     * @returns 그 문의 room_id — 일치하는 문이 없으면 null
      * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
      */
-    open(qr: string, changed_at: string): Promise<string | null>;
+    setQr(room_id: string, qr: string, expires_at: Date): Promise<void>;
 
     /**
-     * 그 문을 close + changed_at 으로 바꾼다(QR 은 그대로, 기록이 없으면 QR 없이 만든다).
+     * 그 호실의 현재 QR 이 qr 일 때만 지운다(다른 QR 을 지우지 않는다).
+     *
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     */
+    revokeQr(room_id: string, qr: string): Promise<void>;
+
+    /**
+     * QR 확인 — 그 호실의 현재 QR 이 qr 이면 문을 open + changed_at 으로 쓰고 true, 다르거나 없으면 아무것도 바꾸지 않고 false(비교와 쓰기를 한 번에).
+     *
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     */
+    verify(room_id: string, qr: string, changed_at: string): Promise<boolean>;
+
+    /**
+     * 바로 열기 — 문을 open + changed_at 으로 쓰고 같은 스크립트에서 열기 명령(DoorCommand)을 보낸다.
+     *
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     */
+    open(room_id: string, store_id: string, changed_at: string): Promise<void>;
+
+    /**
+     * 문을 close + changed_at 으로 쓴다(하드웨어 잠금 알림).
      *
      * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
      */
     close(room_id: string, changed_at: string): Promise<void>;
+
+    /**
+     * 그 업체 문 소켓 연결을 모두 끊으라는 명령을 보낸다(업체 문 시크릿 변경 — 옛 시크릿으로 붙은 연결을 남기지 않는다).
+     *
+     * @throws ServiceUnavailableException `{message: REDIS_UNAVAILABLE_MESSAGE}` — Redis 에 닿지 못했을 때
+     */
+    disconnect(store_id: string): Promise<void>;
+
+    /**
+     * 문 명령을 구독한다 — 구독 전용 연결을 따로 열고 기다리지 않는다(부팅을 막지 않는다). 끊기면 다시 붙어 다시 구독한다.
+     *
+     * @param listener 명령마다 부를 함수(모양이 다른 메시지는 버린다)
+     */
+    subscribe(listener: (command: DoorCommand) => void): void;
 }
 
 /** 결제 환경 — TEST: 토스 테스트 키(test_), LIVE: 실결제 */

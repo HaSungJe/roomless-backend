@@ -14,6 +14,7 @@ import type {StoreMineHoursDto} from '@app/contracts/store/dto/store-mine-hours.
 import type {StoreMineMaintenanceDto} from '@app/contracts/store/dto/store-mine-maintenance.dto.js';
 import type {StoreMineOpenDto} from '@app/contracts/store/dto/store-mine-open.dto.js';
 import type {StoreMineProfileDto} from '@app/contracts/store/dto/store-mine-profile.dto.js';
+import type {StoreMineDoorSecretDto} from '@app/contracts/store/dto/store-mine-door-secret.dto.js';
 import type {StoreMineReservationPolicyDto} from '@app/contracts/store/dto/store-mine-reservation-policy.dto.js';
 import type {StoreMineUnavailablePeriodDeleteParamDto} from '@app/contracts/store/dto/store-mine-unavailable-period-delete.dto.js';
 import type {StoreMineUnavailablePeriodDto, StoreMineUnavailablePeriodResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period.dto.js';
@@ -219,6 +220,16 @@ export class StoreQueueController {
     @OnCommand(STORE_COMMAND.MINE_RESERVATION_POLICY)
     async changeMyStoreReservationPolicy(command: MessageEnvelope<StoreMineReservationPolicyDto>): Promise<void> {
         return this.storeService.changeMyStoreReservationPolicy(requireActor(command).user_id, command.payload);
+    }
+
+    /**
+     * 내 업체 문 소켓 시크릿 코드 설정 — 업체 총관리자
+     *
+     * @param command 명령 봉투 (actor 필수)
+     */
+    @OnCommand(STORE_COMMAND.MINE_DOOR_SECRET)
+    async changeMyStoreDoorSecret(command: MessageEnvelope<StoreMineDoorSecretDto>): Promise<void> {
+        return this.storeService.changeMyStoreDoorSecret(requireActor(command).user_id, command.payload);
     }
 
     /**

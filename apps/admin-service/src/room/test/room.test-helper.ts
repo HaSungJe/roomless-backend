@@ -9,7 +9,8 @@ import {validationExceptionFactory} from '@app/common/utils/validation.js';
 import type {Actor} from '@app/contracts/actor.js';
 import {INTERNAL_HEADER} from '@app/contracts/actor.js';
 import type {MessageEnvelope, ResultPayload} from '@app/contracts/message-envelope.js';
-import {STORAGE_GATEWAY} from '@app/integration/integration.symbols.js';
+import {DOOR_STORE, STORAGE_GATEWAY} from '@app/integration/integration.symbols.js';
+import type {DoorStoreInterface} from '@app/integration/interfaces/integration.interface.js';
 import {CommandHandlerRegistry} from '@app/messaging/command-handler.registry.js';
 import {CommandDispatcher, DispatchDecision} from '@app/messaging/command.dispatcher.js';
 import {buildCommandEnvelope, encodeEnvelope} from '@app/messaging/messaging.util.js';
@@ -67,6 +68,9 @@ export type RoomRepositoryMock = {[K in keyof RoomRepositoryInterface]: Mock};
 /** 파일 저장소 포트 mock */
 export type StorageGatewayMock = {createUploadUrl: Mock; exists: Mock; getPublicUrl: Mock; remove: Mock; createDownloadUrl: Mock};
 
+/** 문 정보 포트 mock — 포트 메서드마다 vi.fn() */
+export type DoorStoreMock = {[K in keyof DoorStoreInterface]: Mock};
+
 /**
  * room repository mock 을 만든다 — 목록 조회는 빈 배열, 기간 가격 겹침 개수는 0, 기간 가격 삭제는 성공(true)이 기본값.
  *
@@ -109,6 +113,26 @@ export function createRoomRepositoryMock(): RoomRepositoryMock {
         deleteRooms: vi.fn(),
         countRoomActiveReservations: vi.fn().mockResolvedValue(0),
         countGroupActiveReservations: vi.fn().mockResolvedValue(0),
+        findDoorStore: vi.fn(),
+        findStoreDoorRoomRows: vi.fn().mockResolvedValue([]),
+    };
+}
+
+/**
+ * 문 정보 포트 mock — 여러 문 읽기는 받은 수만큼 기록 없는 문(close · 00000000000000), QR 확인은 일치(true), 쓰기는 성공.
+ *
+ * @returns mock
+ */
+export function createDoorStoreMock(): DoorStoreMock {
+    return {
+        getMany: vi.fn((room_ids: string[]) => Promise.resolve(room_ids.map(() => ({state: 'close', changed_at: '00000000000000'})))),
+        setQr: vi.fn().mockResolvedValue(undefined),
+        revokeQr: vi.fn().mockResolvedValue(undefined),
+        verify: vi.fn().mockResolvedValue(true),
+        open: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn(),
     };
 }
 
@@ -133,12 +157,25 @@ export function createStorageGatewayMock(): StorageGatewayMock {
  *
  * @param repo repository mock
  * @param storage 파일 저장소 포트 mock
+ * @param door 문 정보 포트 mock
  * @returns 디스패처와 테스트 모듈
  */
-export async function bootCommandPath(repo: RoomRepositoryMock, storage: StorageGatewayMock = createStorageGatewayMock()): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
+export async function bootCommandPath(
+    repo: RoomRepositoryMock,
+    storage: StorageGatewayMock = createStorageGatewayMock(),
+    door: DoorStoreMock = createDoorStoreMock(),
+): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
     const module = await Test.createTestingModule({
         imports: [DiscoveryModule],
-        providers: [RoomService, RoomQueueController, CommandHandlerRegistry, CommandDispatcher, {provide: ROOM_REPOSITORY, useValue: repo}, {provide: STORAGE_GATEWAY, useValue: storage}],
+        providers: [
+            RoomService,
+            RoomQueueController,
+            CommandHandlerRegistry,
+            CommandDispatcher,
+            {provide: ROOM_REPOSITORY, useValue: repo},
+            {provide: STORAGE_GATEWAY, useValue: storage},
+            {provide: DOOR_STORE, useValue: door},
+        ],
     }).compile();
     await module.init();
     return {dispatcher: module.get(CommandDispatcher), module};
@@ -150,9 +187,10 @@ export async function bootCommandPath(repo: RoomRepositoryMock, storage: Storage
  *
  * @param repo repository mock
  * @param storage 파일 저장소 포트 mock
+ * @param door 문 정보 포트 mock
  * @returns Nest 앱
  */
-export async function bootHttpPath(repo: RoomRepositoryMock, storage: StorageGatewayMock = createStorageGatewayMock()): Promise<INestApplication> {
+export async function bootHttpPath(repo: RoomRepositoryMock, storage: StorageGatewayMock = createStorageGatewayMock(), door: DoorStoreMock = createDoorStoreMock()): Promise<INestApplication> {
     process.env.INTERNAL_API_TOKEN = TEST_INTERNAL_TOKEN;
     const module = await Test.createTestingModule({
         controllers: [RoomController],
@@ -160,6 +198,7 @@ export async function bootHttpPath(repo: RoomRepositoryMock, storage: StorageGat
             RoomService,
             {provide: ROOM_REPOSITORY, useValue: repo},
             {provide: STORAGE_GATEWAY, useValue: storage},
+            {provide: DOOR_STORE, useValue: door},
             {provide: APP_GUARD, useClass: InternalAuthGuard},
             {provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor},
         ],
@@ -399,3 +438,15 @@ export function roomEntity(override: Record<string, unknown> = {}): Record<strin
         ...override,
     };
 }
+
+/**
+ * [CASES:toDoorTime] — 지금(UTC) → 저장되는 문 시각(한국 시각 yyyyMMddHHmmss). 사용자 결정 2026-11-01
+ * [이름, 지금, 문 시각]
+ */
+export const DOOR_TIME_CASES: [string, string, string][] = [
+    ['한국은 다음 날', '2026-10-31T17:24:59Z', '20261101022459'],
+    ['한국 09시', '2026-11-01T00:00:00Z', '20261101090000'],
+    ['연도 경계', '2026-12-31T15:00:00Z', '20270101000000'],
+    ['밀리초는 버림', '2026-11-01T14:59:59.999Z', '20261101235959'],
+    ['윤년 2월 29일', '2028-02-28T15:30:00Z', '20280229003000'],
+];

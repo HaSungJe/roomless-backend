@@ -118,6 +118,9 @@ export class StoreMineResultDto {
     @ApiProperty({description: '마감 뒤 환불 비율(%) — 환불 마감 뒤 ~ 이용 시작 전 취소'})
     late_refund_percent: number;
 
+    @ApiProperty({description: '문 소켓 시크릿 코드 설정 여부 (0: 안 함 — 문 쪽 프로그램이 소켓에 붙을 수 없다, 1: 설정함 — 원문은 볼 수 없다)'})
+    is_door_secret_set: number;
+
     @ApiProperty({description: '정지 사유 (영업중지일 때만)', nullable: true, type: String})
     suspend_comment: string | null;
 

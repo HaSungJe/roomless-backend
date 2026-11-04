@@ -1,4 +1,4 @@
-import {BadRequestException, Inject, Injectable, NotFoundException} from '@nestjs/common';
+import {BadRequestException, Inject, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {Transactional} from '@nestjs-cls/transactional';
 import {In, LessThan, MoreThan, Not} from 'typeorm';
 import {Pagination} from '@app/common/utils/pagination.js';
@@ -9,6 +9,7 @@ import type {ReservationCancelDto, ReservationCancelResultDto} from '@app/contra
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import type {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import type {ReservationPaymentConfirmDto, ReservationPaymentConfirmResultDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
+import type {ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
 import type {ReservationRoomChangeDto} from '@app/contracts/reservation/dto/reservation-room-change.dto.js';
 import type {ReservationStoreCancelDto} from '@app/contracts/reservation/dto/reservation-store-cancel.dto.js';
 import type {ReservationStoreDto, ReservationStoreResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
@@ -24,12 +25,13 @@ import {
     RESERVATION_STATE,
 } from '@app/contracts/reservation/reservation.constants.js';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
-import {PAYMENT_GATEWAY, SMS_SENDER} from '@app/integration/integration.symbols.js';
+import {DOOR_STORE, PAYMENT_GATEWAY, SMS_SENDER} from '@app/integration/integration.symbols.js';
 import {verifyPaymentLookup} from '@app/integration/integration.util.js';
-import type {PaymentGatewayInterface, PaymentLookupResult, SmsSenderInterface} from '@app/integration/interfaces/integration.interface.js';
+import type {DoorStoreInterface, PaymentGatewayInterface, PaymentLookupResult, SmsSenderInterface} from '@app/integration/interfaces/integration.interface.js';
 import type {ReservationRepositoryInterface} from './interfaces/reservation.repository.interface.js';
 import {
     RESERVATION_DATE_INVALID_MESSAGE,
@@ -53,15 +55,18 @@ import {
     calculateRefundAmount,
     calculateStayPrice,
     isGroupPlanOnSale,
+    isRoomQrActive,
     isNightsAllowed,
     isStayBookable,
     isValidDate,
+    judgeReservationQr,
     listStays,
     nowKst,
     toAvailabilityRooms,
     toKstDay,
     toReservationDetail,
     toReservationListItem,
+    toReservationQr,
     toStay,
     toStaysRange,
     toStoreReservationRooms,
@@ -77,11 +82,13 @@ export class ReservationService {
      * @param reservationRepository 예약 repository 포트
      * @param paymentGateway 결제 포트(토스)
      * @param smsSender SMS 발송 포트(업체 취소 · 호실 이동 안내)
+     * @param doorStore 문 정보 포트(Redis — 호실의 현재 QR)
      */
     constructor(
         @Inject(RESERVATION_REPOSITORY) private readonly reservationRepository: ReservationRepositoryInterface,
         @Inject(PAYMENT_GATEWAY) private readonly paymentGateway: PaymentGatewayInterface,
         @Inject(SMS_SENDER) private readonly smsSender: SmsSenderInterface,
+        @Inject(DOOR_STORE) private readonly doorStore: DoorStoreInterface,
     ) {}
 
     /**
@@ -475,6 +482,56 @@ export class ReservationService {
     }
 
     /**
+     * 내 예약 QR (이용자) — 확정 · 이용 중 예약의 이용 시간 안에서만. QR 이 아직 없으면(scheduler 발급 전) 그 자리에서 발급한다(유효 = 이용 시작 ~ 이용 끝).
+     * scheduler 와 겹치면 먼저 들어간 행을 쓴다(ON CONFLICT DO NOTHING 뒤 다시 읽기). 내주는 QR 은 Redis 현재 QR 로도 쓴다(문 소켓 QR 확인이 그 QR 로 맞는다).
+     * (내부 HTTP: GET /internal/v1/user-service/reservation/:reservation_id/qr)
+     *
+     * @param user_id 이용자 ID
+     * @param reservation_id 예약 ID
+     * @returns QR · 유효 시작 · 끝
+     * @throws NotFoundException 내 예약이 아닐 때
+     * @throws BadRequestException QR 을 볼 수 없는 상태 · 업체가 끝낸 QR · 이용 시간 밖
+     */
+    @Transactional()
+    async getMyReservationQr(user_id: string, reservation_id: string): Promise<ReservationQrResultDto> {
+        // 1. 내 예약 · 그 예약의 QR
+        const reservation = await this.reservationRepository.findReservation({reservation_id, user_id});
+        if (!reservation) {
+            throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
+        }
+        let roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
+
+        // 2. 판정 — 상태 · 이용 시간 · QR 유효
+        const verdict = judgeReservationQr(reservation, roomQr, nowKst().toDate());
+        if (verdict === 'NO_QR') {
+            throw new BadRequestException({message: 'QR 을 볼 수 없는 예약입니다.'});
+        }
+        if (verdict === 'OUT_OF_TIME') {
+            throw new BadRequestException({message: 'QR 은 이용 시간에만 볼 수 있습니다.'});
+        }
+
+        // 3. 없으면 발급 — 유효 = 이용 시작 ~ 이용 끝, QR 은 32자 무작위. 같은 예약에 이미 들어갔으면 DB 가 무시하고, 다시 읽은 행을 쓴다
+        if (verdict === 'ISSUE') {
+            const issued = new RoomQrEntity();
+            issued.room_qr_id = generateId();
+            issued.room_id = reservation.room_id;
+            issued.reservation_id = reservation.reservation_id;
+            issued.qr = generateId();
+            issued.starts_at = reservation.start_at;
+            issued.ends_at = reservation.end_at;
+            await this.reservationRepository.insertRoomQr(issued);
+            roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
+        }
+        if (!roomQr) {
+            throw new InternalServerErrorException({message: 'QR 정보를 발급하지 못했습니다. 관리자에게 문의해주세요.'});
+        }
+
+        // 4. Redis 현재 QR 로 — 문 소켓 QR 확인이 이 QR 로 맞는다(유효 종료에 저절로 사라진다)
+        await this.doorStore.setQr(roomQr.room_id, roomQr.qr, roomQr.ends_at);
+        return toReservationQr(roomQr);
+    }
+
+    /**
      * 내 업체 예약 현황 (매니저) — 날짜(한국 날짜) 하루와 겹치는 결제 대기 · 확정 · 이용 중 · 이용 완료 예약을 호실별로(이용자 이름 · 휴대폰 포함). (내부 HTTP: GET /internal/v1/user-service/reservation/store)
      *
      * @param user_id 로그인 매니저 ID
@@ -501,7 +558,8 @@ export class ReservationService {
     }
 
     /**
-     * 업체 취소 (매니저) — 내 업체의 결제 대기 · 확정 예약. 확정은 100% 환불 신청, 결제 대기는 결제 만료. 이용자에게 SMS(번호가 있을 때 — 마지막 단계). (RabbitMQ: user.reservation.store-cancel)
+     * 업체 취소 (매니저) — 내 업체의 결제 대기 · 확정 예약. 확정은 100% 환불 신청, 결제 대기는 결제 만료. 이용 중이면 그 QR 도 끝낸다(DB 유효 종료 = 지금 · Redis 현재 QR 지우기).
+     * 이용자에게 SMS(번호가 있을 때 — 마지막 단계). (RabbitMQ: user.reservation.store-cancel)
      *
      * @param user_id 로그인 매니저 ID
      * @param reservation_id 예약 ID
@@ -537,7 +595,16 @@ export class ReservationService {
         canceledDetail.reservation_state_id = RESERVATION_STATE.CANCELED;
         await this.reservationRepository.updateReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: reservation.reservation_state_id}, canceledDetail);
 
-        // 3. 결제 — 확정은 전액 환불 신청, 결제 대기는 만료
+        // 3. 이용 중이면 QR 을 끝낸다 — DB 유효 종료 = 지금(이력은 남는다) · Redis 현재 QR 에서 지운다. 시작 전 예약은 QR 이 없다
+        const roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
+        if (roomQr && isRoomQrActive(roomQr, now)) {
+            const endedQr = new RoomQrEntity();
+            endedQr.ends_at = now;
+            await this.reservationRepository.updateRoomQr({room_qr_id: roomQr.room_qr_id}, endedQr);
+            await this.doorStore.revokeQr(roomQr.room_id, roomQr.qr);
+        }
+
+        // 4. 결제 — 확정은 전액 환불 신청, 결제 대기는 만료
         for (const detail of details) {
             const payment = new PaymentEntity();
             if (reservation.reservation_state_id === RESERVATION_STATE.CONFIRMED) {
@@ -552,7 +619,7 @@ export class ReservationService {
             }
         }
 
-        // 4. 이용자 SMS — 번호가 있을 때만(마지막 단계)
+        // 5. 이용자 SMS — 번호가 있을 때만(마지막 단계)
         const user = await this.reservationRepository.findReservationUser({user_id: reservation.user_id});
         const store = await this.reservationRepository.findReservationStore({store_id: reservation.store_id});
         if (user?.phone && store) {

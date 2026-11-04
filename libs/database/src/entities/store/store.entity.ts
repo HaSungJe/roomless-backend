@@ -79,6 +79,15 @@ export class StoreEntity {
     })
     late_refund_percent: number;
 
+    @Column({
+        name: 'door_secret',
+        type: 'varchar',
+        length: 100,
+        nullable: true,
+        comment: '문 소켓 시크릿 코드(bcrypt 해시) — 업체 총관리자가 정한다. 문 쪽 프로그램이 문 소켓에 붙을 때 확인, NULL 이면 소켓에 붙을 수 없다',
+    })
+    door_secret: string | null;
+
     @Column({name: 'suspend_comment', type: 'varchar', length: 255, nullable: true, comment: '정지 사유 — 영업중지(SUSPEND)일 때만, 업체 관리자에게 보인다'})
     suspend_comment: string | null;
 

@@ -4,6 +4,7 @@ import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapte
 import {DataSource, In, LessThan, MoreThan, Not, QueryFailedError} from 'typeorm';
 import type {EntityTarget, FindManyOptions, ObjectLiteral} from 'typeorm';
 import {RESERVATION_OCCUPYING_STATES, RESERVATION_STATE} from '@app/contracts/reservation/reservation.constants.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {ENTITIES} from '@app/database/entities.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
@@ -117,6 +118,29 @@ describe('ReservationRepository — 조건 · 오류 변환', () => {
         await expect(repository.updateReservation({reservation_id: 'r1', reservation_state_id: 'PENDING'}, new ReservationEntity())).resolves.toBe(false);
     });
 
+    it('[SUCCESS] findRoomQr 은 받은 조건 그대로(삭제 표시 없는 표) loadRelationIds, updateRoomQr 은 조건 · 엔티티 그대로(@BeforeUpdate)', async () => {
+        const {repository, of} = makeRepository();
+        const ended = new RoomQrEntity();
+        ended.ends_at = new Date('2026-11-10T05:00:00Z');
+
+        await repository.findRoomQr({reservation_id: 'v1'});
+        await repository.updateRoomQr({room_qr_id: 'q1'}, ended);
+
+        expect(of(RoomQrEntity).findOne).toHaveBeenCalledWith({where: {reservation_id: 'v1'}, loadRelationIds: true});
+        expect(of(RoomQrEntity).update).toHaveBeenCalledWith({room_qr_id: 'q1'}, ended);
+    });
+
+    it('[FAIL:repository] QR 조회 · 발급 · 수정 실패는 통일 500', async () => {
+        const {repository, of} = makeRepository();
+        of(RoomQrEntity).findOne.mockRejectedValueOnce(new Error('db'));
+        of(RoomQrEntity).update.mockRejectedValueOnce(new Error('db'));
+        vi.spyOn(repository, 'buildInsertRoomQrQuery').mockReturnValue({execute: vi.fn().mockRejectedValue(new Error('db'))} as never);
+
+        await expect(repository.findRoomQr({reservation_id: 'v1'})).rejects.toBeInstanceOf(InternalServerErrorException);
+        await expect(repository.insertRoomQr(new RoomQrEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+        await expect(repository.updateRoomQr({room_qr_id: 'q1'}, new RoomQrEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+    });
+
     it.each([
         ['findBookableRooms', 'buildBookableRoomsQuery', ['s1']],
         ['countRecentExpired', 'buildRecentExpiredQuery', ['u1', 'r1', new Date('2026-11-03T00:00:00Z')]],
@@ -150,6 +174,8 @@ describe('[SMOKE:data-access] 예약 가능 호실 · 최근 만료 · 내 예�
         'SELECT "d"."reservation_detail_id" AS "reservation_detail_id", "d"."reservation_detail_type_id" AS "reservation_detail_type_id", "d"."reservation_state_id" AS "reservation_state_id", "d"."start_at" AS "start_at", "d"."end_at" AS "end_at", "d"."price" AS "price", "d"."expires_at" AS "expires_at", "d"."payment_id" AS "payment_id", "dt"."reservation_detail_type_name" AS "reservation_detail_type_name", "p"."payment_state_id" AS "payment_state_id", "p"."amount" AS "amount", "p"."method" AS "method", "p"."approved_at" AS "approved_at", "p"."receipt_url" AS "receipt_url", "p"."refund_amount" AS "refund_amount", "p"."refunded_at" AS "refunded_at", "ps"."payment_state_name" AS "payment_state_name" FROM "t_reservation_detail" "d" INNER JOIN "t_reservation_detail_type" "dt" ON "dt"."reservation_detail_type_id" = "d"."reservation_detail_type_id" INNER JOIN "t_payment" "p" ON "p"."payment_id" = "d"."payment_id" INNER JOIN "t_payment_state" "ps" ON "ps"."payment_state_id" = "p"."payment_state_id" WHERE "d"."reservation_id" = $1 ORDER BY "d"."start_at" ASC';
     const STORE_ROOMS_SQL =
         'SELECT "r"."room_id" AS "room_id", "r"."room_name" AS "room_name", "r"."floor" AS "floor", "r"."room_group_id" AS "room_group_id", "r"."room_state_id" AS "room_state_id", "g"."room_group_name" AS "room_group_name", "rs"."room_state_name" AS "room_state_name" FROM "t_room" "r" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "r"."room_group_id" INNER JOIN "t_room_state" "rs" ON "rs"."room_state_id" = "r"."room_state_id" WHERE "r"."store_id" = $1 AND "r"."is_deleted" = 0 AND "g"."is_deleted" = 0 ORDER BY "r"."floor" ASC, "r"."room_name" ASC';
+    const INSERT_ROOM_QR_SQL =
+        'INSERT INTO "t_room_qr"("room_qr_id", "qr", "starts_at", "ends_at", "created_at", "updated_at", "room_id", "reservation_id") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING';
     const STORE_RESERVATIONS_SQL =
         'SELECT "r"."reservation_id" AS "reservation_id", "r"."room_id" AS "room_id", "r"."reservation_state_id" AS "reservation_state_id", "r"."room_plan_type_id" AS "room_plan_type_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at", "r"."blocked_until" AS "blocked_until", "r"."total_price" AS "total_price", "st"."reservation_state_name" AS "reservation_state_name", "pt"."room_plan_type_name" AS "room_plan_type_name", "u"."name" AS "user_name", "u"."phone" AS "user_phone" FROM "t_reservation" "r" INNER JOIN "t_reservation_state" "st" ON "st"."reservation_state_id" = "r"."reservation_state_id" INNER JOIN "t_room_plan_type" "pt" ON "pt"."room_plan_type_id" = "r"."room_plan_type_id" INNER JOIN "t_user" "u" ON "u"."user_id" = "r"."user_id" WHERE "r"."store_id" = $1 AND "r"."reservation_state_id" IN ($2, $3, $4, $5) AND "r"."start_at" < $6 AND "r"."end_at" > $7 ORDER BY "r"."start_at" ASC';
 
@@ -223,6 +249,25 @@ describe('[SMOKE:data-access] 예약 가능 호실 · 최근 만료 · 내 예�
         expect(flat).toContain('INNER JOIN "t_user" "u"');
         expect(selectAliases(flat)).toContain('user_phone');
         expect(flat).toBe(STORE_RESERVATIONS_SQL);
+    });
+
+    it('QR 발급 — INSERT … ON CONFLICT DO NOTHING(같은 예약 · QR 이 있으면 넣지 않는다), 등록일 · 수정일까지 값으로', () => {
+        const entity = new RoomQrEntity();
+        entity.room_qr_id = 'q1';
+        entity.room_id = 'r1';
+        entity.reservation_id = 'v1';
+        entity.qr = 'qr1';
+        entity.starts_at = new Date('2026-11-10T04:00:00Z');
+        entity.ends_at = new Date('2026-11-10T07:00:00Z');
+        entity.insertTimestamp();
+
+        const [sql, parameters] = repository.buildInsertRoomQrQuery(entity).getQueryAndParameters();
+        const flat = sql.replace(/\s+/g, ' ');
+
+        expect(flat).toContain('INSERT INTO "t_room_qr"');
+        expect(flat).toContain('ON CONFLICT DO NOTHING');
+        expect(parameters).toEqual(expect.arrayContaining(['q1', 'r1', 'v1', 'qr1', entity.starts_at, entity.ends_at]));
+        expect(flat).toBe(INSERT_ROOM_QR_SQL);
     });
 });
 

@@ -25,6 +25,7 @@ import type {StoreMineHoursDto} from '@app/contracts/store/dto/store-mine-hours.
 import type {StoreMineMaintenanceDto} from '@app/contracts/store/dto/store-mine-maintenance.dto.js';
 import type {StoreMineOpenDto} from '@app/contracts/store/dto/store-mine-open.dto.js';
 import type {StoreMineProfileDto} from '@app/contracts/store/dto/store-mine-profile.dto.js';
+import type {StoreMineDoorSecretDto} from '@app/contracts/store/dto/store-mine-door-secret.dto.js';
 import type {StoreMineReservationPolicyDto} from '@app/contracts/store/dto/store-mine-reservation-policy.dto.js';
 import type {StoreMineUnavailablePeriodListDto, StoreMineUnavailablePeriodListResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period-list.dto.js';
 import type {StoreMineUnavailablePeriodDto, StoreMineUnavailablePeriodResultDto} from '@app/contracts/store/dto/store-mine-unavailable-period.dto.js';
@@ -42,8 +43,8 @@ import {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js
 import {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
-import {SMS_SENDER, STORAGE_GATEWAY} from '@app/integration/integration.symbols.js';
-import type {SmsSenderInterface, StorageGatewayInterface} from '@app/integration/interfaces/integration.interface.js';
+import {DOOR_STORE, SMS_SENDER, STORAGE_GATEWAY} from '@app/integration/integration.symbols.js';
+import type {DoorStoreInterface, SmsSenderInterface, StorageGatewayInterface} from '@app/integration/interfaces/integration.interface.js';
 import type {StoreRepositoryInterface} from './interfaces/store.repository.interface.js';
 import {
     STORE_APPLICATION_NOT_FOUND_MESSAGE,
@@ -116,6 +117,7 @@ export class StoreService {
      * @param storeRepository store repository 포트
      * @param storageGateway 파일 저장소 포트 (Amazon S3 · CloudFront 공개 주소)
      * @param smsSender SMS 발송 포트 (Amazon SNS)
+     * @param doorStore 문 정보 포트 (Redis — 문 시크릿을 바꾸면 그 업체 문 소켓 연결 끊기 명령)
      */
     constructor(
         @Inject(STORE_REPOSITORY)
@@ -124,6 +126,8 @@ export class StoreService {
         private readonly storageGateway: StorageGatewayInterface,
         @Inject(SMS_SENDER)
         private readonly smsSender: SmsSenderInterface,
+        @Inject(DOOR_STORE)
+        private readonly doorStore: DoorStoreInterface,
     ) {}
 
     /**
@@ -1033,6 +1037,27 @@ export class StoreService {
         storeEntity.refund_deadline_minutes = dto.refund_deadline_minutes;
         storeEntity.late_refund_percent = dto.late_refund_percent;
         await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
+    }
+
+    /**
+     * 내 업체 문 소켓 시크릿 코드 설정 (업체 총관리자 — 그룹 안 권한은 게이트웨이 RolesGuard) — bcrypt 해시로 저장, 원문은 돌려주지 않는다.
+     * 저장한 뒤 그 업체 문 소켓 연결을 모두 끊는다(옛 시크릿으로 붙은 연결을 남기지 않는다 — 새 시크릿으로 다시 붙는다, 마지막 단계). (RabbitMQ: admin.store.mine-door-secret)
+     *
+     * @param user_id 로그인 매니저 ID (업체 총관리자)
+     * @param dto 시크릿 코드
+     */
+    @Transactional()
+    async changeMyStoreDoorSecret(user_id: string, dto: StoreMineDoorSecretDto): Promise<void> {
+        const store = await this.storeRepository.findStoreByManager(user_id, true);
+        if (!store) {
+            throw new NotFoundException({message: STORE_MANAGER_STORE_NOT_FOUND_MESSAGE});
+        }
+        const storeEntity = new StoreEntity();
+        storeEntity.door_secret = await getBcrypt(dto.door_secret);
+        await this.storeRepository.updateStore({store_id: store.store_id}, storeEntity);
+
+        // 옛 시크릿으로 붙은 문 소켓 끊기 (Redis 채널 — gateway 인스턴스마다)
+        await this.doorStore.disconnect(store.store_id);
     }
 
     /**

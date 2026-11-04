@@ -1,9 +1,12 @@
 import type {ReservationAvailabilityRoomResultDto, ReservationAvailabilitySlotResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import type {ReservationListItemResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
+import type {ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
 import type {ReservationStoreRoomResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
 import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import type {Dayjs} from '@app/common/utils/dayjs.js';
+import type {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
+import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import type {RoomGroupPlanEntity} from '@app/database/entities/room/room-group-plan.entity.js';
 import type {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
@@ -19,6 +22,7 @@ import {
     RESERVATION_ORDER_NAME_MAX_LENGTH,
     RESERVATION_PLAN_TYPE,
     RESERVATION_PLAN_TYPE_NAME,
+    RESERVATION_QR_STATES,
     RESERVATION_ROOM_STATE,
 } from './reservation.constants.js';
 
@@ -588,4 +592,56 @@ export function toStoreReservationRooms(rooms: StoreRoomRow[], rows: StoreReserv
                 user_phone: row.user_phone ?? null,
             })),
     }));
+}
+
+/** 내 예약 QR 판정 — SHOW: 지금 QR 을 준다, ISSUE: 발급해서 준다, OUT_OF_TIME: 이용 시간 밖, NO_QR: QR 을 볼 수 없는 예약 */
+export type ReservationQrVerdict = 'SHOW' | 'ISSUE' | 'OUT_OF_TIME' | 'NO_QR';
+
+/**
+ * 내 예약 QR 판정 — 확정 · 이용 중 예약의 이용 구간 [start_at, end_at) 안일 때만. QR 행이 없으면 발급(사용자 결정 2026-11-04),
+ * 있으면 지금 유효할 때만 준다(업체가 끝낸 QR — ends_at ≤ 지금 — 은 볼 수 없다).
+ *
+ * @param reservation 예약 (상태 · 이용 구간)
+ * @param roomQr 그 예약의 QR 행 (없으면 null)
+ * @param now 지금
+ * @returns 판정
+ */
+export function judgeReservationQr(
+    reservation: Pick<ReservationEntity, 'reservation_state_id' | 'start_at' | 'end_at'>,
+    roomQr: Pick<RoomQrEntity, 'starts_at' | 'ends_at'> | null,
+    now: Date,
+): ReservationQrVerdict {
+    if (!RESERVATION_QR_STATES.includes(reservation.reservation_state_id)) {
+        return 'NO_QR';
+    }
+    const at = dayjs(now);
+    if (at.isBefore(reservation.start_at) || !at.isBefore(reservation.end_at)) {
+        return 'OUT_OF_TIME';
+    }
+    if (!roomQr) {
+        return 'ISSUE';
+    }
+    return isRoomQrActive(roomQr, now) ? 'SHOW' : 'NO_QR';
+}
+
+/**
+ * QR 이 지금 유효한지 — [starts_at, ends_at) 안. 업체 취소가 끝낼 QR 을 고를 때도 쓴다.
+ *
+ * @param roomQr QR 행
+ * @param now 지금
+ * @returns 지금 유효하면 true
+ */
+export function isRoomQrActive(roomQr: Pick<RoomQrEntity, 'starts_at' | 'ends_at'>, now: Date): boolean {
+    const at = dayjs(now);
+    return !at.isBefore(roomQr.starts_at) && at.isBefore(roomQr.ends_at);
+}
+
+/**
+ * 내 예약 QR 응답
+ *
+ * @param roomQr QR 행
+ * @returns QR · 유효 시작 · 끝(ISO 8601)
+ */
+export function toReservationQr(roomQr: RoomQrEntity): ReservationQrResultDto {
+    return {reservation_id: roomQr.reservation_id, room_id: roomQr.room_id, qr: roomQr.qr, qr_starts_at: dayjs(roomQr.starts_at).toISOString(), qr_ends_at: dayjs(roomQr.ends_at).toISOString()};
 }

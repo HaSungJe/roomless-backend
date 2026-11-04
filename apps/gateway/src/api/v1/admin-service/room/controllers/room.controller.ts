@@ -13,6 +13,7 @@ import {
 } from '@nestjs/swagger';
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
+import {RoomDoorOpenParamDto, RoomDoorOpenResultDto} from '@app/contracts/room/dto/room-door-open.dto.js';
 import {RoomGroupDetailParamDto, RoomGroupDetailResultDto} from '@app/contracts/room/dto/room-group-detail.dto.js';
 import {RoomGroupImageUploadUrlDto, RoomGroupImageUploadUrlParamDto, RoomGroupImageUploadUrlResultDto} from '@app/contracts/room/dto/room-group-image-upload-url.dto.js';
 import {RoomGroupListDto, RoomGroupListResultDto} from '@app/contracts/room/dto/room-group-list.dto.js';
@@ -134,7 +135,25 @@ export class RoomController {
     }
 
     /**
-     * 호실 목록 (업체 관리자) — 층 · 객실 그룹 필터, 그룹명 · 상태명 포함, 층 · 호실명 순
+     * 호실 문 바로 열기 (업체 관리자) — 서버는 Redis 문 상태를 open + 지금 시각으로 바꾸고 그 업체 문 소켓에 열기 명령(door.open)을 보낸다. 실제 문은 문 쪽 프로그램이 연다
+     */
+    @Post('/:room_id/door-open')
+    @UseGuards(PassportJwtManagerAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '호실 문 바로 열기'})
+    @ApiOkResponse({type: RoomDoorOpenResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async openMyRoomDoor(@PassportActor() actor: Actor, @Param() param: RoomDoorOpenParamDto): Promise<RoomDoorOpenResultDto> {
+        return this.internalHttp.request<RoomDoorOpenResultDto>('admin', 'POST', ROOM_INTERNAL_PATH.doorOpen(param.room_id), {actor});
+    }
+
+    /**
+     * 호실 목록 (업체 관리자) — 층 · 객실 그룹 필터, 그룹명 · 상태명 · 문 상태(열림/닫힘 · 마지막 시각) 포함, 층 · 호실명 순
      */
     @Get('/')
     @UseGuards(PassportJwtManagerAuthGuard)

@@ -1,4 +1,5 @@
 import {ApiLogEntity} from './entities/api-log/api-log.entity.js';
+import {RoomQrEntity} from './entities/door/room-qr.entity.js';
 import {PaymentStateEntity} from './entities/payment/payment-state.entity.js';
 import {PaymentEntity} from './entities/payment/payment.entity.js';
 import {ReservationDetailTypeEntity} from './entities/reservation/reservation-detail-type.entity.js';
@@ -64,6 +65,7 @@ export const ENTITIES = [
     PaymentEntity,
     ReservationEntity,
     ReservationDetailEntity,
+    RoomQrEntity,
     UserEntity,
     UserSettingEntity,
     SessionEntity,

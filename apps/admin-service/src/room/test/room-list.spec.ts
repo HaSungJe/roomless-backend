@@ -1,19 +1,37 @@
 import {INestApplication} from '@nestjs/common';
 import request from 'supertest';
-import {bootHttpPath, createRoomRepositoryMock, FIXED_TIME, internalHeaders, MANAGER_ACTOR, ROOM_GROUP_ID, ROOM_ID, roomRow, RoomRepositoryMock, STORE_ID, storeRow} from './room.test-helper.js';
+import {ServiceUnavailableException} from '@nestjs/common';
+import {
+    bootHttpPath,
+    createDoorStoreMock,
+    createRoomRepositoryMock,
+    createStorageGatewayMock,
+    DoorStoreMock,
+    FIXED_TIME,
+    internalHeaders,
+    MANAGER_ACTOR,
+    ROOM_GROUP_ID,
+    ROOM_ID,
+    roomRow,
+    RoomRepositoryMock,
+    STORE_ID,
+    storeRow,
+} from './room.test-helper.js';
 
 const PATH = '/internal/v1/admin-service/room';
 
 describe('GET /internal/v1/admin-service/room — 호실 목록 (업체 관리자, 동기 경로)', () => {
     let app: INestApplication;
     let repo: RoomRepositoryMock;
+    let door: DoorStoreMock;
 
     beforeEach(async () => {
         repo = createRoomRepositoryMock();
         repo.findManagerStore.mockResolvedValue(storeRow());
         repo.countRooms.mockResolvedValue(1);
         repo.findRoomRows.mockResolvedValue([roomRow()]);
-        app = await bootHttpPath(repo);
+        door = createDoorStoreMock();
+        app = await bootHttpPath(repo, createStorageGatewayMock(), door);
     });
 
     afterEach(async () => {
@@ -41,6 +59,8 @@ describe('GET /internal/v1/admin-service/room — 호실 목록 (업체 관리�
                         room_state_id: 'AVAILABLE',
                         room_state_name: '예약가능',
                         created_at: FIXED_TIME.toISOString(),
+                        door_state: 'close',
+                        door_changed_at: '00000000000000',
                     },
                 ],
                 pagination: expect.objectContaining({total_count: 1, page: 1}),
@@ -53,6 +73,35 @@ describe('GET /internal/v1/admin-service/room — 호실 목록 (업체 관리�
             expect(res.status).toBe(200);
             expect(repo.countRooms).toHaveBeenCalledWith({store_id: STORE_ID, floor: -1, room_group_id: ROOM_GROUP_ID});
             expect(repo.findRoomRows).toHaveBeenCalledWith({store_id: STORE_ID, floor: -1, room_group_id: ROOM_GROUP_ID}, 20, 0);
+        });
+
+        it('문 상태 · 시각은 그 페이지 호실들을 한 번에(findRoomRows 순서대로) 읽어 같은 순서로 붙인다', async () => {
+            const ROOM_ID_2 = '6'.repeat(32);
+            repo.findRoomRows.mockResolvedValueOnce([roomRow(), roomRow({room_id: ROOM_ID_2, room_name: '102호'})]);
+            door.getMany.mockResolvedValueOnce([
+                {state: 'open', changed_at: '20261104093012'},
+                {state: 'close', changed_at: '00000000000000'},
+            ]);
+
+            const res = await request(app.getHttpServer()).get(PATH).set(internalHeaders(MANAGER_ACTOR));
+
+            expect(res.status).toBe(200);
+            expect(door.getMany).toHaveBeenCalledTimes(1);
+            expect(door.getMany).toHaveBeenCalledWith([ROOM_ID, ROOM_ID_2]);
+            expect(res.body.list.map((item: {room_id: string; door_state: string; door_changed_at: string}) => [item.room_id, item.door_state, item.door_changed_at])).toEqual([
+                [ROOM_ID, 'open', '20261104093012'],
+                [ROOM_ID_2, 'close', '00000000000000'],
+            ]);
+        });
+
+        it('빈 페이지면 빈 목록으로 문 상태를 묻는다(Redis 에는 묻지 않는 포트 규칙)', async () => {
+            repo.findRoomRows.mockResolvedValueOnce([]);
+
+            const res = await request(app.getHttpServer()).get(PATH).set(internalHeaders(MANAGER_ACTOR));
+
+            expect(res.status).toBe(200);
+            expect(res.body.list).toEqual([]);
+            expect(door.getMany).toHaveBeenCalledWith([]);
         });
     });
 
@@ -79,6 +128,17 @@ describe('GET /internal/v1/admin-service/room — 호실 목록 (업체 관리�
             expect(res.body).toEqual({message: '소속 업체를 찾을 수 없습니다.', validation_errors: null});
             expect(repo.countRooms).not.toHaveBeenCalled();
             expect(repo.findRoomRows).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('[FAIL:external]', () => {
+        it('Redis 에 닿지 못하면 503 — 호실 목록도 실패한다(호실 목록에 합친 결정)', async () => {
+            door.getMany.mockRejectedValueOnce(new ServiceUnavailableException({message: '상태 저장소에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.'}));
+
+            const res = await request(app.getHttpServer()).get(PATH).set(internalHeaders(MANAGER_ACTOR));
+
+            expect(res.status).toBe(503);
+            expect(res.body).toEqual({message: '상태 저장소에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.', validation_errors: null});
         });
     });
 

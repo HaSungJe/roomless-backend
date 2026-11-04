@@ -1,5 +1,9 @@
 import {Body, Controller, Get, HttpCode, Param, Post, Query} from '@nestjs/common';
 import {InternalActor} from '@app/common/internal/internal-request.decorator.js';
+import {RoomDoorCloseDto, RoomDoorCloseResultDto} from '@app/contracts/room/dto/room-door-close.dto.js';
+import {RoomDoorOpenParamDto, RoomDoorOpenResultDto} from '@app/contracts/room/dto/room-door-open.dto.js';
+import {RoomDoorSnapshotDto, RoomDoorSnapshotResultDto} from '@app/contracts/room/dto/room-door-snapshot.dto.js';
+import {RoomDoorVerifyDto, RoomDoorVerifyResultDto} from '@app/contracts/room/dto/room-door-verify.dto.js';
 import {RoomGroupDetailParamDto, RoomGroupDetailResultDto} from '@app/contracts/room/dto/room-group-detail.dto.js';
 import {RoomGroupImageUploadUrlDto, RoomGroupImageUploadUrlParamDto, RoomGroupImageUploadUrlResultDto} from '@app/contracts/room/dto/room-group-image-upload-url.dto.js';
 import {RoomGroupListDto, RoomGroupListResultDto} from '@app/contracts/room/dto/room-group-list.dto.js';
@@ -9,8 +13,9 @@ import {RoomPlanListResultDto} from '@app/contracts/room/dto/room-plan-list.dto.
 import {RoomService} from '../room.service.js';
 
 /**
- * room 내부 HTTP 인바운드 어댑터 — 게이트웨이의 동기 경로(조회 · 업로드 주소)만 받는다(외부 비공개, Swagger 없음). 로그인 매니저는 게이트웨이가 넘긴 actor 헤더에서 꺼낸다.
- * 정적 경로(`/plan` · `/group…`)를 먼저, 호실 목록 `/` 를 마지막에 선언한다.
+ * room 내부 HTTP 인바운드 어댑터 — 게이트웨이의 동기 경로(조회 · 업로드 주소 · 바로 열기 · 문 소켓 처리)만 받는다(외부 비공개, Swagger 없음). 로그인 매니저는 게이트웨이가 넘긴 actor 헤더에서 꺼낸다.
+ * 문 소켓 처리(`/door-snapshot` · `/door-verify` · `/door-close`)는 gateway 문 소켓이 부른다 — actor 없이 내부 토큰만(업체는 소켓 접속 때 확인한 값).
+ * 정적 경로(`/plan` · `/group…` · `/door-…`)를 먼저, 호실 목록 `/` 를 마지막에 선언한다.
  */
 @Controller('/internal/v1/admin-service/room')
 export class RoomController {
@@ -72,6 +77,42 @@ export class RoomController {
     ): Promise<RoomGroupPlanPriceListResultDto> {
         const dto = new RoomGroupPlanPriceListDto(query);
         return this.roomService.getMyRoomGroupPlanPrices(user_id, param.room_group_id, param.room_plan_type_id, dto);
+    }
+
+    /**
+     * 문 소켓 접속 확인 (gateway 문 소켓 — actor 없음, 내부 토큰만)
+     */
+    @Post('/door-snapshot')
+    @HttpCode(200)
+    async getDoorSnapshot(@Body() dto: RoomDoorSnapshotDto): Promise<RoomDoorSnapshotResultDto> {
+        return this.roomService.getDoorSnapshot(dto);
+    }
+
+    /**
+     * 문 소켓 QR 확인 (gateway 문 소켓 — actor 없음, 내부 토큰만)
+     */
+    @Post('/door-verify')
+    @HttpCode(200)
+    async verifyStoreDoor(@Body() dto: RoomDoorVerifyDto): Promise<RoomDoorVerifyResultDto> {
+        return this.roomService.verifyStoreDoor(dto);
+    }
+
+    /**
+     * 문 소켓 잠금 알림 (gateway 문 소켓 — actor 없음, 내부 토큰만)
+     */
+    @Post('/door-close')
+    @HttpCode(200)
+    async closeStoreDoor(@Body() dto: RoomDoorCloseDto): Promise<RoomDoorCloseResultDto> {
+        return this.roomService.closeStoreDoor(dto);
+    }
+
+    /**
+     * 호실 문 바로 열기 (업체 관리자)
+     */
+    @Post('/:room_id/door-open')
+    @HttpCode(200)
+    async openMyRoomDoor(@InternalActor('user_id') user_id: string, @Param() param: RoomDoorOpenParamDto): Promise<RoomDoorOpenResultDto> {
+        return this.roomService.openMyRoomDoor(user_id, param.room_id);
     }
 
     /**

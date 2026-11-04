@@ -9,7 +9,8 @@ import {validationExceptionFactory} from '@app/common/utils/validation.js';
 import type {Actor} from '@app/contracts/actor.js';
 import {INTERNAL_HEADER} from '@app/contracts/actor.js';
 import type {MessageEnvelope, ResultPayload} from '@app/contracts/message-envelope.js';
-import {SMS_SENDER, STORAGE_GATEWAY} from '@app/integration/integration.symbols.js';
+import {DOOR_STORE, SMS_SENDER, STORAGE_GATEWAY} from '@app/integration/integration.symbols.js';
+import type {DoorStoreInterface} from '@app/integration/interfaces/integration.interface.js';
 import {CommandHandlerRegistry} from '@app/messaging/command-handler.registry.js';
 import {CommandDispatcher, DispatchDecision} from '@app/messaging/command.dispatcher.js';
 import {buildCommandEnvelope, encodeEnvelope} from '@app/messaging/messaging.util.js';
@@ -54,6 +55,9 @@ export type StorageGatewayMock = {createUploadUrl: Mock; exists: Mock; getPublic
 
 /** SMS 포트 mock */
 export type SmsSenderMock = {send: Mock};
+
+/** 문 정보 포트 mock 모양 — 포트 메서드마다 vi.fn() (store 는 시크릿 변경의 연결 끊기만 쓴다) */
+export type DoorStoreMock = {[K in keyof DoorStoreInterface]: Mock};
 
 /**
  * store repository mock 을 만든다.
@@ -127,17 +131,37 @@ export function createSmsSenderMock(): SmsSenderMock {
 }
 
 /**
- * 큐 경로 부팅 — 실제 StoreQueueController · StoreService · CommandHandlerRegistry · CommandDispatcher 에 repository · 저장소 · SMS 포트만 mock.
+ * 문 정보 포트 mock — 기본은 모두 성공.
+ *
+ * @returns mock
+ */
+export function createDoorStoreMock(): DoorStoreMock {
+    return {
+        getMany: vi.fn().mockResolvedValue([]),
+        setQr: vi.fn().mockResolvedValue(undefined),
+        revokeQr: vi.fn().mockResolvedValue(undefined),
+        verify: vi.fn().mockResolvedValue(false),
+        open: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        subscribe: vi.fn(),
+    };
+}
+
+/**
+ * 큐 경로 부팅 — 실제 StoreQueueController · StoreService · CommandHandlerRegistry · CommandDispatcher 에 repository · 저장소 · SMS · 문 정보 포트만 mock.
  *
  * @param repo repository mock
  * @param storage 파일 저장소 포트 mock
  * @param sms SMS 포트 mock
+ * @param door 문 정보 포트 mock
  * @returns 디스패처와 테스트 모듈
  */
 export async function bootCommandPath(
     repo: StoreRepositoryMock,
     storage: StorageGatewayMock = createStorageGatewayMock(),
     sms: SmsSenderMock = createSmsSenderMock(),
+    door: DoorStoreMock = createDoorStoreMock(),
 ): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
     const module = await Test.createTestingModule({
         imports: [DiscoveryModule],
@@ -149,6 +173,7 @@ export async function bootCommandPath(
             {provide: STORE_REPOSITORY, useValue: repo},
             {provide: STORAGE_GATEWAY, useValue: storage},
             {provide: SMS_SENDER, useValue: sms},
+            {provide: DOOR_STORE, useValue: door},
         ],
     }).compile();
     await module.init();
@@ -157,7 +182,7 @@ export async function bootCommandPath(
 
 /**
  * 동기 경로 부팅 — 실제 내부 StoreController · StoreService · ValidationPipe · 필터 · 전역 InternalAuthGuard(APP_GUARD) · ReturnedExceptionInterceptor(APP_INTERCEPTOR)
- * (admin-service.module 과 같다) 에 repository · 저장소 · SMS 포트만 mock.
+ * (admin-service.module 과 같다) 에 repository · 저장소 · SMS · 문 정보 포트만 mock(문 정보는 기본 mock — 동기 경로는 쓰지 않는다).
  *
  * @param repo repository mock
  * @param storage 파일 저장소 포트 mock
@@ -173,6 +198,7 @@ export async function bootHttpPath(repo: StoreRepositoryMock, storage: StorageGa
             {provide: STORE_REPOSITORY, useValue: repo},
             {provide: STORAGE_GATEWAY, useValue: storage},
             {provide: SMS_SENDER, useValue: sms},
+            {provide: DOOR_STORE, useValue: createDoorStoreMock()},
             {provide: APP_GUARD, useClass: InternalAuthGuard},
             {provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor},
         ],
@@ -296,6 +322,7 @@ export function storeRow(override: Record<string, unknown> = {}): Record<string,
         booking_open_hours: 72,
         refund_deadline_minutes: 60,
         late_refund_percent: 50,
+        door_secret: null,
         suspend_comment: null,
         is_deleted: 0,
         delete_backup: null,

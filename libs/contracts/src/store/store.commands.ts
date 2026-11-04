@@ -42,6 +42,8 @@ export const STORE_COMMAND = {
     MINE_OPEN: 'admin.store.mine-open',
     /** 내 업체 예약 · 환불 규정 설정 (업체 관리자) */
     MINE_RESERVATION_POLICY: 'admin.store.mine-reservation-policy',
+    /** 내 업체 문 소켓 시크릿 코드 설정 (업체 총관리자) */
+    MINE_DOOR_SECRET: 'admin.store.mine-door-secret',
     /** 내 업체 일시 예약불가 등록 (업체 관리자) */
     MINE_UNAVAILABLE_PERIOD: 'admin.store.mine-unavailable-period',
     /** 내 업체 일시 예약불가 삭제 (업체 관리자) */

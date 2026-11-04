@@ -2,13 +2,33 @@
 
 무인 객실 대여 서비스 백엔드 — NestJS 12 모노레포(MSA).
 
-- **gateway** — 유일한 외부 진입점(:3000). 로그인 그룹별 JWT 인증 · 입력 검증 후 서비스로 전달한다. 상태를 바꾸는 요청은 RabbitMQ 를 거쳐 처리하고 결과를 요청 단위 SSE 로 돌려준다. 공개 경로는 `/api/v1/<서비스>/<도메인>/...` 이다 — 이용자 `/api/v1/user-service/user` · 매니저(총매니저 · 매니저) `/api/v1/admin-service/manager` · 관리자(총관리자 · 관리자) `/api/v1/admin-service/admin` · 업체(입점 신청 · 업체 관리) `/api/v1/admin-service/store` · 객실 `/api/v1/admin-service/room` · 문 `/api/v1/user-service/door`. 서비스 내부 경로도 `/internal/v1/<서비스>/<도메인>/...` 다.
-- **scheduler** — crontab 전용 서버(탈퇴 자동처리 · 결제 대기 만료 · 늦게 승인된 결제 환불 · 환불 처리). 들어오는 연결이 없고(포트 없음) DB · 토스에만 붙는다. 여러 대여도 DB 잠금으로 회차마다 1대만 실행한다.
-- **user-service** — 이용자 서버(:4001, 내부망). SNS 가입 · 로그인(만 19세가 되는 해부터 — 청소년보호법) · 휴대폰 SMS 인증 · 아이디 찾기 · 탈퇴. PostgreSQL 을 소유하고(마이그레이션), 부팅 때 기본 데이터와 첫 총관리자(`admin` / `1234`)를 넣는다. 문: 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 두고, 문 쪽 타 업체 프로그램이 부르는 문 열기(QR — `POST /api/v1/user-service/door/open`) · 문 닫기(`/close`)를 받는다(로그인 없음 — QR 이 열쇠). 예약: 호실별 예약 가능 시간(로그인 없음) · 예약(결제 대기 5분) · 토스 결제 확인 · 취소(업체 환불 규정 — 마감 전 100%, 마감 뒤 비율) · 내 예약, 업체 관리자의 예약 현황 · 업체 취소(100% 환불 + SMS) · 호실 이동(같은 그룹 + SMS) — `/api/v1/user-service/reservation`. 업체 · 객실 · 상품 · 영업시간은 공유 DB 에서 읽는다.
-- **admin-service** — 관리자 서버(:4002, 내부망). 매니저(총매니저 · 매니저): 업체코드 + 아이디 로그인 · 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(업체코드 + 등록된 휴대폰, 임시 비밀번호 SMS), 업체 총관리자의 업체 관리자 계정 등록 · 목록 · 상세 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제. 관리자(총관리자 · 관리자): 아이디 로그인 · 비밀번호 변경(첫 총관리자는 `POST /api/v1/admin-service/admin/login` 후 `PATCH /api/v1/admin-service/admin/password` 로 변경). 업체: 이용자의 입점 신청(업체 총관리자 아이디 · 비밀번호 포함) · 신청 취소 · 업체 정보 파일(사업자등록증 · 업체 사진) · 내 신청(승인되면 업체코드), 총관리자의 신청 승인(업체 + 업체코드 + 업체 총관리자 계정 + 승인 알림 SMS) · 반려 · 업체 목록 · 상세 · 수정 · 상태 변경(영업중지 사유) · 영업중 여부 변경, 업체 관리자의 내 업체 설정(상세 · 소개 · 사진과 순서 · 요일별 영업시간 · 매일 브레이크타임 · 정비시간 · 영업중 여부 · 예약 · 환불 규정(예약 n시간 전부터 · 환불 마감 n분 · 마감 뒤 환불 비율) · 일시 예약불가). 객실: 업체 관리자의 업체 상품 설정(시간 이용 · 1박 · 연박 — 사용 여부 · 예약 가능 요일 · 이용 시간 · 입퇴실 시각(1박은 항상 다음 날 퇴실) · 연박 최소 · 최대 박수) · 객실 그룹(상세정보 · 사진과 순서) · 그룹 상품(사용 여부 · 요금) · 상품별 기간 가격 · 호실(그룹은 등록 때만 — 수정으로 바꾸지 않는다) · 호실 상태(정비 완료 · 사용중지). 예약이 걸려 있는 호실 · 그룹은 지울 수 없다. user-service 와 같은 DB 를 직접 쓴다.
+- **gateway** — 유일한 외부 진입점(:3000). 로그인 그룹별 JWT 인증 · 입력 검증 후 서비스로 전달한다. 상태를 바꾸는 요청은 RabbitMQ 를 거쳐 처리하고 결과를 요청 단위 SSE 로 돌려준다. 공개 경로는 `/api/v1/<서비스>/<도메인>/...` 이다 — 이용자 `/api/v1/user-service/user` · 매니저(총매니저 · 매니저) `/api/v1/admin-service/manager` · 관리자(총관리자 · 관리자) `/api/v1/admin-service/admin` · 업체(입점 신청 · 업체 관리) `/api/v1/admin-service/store` · 객실 `/api/v1/admin-service/room` · 예약 `/api/v1/user-service/reservation`. 서비스 내부 경로도 `/internal/v1/<서비스>/<도메인>/...` 다. 문 쪽 타 업체 프로그램과는 문 소켓 `/ws/v1/door`(표준 WebSocket — 아래 "문 소켓")로 주고받는다.
+- **scheduler** — crontab 전용 서버(탈퇴 자동처리 · 결제 대기 만료 · 늦게 승인된 결제 환불 · 환불 처리 · 문 QR 동기화(매분 — 이용 시간이 된 예약의 QR 발급 · Redis 현재 QR 다시 쓰기)). 들어오는 연결이 없고(포트 없음) DB · Redis · 토스에만 붙는다. 여러 대여도 DB 잠금으로 회차마다 1대만 실행한다.
+- **user-service** — 이용자 서버(:4001, 내부망). SNS 가입 · 로그인(만 19세가 되는 해부터 — 청소년보호법) · 휴대폰 SMS 인증 · 아이디 찾기 · 탈퇴. PostgreSQL 을 소유하고(마이그레이션), 부팅 때 기본 데이터와 첫 총관리자(`admin` / `1234`)를 넣는다. 예약: 호실별 예약 가능 시간(로그인 없음) · 예약(결제 대기 5분) · 토스 결제 확인 · 취소(업체 환불 규정 — 마감 전 100%, 마감 뒤 비율) · 내 예약 · 내 예약 QR(확정 · 이용 중 예약의 이용 시간 안에서만 — 없으면 그때 발급, `GET /api/v1/user-service/reservation/:reservation_id/qr`), 업체 관리자의 예약 현황 · 업체 취소(100% 환불 + SMS — 이용 중이면 QR 을 바로 막는다) · 호실 이동(같은 그룹 + SMS) — `/api/v1/user-service/reservation`. QR 이력은 DB(`t_room_qr` — 유효 시작 · 끝), 호실의 현재 QR 은 Redis(이용 끝에 자동 만료). 업체 · 객실 · 상품 · 영업시간은 공유 DB 에서 읽는다.
+- **admin-service** — 관리자 서버(:4002, 내부망). 매니저(총매니저 · 매니저): 업체코드 + 아이디 로그인 · 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(업체코드 + 등록된 휴대폰, 임시 비밀번호 SMS), 업체 총관리자의 업체 관리자 계정 등록 · 목록 · 상세 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제. 관리자(총관리자 · 관리자): 아이디 로그인 · 비밀번호 변경(첫 총관리자는 `POST /api/v1/admin-service/admin/login` 후 `PATCH /api/v1/admin-service/admin/password` 로 변경). 업체: 이용자의 입점 신청(업체 총관리자 아이디 · 비밀번호 포함) · 신청 취소 · 업체 정보 파일(사업자등록증 · 업체 사진) · 내 신청(승인되면 업체코드), 총관리자의 신청 승인(업체 + 업체코드 + 업체 총관리자 계정 + 승인 알림 SMS) · 반려 · 업체 목록 · 상세 · 수정 · 상태 변경(영업중지 사유) · 영업중 여부 변경, 업체 관리자의 내 업체 설정(상세 · 소개 · 사진과 순서 · 요일별 영업시간 · 매일 브레이크타임 · 정비시간 · 영업중 여부 · 예약 · 환불 규정(예약 n시간 전부터 · 환불 마감 n분 · 마감 뒤 환불 비율) · 일시 예약불가), 업체 총관리자의 문 소켓 시크릿 코드 설정(`PATCH /api/v1/admin-service/store/mine/door-secret` — bcrypt 해시로만 저장). 객실: 업체 관리자의 업체 상품 설정(시간 이용 · 1박 · 연박 — 사용 여부 · 예약 가능 요일 · 이용 시간 · 입퇴실 시각(1박은 항상 다음 날 퇴실) · 연박 최소 · 최대 박수) · 객실 그룹(상세정보 · 사진과 순서) · 그룹 상품(사용 여부 · 요금) · 상품별 기간 가격 · 호실(그룹은 등록 때만 — 수정으로 바꾸지 않는다) · 호실 상태(정비 완료 · 사용중지) · 호실 목록의 문 상태(열림 · 잠금 · 마지막 시각) · 호실 문 바로 열기(`POST /api/v1/admin-service/room/:room_id/door-open` — 문 소켓으로 열기 명령). 문 소켓의 접속 확인 · QR 확인 · 잠금 알림도 여기서 판단한다(게이트웨이가 내부 HTTP 로 넘긴다). 예약이 걸려 있는 호실 · 그룹은 지울 수 없다. user-service 와 같은 DB 를 직접 쓴다.
 - 아이디 · 휴대폰 번호는 로그인 그룹(이용자 · 매니저 · 관리자) 안에서만 겹치지 않는다. 매니저 그룹은 업체 안에서만 — 다른 업체면 같은 아이디를 쓸 수 있고, 로그인 때 업체코드(매니저 화면 주소에 들어 있다)를 함께 받는다.
 
 - **외부 연동** — 발송은 SMS 하나(Amazon SNS), 업체 정보 파일 · 객실 사진은 Amazon S3(presigned URL 로 클라이언트가 직접 업로드) — 공개 파일(업체 사진)은 CloudFront(CDN) 주소, 비공개 파일(사업자등록증)은 10분짜리 서명 주소로 본다. 결제는 토스페이먼츠(결제창 · 승인은 프론트, 서버는 토스 조회로 검증 · 환불 — 환불은 scheduler 가 백그라운드로, 전액 또는 일부 — [docs/guides/toss-setup.md](docs/guides/toss-setup.md)). mock 없이 실제 서비스에 붙는 코드이고, AWS 세팅은 [docs/guides/aws-setup.md](docs/guides/aws-setup.md) 를 따른다.
+
+## 문 소켓
+
+문 쪽 타 업체 프로그램(문 하드웨어를 다루는 프로그램)이 업체 단위로 게이트웨이에 붙는 표준 WebSocket 이다. HTTP 문 열기 · 닫기 API 는 없다 — 문이 QR 을 읽으면 이 소켓으로 묻고, 서버가 Redis 의 현재 QR 과 비교한다. 상세: [docs/realtime.md](docs/realtime.md).
+
+- 접속: `ws://<gateway>/ws/v1/door`, 헤더 `x-store-id`(업체 ID) · `x-store-secret`(업체 총관리자가 정한 시크릿 코드). 틀리면 업그레이드 전에 HTTP 401.
+- 메시지는 JSON 한 개 `{"event": …, "data": …}`.
+
+| event | 방향 | data | 설명 |
+|---|---|---|---|
+| `door.snapshot` | 서버 → 문 | `{store_id, list: [{room_id, room_name, floor, door_state, door_changed_at}]}` | 접속 직후 업체 호실 전체의 문 상태 |
+| `door.verify` | 문 → 서버 | `{room_id, qr}` | 문이 읽은 QR 확인 요청 |
+| `door.verified` | 서버 → 문 | `{room_id, ok}` | 확인 결과(그 연결에만). ok 면 서버가 이미 열림으로 기록했다 → 문을 연다 |
+| `door.closed` | 문 → 서버 | `{room_id}` | 문이 잠겼다(잠금 버튼 · 자동 잠금). 성공은 답하지 않는다 |
+| `door.open` | 서버 → 문 | `{room_id}` | 업체 관리자의 바로 열기 명령(그 업체 연결 모두) |
+| `error` | 서버 → 문 | `{status_code, message}` | 받은 메시지를 처리하지 못했다(연결은 유지) |
+
+- 연결 유지: 서버가 30초마다 ping, pong 이 없으면 끊는다. 재연결은 문 프로그램이 한다.
+- 업체 총관리자가 시크릿을 바꾸면 그 업체 연결을 모두 끊는다(종료 코드 1008) — 새 시크릿으로 다시 붙는다.
+- 문 시각 `door_changed_at` 은 한국 시각 `yyyyMMddHHmmss`(기록 전은 `00000000000000`).
 
 스택: NestJS 12 (ESM) · TypeORM 1.x + PostgreSQL 17 · RabbitMQ 4 · Redis 8(node-redis) · AWS SDK v3(SNS · S3) · 토스페이먼츠(fetch) · Vitest · oxlint.
 규약과 구조는 [AGENTS.md](AGENTS.md) 와 [docs/](docs/) 를 본다.
@@ -44,7 +64,7 @@ npm run docker:down   # 모두 내림 (공용 네트워크 · 데이터 볼륨�
 | 1 | 공용 네트워크 | `npm run docker:network` | 묶음끼리 이름으로 찾는 네트워크 4개 (이미 있으면 건너뜀) |
 | 2 | postgres | `npm run docker:postgres` | DB (127.0.0.1:5432) |
 | 3 | rabbitmq | `npm run docker:rabbitmq` | 브로커 + 앱별 계정 초기화 (관리 화면 http://localhost:15672) |
-| 4 | redis | `npm run docker:redis` | 문 정보 저장소 (127.0.0.1:6379, AOF 영속) — [docs/guides/redis-setup.md](docs/guides/redis-setup.md) |
+| 4 | redis | `npm run docker:redis` | 문 정보 저장소 (127.0.0.1:6379, AOF 영속 — gateway · user-service · admin-service · scheduler 가 쓴다) — [docs/guides/redis-setup.md](docs/guides/redis-setup.md) |
 | 5 | user-service | `npm run docker:user-service` | 마이그레이션 1회 → 인스턴스 N대 → 로드밸런서 |
 | 6 | admin-service | `npm run docker:admin-service` | 매니저 · 관리자 인스턴스 → 로드밸런서 |
 | 7 | scheduler | `npm run docker:scheduler` | crontab 전용 (포트 없음) |
@@ -98,6 +118,7 @@ npm run start:scheduler     # crontab (포트 없음)
 
 ```
 apps/gateway   apps/user-service   apps/admin-service   apps/scheduler   # 진입점 · 이용자 · 매니저/관리자 · crontab 전용
+apps/gateway/src/modules/door-socket/   # 문 소켓(표준 WebSocket /ws/v1/door)
 libs/account  libs/common  libs/contracts  libs/database  libs/integration  libs/messaging
 libs/database/src/entities/<domain>/   libs/database/src/migrations/
 libs/integration/src/sms/  libs/integration/src/storage/  libs/integration/src/redis/  libs/integration/src/door/  libs/integration/src/payment/   # SMS(SNS) · 파일 저장(S3) · Redis 연결 · 문 정보(Redis) · 결제(토스) 포트 · 어댑터

@@ -53,6 +53,12 @@ export class RoomListItemResultDto {
 
     @ApiProperty({description: '등록일시 (ISO 8601)'})
     created_at: string;
+
+    @ApiProperty({description: '문 상태 (open: 열림, close: 닫힘 — 기록이 없으면 close)', enum: ['open', 'close']})
+    door_state: string;
+
+    @ApiProperty({description: '문을 마지막으로 열거나 닫은 시각 — 한국 시각 yyyyMMddHHmmss, 기록이 없으면 00000000000000'})
+    door_changed_at: string;
 }
 
 /**

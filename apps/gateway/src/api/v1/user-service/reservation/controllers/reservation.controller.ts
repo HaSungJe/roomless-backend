@@ -15,6 +15,7 @@ import type {Actor} from '@app/contracts/actor.js';
 import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
+import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
 import {ReservationStoreDto, ReservationStoreResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
 import {RESERVATION_INTERNAL_PATH} from '@app/contracts/reservation/reservation.commands.js';
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
@@ -103,5 +104,23 @@ export class ReservationController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async getMyReservation(@PassportActor() actor: Actor, @Param() param: ReservationDetailParamDto): Promise<ReservationDetailResultDto> {
         return this.internalHttp.request<ReservationDetailResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.detail(param.reservation_id), {actor});
+    }
+
+    /**
+     * 내 예약 QR — 확정 · 이용 중 예약의 이용 시간에만. 아직 발급 전이면 그 자리에서 발급한다. 이용 끝이 지나거나 업체가 취소하면 그 QR 로는 열리지 않는다
+     */
+    @Get('/:reservation_id/qr')
+    @UseGuards(PassportJwtAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '내 예약 QR'})
+    @ApiOkResponse({type: ReservationQrResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getMyReservationQr(@PassportActor() actor: Actor, @Param() param: ReservationQrParamDto): Promise<ReservationQrResultDto> {
+        return this.internalHttp.request<ReservationQrResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.qr(param.reservation_id), {actor});
     }
 }

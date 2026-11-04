@@ -20,10 +20,10 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 | 앱 | 역할 | 외부 노출 |
 |---|---|---|
-| `apps/gateway` | 유일한 진입점. JWT · DTO 검증, 경로 선택(동기 / 큐), 요청 단위 SSE, Swagger | O (GATEWAY_PORT) |
-| `apps/user-service` | 이용자 서버 — `user`(회원) · `door`(문) · `reservation`(예약 — 공유 DB 의 업체 · 객실 · 상품 · 영업시간을 읽는다). DB(PostgreSQL) 소유, 룩업 시드 · 마이그레이션 | X (내부망, INTERNAL_API_TOKEN) |
-| `apps/admin-service` | 매니저(`manager`) · 관리자(`admin`) · 업체(`store` — 입점 신청 · 승인 · 업체 관리) 도메인. 공유 DB 를 직접 쓴다(마이그레이션 · 시드는 user-service 묶음) | X (내부망, INTERNAL_API_TOKEN) |
-| `apps/scheduler` | crontab 전용(`user` 탈퇴 자동처리 · `reservation` 결제 대기 만료 · 늦은 승인 재확인 · 환불 — 토스). 들어오는 연결 없음 — listen · 큐 소비 · 컨트롤러가 없고 DB 에만 붙는다 | X (연결을 받지 않음) |
+| `apps/gateway` | 유일한 진입점. JWT · DTO 검증, 경로 선택(동기 / 큐), 요청 단위 SSE, Swagger, 문 소켓(`/ws/v1/door` — 문 쪽 타 업체 프로그램, [realtime.md](realtime.md)) | O (GATEWAY_PORT) |
+| `apps/user-service` | 이용자 서버 — `user`(회원) · `reservation`(예약 — 공유 DB 의 업체 · 객실 · 상품 · 영업시간을 읽는다, 내 예약 QR — 이력은 `t_room_qr` · 현재 QR 은 Redis). DB(PostgreSQL) 소유, 룩업 시드 · 마이그레이션 | X (내부망, INTERNAL_API_TOKEN) |
+| `apps/admin-service` | 매니저(`manager`) · 관리자(`admin`) · 업체(`store` — 입점 신청 · 승인 · 업체 관리 · 내 업체 설정 · 문 소켓 시크릿) · 객실(`room` — 상품 · 그룹 · 호실 · 문 상태 · 바로 열기 · 문 소켓 접속 확인 · QR 확인 · 잠금) 도메인. 공유 DB 를 직접 쓴다(마이그레이션 · 시드는 user-service 묶음) | X (내부망, INTERNAL_API_TOKEN) |
+| `apps/scheduler` | crontab 전용(`user` 탈퇴 자동처리 · `reservation` 결제 대기 만료 · 늦은 승인 재확인 · 환불 — 토스, QR 동기화 — Redis). 들어오는 연결 없음 — listen · 큐 소비 · 컨트롤러가 없고 DB · Redis · 토스에만 붙는다 | X (연결을 받지 않음) |
 
 - **모노레포 ≠ 모놀리스** — `nest build gateway` · `nest build user-service` · `nest build admin-service` · `nest build scheduler` 로 따로 빌드되고 독립 프로세스로 뜬다. 트래픽이 몰리는 앱만 인스턴스를 늘린다. 산출물: `dist/apps/<app>/apps/<app>/src/main.js`.
 - 게이트웨이는 DB 를 쓰지 않는다. 로그인 회원의 상태도 그 그룹의 서비스(이용자 → user-service, 매니저 · 관리자 → admin-service)에 내부 HTTP 로 묻는다.
@@ -37,7 +37,7 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 | `libs/common` | `ApiFailResultDto` · `toFailResult` · `CustomErrorFilter` · `validationExceptionFactory` · `PaginationDto`/`PaginationResultDto` · 순수 util(bcrypt/hash/cipher/jwt/validation/fail-result/retry/pagination/env/id/dayjs/search) · `InternalAuthGuard` · `@ClientIp` · `@InternalActor`(정의만, 사용 0) | 모든 앱 |
 | `libs/contracts` | 게이트웨이↔서비스 공유 규격: 요청/응답 DTO, 명령 type · 큐 이름 · 내부 경로 상수, 메시지 봉투, `Actor`, 내부 헤더, SSE 이벤트 이름 | 모든 앱 |
 | `libs/database` | `entities/<domain>/` · `entities.ts`(ENTITIES) · `migrations/` · `migrations.ts`(MIGRATIONS) · `typeorm.config.ts` · `DatabaseModule`(TypeORM + 트랜잭션, 전역) · `JobLockService`(`job-lock/`) · `isUniqueViolation`/`isForeignKeyViolation` · `notDeleted`(소프트 삭제 조건) · seeder · `data-source`(마이그레이션 실행용) | DB 소유 서비스 |
-| `libs/integration` | 외부 연동 포트 `SMS_SENDER`(Amazon SNS) · `STORAGE_GATEWAY`(Amazon S3, presigned URL) · `DOOR_STORE`(Redis — 문 정보) · `PAYMENT_GATEWAY`(토스페이먼츠 — 조회 검증 · 환불) · `SmsModule` · `StorageModule` · `RedisModule` · `DoorStoreModule` · `PaymentModule`(전역) — [integration.md](integration.md) · [guides/aws-setup.md](guides/aws-setup.md) · [guides/redis-setup.md](guides/redis-setup.md) · [guides/toss-setup.md](guides/toss-setup.md) | 포트를 쓰는 서비스(SMS: user-service 휴대폰 인증 · 아이디 찾기, admin-service 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내 / 파일: admin-service 업체 정보 파일 / 문 정보: user-service 문 열기 · 닫기 / 결제: user-service 예약 · scheduler 결제 대기 만료 · 환불) |
+| `libs/integration` | 외부 연동 포트 `SMS_SENDER`(Amazon SNS) · `STORAGE_GATEWAY`(Amazon S3, presigned URL) · `DOOR_STORE`(Redis — 문 상태 · 현재 QR · 바로 열기 명령 채널) · `PAYMENT_GATEWAY`(토스페이먼츠 — 조회 검증 · 환불) · `SmsModule` · `StorageModule` · `RedisModule` · `DoorStoreModule` · `PaymentModule`(전역) — [integration.md](integration.md) · [guides/aws-setup.md](guides/aws-setup.md) · [guides/redis-setup.md](guides/redis-setup.md) · [guides/toss-setup.md](guides/toss-setup.md) | 포트를 쓰는 서비스(SMS: user-service 휴대폰 인증 · 아이디 찾기, admin-service 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내 / 파일: admin-service 업체 정보 파일 / 문 정보: gateway 명령 구독 · user-service 내 예약 QR · admin-service 문 상태 · 바로 열기 · QR 확인 · 잠금 · scheduler QR 동기화 / 결제: user-service 예약 · scheduler 결제 대기 만료 · 환불) |
 | `libs/messaging` | `RabbitMqConnection` · 명령 발행 · 결과 구독 · 명령 소비 · `@OnCommand` · `CommandDispatcher` · `MessagingModule.forGateway()/forService()`(둘 다 전역) | 게이트웨이 · 서비스 |
 
 - import 는 `@app/<lib>/<경로>.js` (barrel 없음). 앱 · 도메인 내부는 상대경로. 라이브러리 안의 import 방식은 [conventions.md](conventions.md).
@@ -105,29 +105,31 @@ NestJS 12 모노레포(ESM) · TypeORM 1.x(PostgreSQL) · RabbitMQ · nestjs-cls
 
 전역 모듈 — `TransportModule`(`@Global`) · `DatabaseModule`(`@Global`, `JobLockService` export) · `SmsModule` · `StorageModule`(`@Global`, `SMS_SENDER` · `STORAGE_GATEWAY` export) · `RedisModule`(`@Global`, `RedisConnection` export) · `DoorStoreModule`(`@Global`, `DOOR_STORE` export — RedisModule 포함) · `MessagingModule.forGateway()/forService()`(`global: true`, forService 는 `exports: []`). 그래서 도메인 모듈은 이것들을 import 하지 않고 주입받는다.
 
-**gateway** — `GatewayModule` = `MessagingModule.forGateway()`(`BROKER_ACCOUNT='gateway'` · `RabbitMqConnection` · `GATEWAY_INSTANCE_ID` · `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) + `TransportModule`(`modules/transport`: InternalHttpClient · CommandStreamService) + `PassportJwtAuthModule`(`guards/passport.jwt.auth`, 그룹별 JWT 전략 3개) + 도메인 라우트 모듈(`UserModule` · `DoorModule` — `api/v1/user-service/{user,door}`(문은 가드 없음 — 문 쪽 타 업체 프로그램이 QR 로 부른다), `ManagerModule` · `AdminModule` · `StoreModule` · `RoomModule` — `api/v1/admin-service/{manager,admin,store,room}`). APP_GUARD 없음(인증은 핸들러의 그룹 가드).
+**gateway** — `GatewayModule` = `MessagingModule.forGateway()`(`BROKER_ACCOUNT='gateway'` · `RabbitMqConnection` · `GATEWAY_INSTANCE_ID` · `COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) + `TransportModule`(`modules/transport`: InternalHttpClient · CommandStreamService) + `PassportJwtAuthModule`(`guards/passport.jwt.auth`, 그룹별 JWT 전략 3개) + `DoorStoreModule`(Redis — 문 소켓이 바로 열기 명령 채널 `door-commands` 를 구독) + 도메인 라우트 모듈(`UserModule` · `ReservationModule` — `api/v1/user-service/{user,reservation}`, `ManagerModule` · `AdminModule` · `StoreModule` · `RoomModule` — `api/v1/admin-service/{manager,admin,store,room}`) + `DoorSocketModule`(`modules/door-socket` — 문 소켓 `/ws/v1/door`, HTTP 서버 `upgrade` 를 직접 받는 표준 WebSocket). APP_GUARD 없음(인증은 핸들러의 그룹 가드, 문 소켓은 접속 헤더의 업체 ID + 시크릿).
 
 ```
 apps/gateway/src/
 ├── api/v1/user-service/user/      # 이용자 도메인 라우트(/api/v1/user-service/user) — controllers/(user.controller.ts 동기 · user.controller.queue.ts 큐) · user.module.ts
 ├── api/v1/admin-service/manager/  # 매니저 도메인 라우트(/api/v1/admin-service/manager) — controllers/(manager.controller.ts · manager.controller.queue.ts) · manager.module.ts
 ├── api/v1/admin-service/admin/    # 관리자 도메인 라우트(/api/v1/admin-service/admin) — controllers/(admin.controller.ts · admin.controller.queue.ts) · admin.module.ts
+├── api/v1/user-service/reservation/  # 예약 도메인 라우트(/api/v1/user-service/reservation) — controllers/(reservation.controller.ts · reservation.controller.queue.ts) · reservation.module.ts
 ├── api/v1/admin-service/store/    # 업체 도메인 라우트(/api/v1/admin-service/store — 신청자는 이용자 가드, 나머지는 관리자 가드) — controllers/(store.controller.ts · store.controller.queue.ts) · store.module.ts
 ├── guards/
 │   ├── passport.jwt.auth/  # 그룹별 strategy · guard(auth=이용자 · manager · admin) · util(공통 옵션 · 회원 조회 · 401) · decorator(@PassportUser · @PassportActor) · module
 │   └── roles/              # roles.guard.ts · roles.decorator.ts(@Roles — 그룹 안 권한, 사용 0)
 ├── modules/transport/      # internal-http.client · command-stream.service · transport.util
+├── modules/door-socket/    # door-socket.server(upgrade 수신 · 인증 · 메시지 · 명령 구독 · ping) · door-socket.util · door-socket.module
 ├── config/                 # cors.config.ts(buildCorsOptions) · trust-proxy.config.ts(parseTrustProxy)
 ├── gateway.module.ts
 └── main.ts
 ```
 `main.ts`: `dotenv/config` → trust proxy(`TRUST_PROXY`, 값이 없으면 설정하지 않음) → 전역 `CustomErrorFilter` → 전역 ValidationPipe → CORS(`CORS_ORIGINS`) → Swagger(`SWAGGER_TITLE` · `SWAGGER_PATH` 기본 `swagger`, bearer) → 종료 훅 → `listen(GATEWAY_PORT ?? 3000)`.
 
-**user-service** — `UserServiceModule` = `DatabaseModule`(TypeORM + ClsModule `TransactionalAdapterTypeOrm`) + `MessagingModule.forService({queue: USER_COMMAND_QUEUE, binding_keys: [USER_COMMAND_BINDING], broker_user: BROKER_USER.USER_SERVICE})`(`broker_user` 필수, 큐 · 바인딩은 contracts 상수) + `SmsModule` + `DoorStoreModule`(문 정보 포트 `DOOR_STORE` — Redis 연결 `RedisModule` 포함) + `UserModule` · `DoorModule`(문 — 내부 HTTP 2개, 큐 없음) + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`(반환된 예외 → 실패 응답) · `SeederService`. crontab 이 없다(scheduler).
+**user-service** — `UserServiceModule` = `DatabaseModule`(TypeORM + ClsModule `TransactionalAdapterTypeOrm`) + `MessagingModule.forService({queue: USER_COMMAND_QUEUE, binding_keys: [USER_COMMAND_BINDING], broker_user: BROKER_USER.USER_SERVICE})`(`broker_user` 필수, 큐 · 바인딩은 contracts 상수) + `SmsModule` + `DoorStoreModule`(문 정보 포트 `DOOR_STORE` — Redis 연결 `RedisModule` 포함) + `PaymentModule` + `UserModule` · `ReservationModule`(예약 — 내 예약 QR 은 `DOOR_STORE` 로 호실의 현재 QR 을 쓴다) + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`(반환된 예외 → 실패 응답) · `SeederService`. crontab 이 없다(scheduler).
 
-**admin-service** — `AdminServiceModule` = `DatabaseModule`(user-service 와 같은 DB · 엔티티) + `MessagingModule.forService({queue: ADMIN_COMMAND_QUEUE, binding_keys: [ADMIN_COMMAND_BINDING], broker_user: BROKER_USER.ADMIN_SERVICE})`(`q.admin.cmd` ← `admin.#`) + `SmsModule` · `StorageModule` + `ManagerModule` · `AdminModule` · `StoreModule` · `RoomModule`(객실 — 업체 관리자) + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`. migrate · `SeederService` 가 없다(user-service 몫). `main.ts` 는 user-service 와 같은 모양 — `listen(ADMIN_SERVICE_PORT ?? 4002, ADMIN_SERVICE_HOST || '127.0.0.1')`.
+**admin-service** — `AdminServiceModule` = `DatabaseModule`(user-service 와 같은 DB · 엔티티) + `MessagingModule.forService({queue: ADMIN_COMMAND_QUEUE, binding_keys: [ADMIN_COMMAND_BINDING], broker_user: BROKER_USER.ADMIN_SERVICE})`(`q.admin.cmd` ← `admin.#`) + `SmsModule` · `StorageModule` · `DoorStoreModule` + `ManagerModule` · `AdminModule` · `StoreModule` · `RoomModule`(객실 — 업체 관리자 · 문 소켓의 내부 HTTP) + providers `{provide: APP_GUARD, useClass: InternalAuthGuard}` · `{provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}`. migrate · `SeederService` 가 없다(user-service 몫). `main.ts` 는 user-service 와 같은 모양 — `listen(ADMIN_SERVICE_PORT ?? 4002, ADMIN_SERVICE_HOST || '127.0.0.1')`.
 
-**scheduler** — `SchedulerModule` = `DatabaseModule` + `ScheduleModule.forRoot()` + `UserModule`(crontab + scheduler 의 회원 repository). APP_GUARD · MessagingModule · 컨트롤러 · 시드가 없다.
+**scheduler** — `SchedulerModule` = `DatabaseModule` + `ScheduleModule.forRoot()` + `PaymentModule` · `DoorStoreModule` + `UserModule`(crontab + scheduler 의 회원 repository) · `ReservationModule`(결제 대기 만료 · 늦은 승인 · 환불 · QR 동기화 crontab + scheduler 의 예약 repository). APP_GUARD · MessagingModule · 컨트롤러 · 시드가 없다.
 `main.ts`: `dotenv/config` → `NestFactory.createApplicationContext(SchedulerModule)`(listen 하지 않는다) → 종료 훅. 등록된 `@Cron` 타이머가 프로세스를 살려 둔다.
 `main.ts`: `dotenv/config` → 전역 필터 → 전역 ValidationPipe → 종료 훅 → `listen(USER_SERVICE_PORT ?? 4001, USER_SERVICE_HOST || '127.0.0.1')`. CORS · Swagger 없음.
 `migrate.ts`(별도 진입점): `retry` 로 DB 연결을 기다린 뒤(30회 × 2초) `runMigrations` 또는 `revert` 인자면 `undoLastMigration`, 둘 다 `{transaction: 'each'}`. DataSource 설정은 앱과 같다(`synchronize: false`, 목록 테이블 `t_migration`).
@@ -179,8 +181,8 @@ npm run docker:logs:gateway · docker:logs:user-service · docker:logs:admin-ser
 | `compose.redis.yml` | redis | 가상 운영용 Redis 8 (127.0.0.1:6379) — 문 정보의 원본이라 AOF 영속 · 비밀번호(`REDIS_PASSWORD`), 볼륨 `roomless-redis-data` — 실제 운영(ElastiCache 등 · 클러스터 모드 끔)이면 띄우지 않는다 ([guides/redis-setup.md](guides/redis-setup.md)) |
 | `compose.user-service.yml` | migrate · user-service × `USER_SERVICE_REPLICAS` · user-service-lb | 마이그레이션 1회(DB 를 최대 1분 기다림) → 인스턴스 → 내부 HTTP 로드밸런서 ([user-service.conf](../docker/nginx/user-service.conf)) |
 | `compose.admin-service.yml` | admin-service × `ADMIN_SERVICE_REPLICAS`(기본 1) · admin-service-lb | 매니저 · 관리자 도메인 인스턴스 → 내부 HTTP 로드밸런서 ([admin-service.conf](../docker/nginx/admin-service.conf)). 마이그레이션은 user-service 묶음이 먼저 적용한다 |
-| `compose.scheduler.yml` | scheduler × `SCHEDULER_REPLICAS`(기본 1) | crontab 전용 — `roomless-data` 네트워크만, 포트 · LB 없음. 마이그레이션은 user-service 묶음이 먼저 적용한다 |
-| `compose.gateway.yml` | gateway × `GATEWAY_REPLICAS` · gateway-lb | 인스턴스 → 외부 진입점 로드밸런서, 호스트 포트 `GATEWAY_PORT` · Swagger `/swagger` ([gateway.conf](../docker/nginx/gateway.conf)) |
+| `compose.scheduler.yml` | scheduler × `SCHEDULER_REPLICAS`(기본 1) | crontab 전용 — `roomless-data` 네트워크만(DB · Redis), 포트 · LB 없음. 마이그레이션은 user-service 묶음이 먼저 적용한다 |
+| `compose.gateway.yml` | gateway × `GATEWAY_REPLICAS` · gateway-lb | 인스턴스 → 외부 진입점 로드밸런서, 호스트 포트 `GATEWAY_PORT` · Swagger `/swagger` · 문 소켓 `/ws/`(WebSocket 업그레이드, 읽기 대기 120초) ([gateway.conf](../docker/nginx/gateway.conf)). Redis 구독 때문에 `roomless-data` 에도 붙는다 |
 
 - 묶음끼리는 depends_on 으로 묶을 수 없어 기다림을 앱이 맡는다 — migrate 는 DB 연결을 최대 1분 재시도, user-service 는 `@nestjs/typeorm` 기본 재시도(10회 · 3초 간격, 명시 설정 없음), 앱 모두 RabbitMQ 자동 재연결(로그인 거부도 재시도). 그래도 순서는 위 1~7 을 따른다.
 

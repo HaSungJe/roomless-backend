@@ -3,6 +3,7 @@ import {
     ApiBadRequestResponse,
     ApiBearerAuth,
     ApiBody,
+    ApiForbiddenResponse,
     ApiInternalServerErrorResponse,
     ApiNotFoundResponse,
     ApiOkResponse,
@@ -15,6 +16,7 @@ import {
 import type {Response} from 'express';
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
+import {AUTH_ID} from '@app/contracts/roles.js';
 import {StoreApplicationApproveParamDto, StoreApplicationApproveResultDto} from '@app/contracts/store/dto/store-application-approve.dto.js';
 import {StoreApplicationCancelParamDto} from '@app/contracts/store/dto/store-application-cancel.dto.js';
 import {StoreApplicationFileDeleteParamDto} from '@app/contracts/store/dto/store-application-file-delete.dto.js';
@@ -22,6 +24,7 @@ import {StoreApplicationFileDto, StoreApplicationFileParamDto, StoreApplicationF
 import {StoreApplicationRejectDto, StoreApplicationRejectParamDto} from '@app/contracts/store/dto/store-application-reject.dto.js';
 import {StoreApplicationDto, StoreApplicationResultDto} from '@app/contracts/store/dto/store-application.dto.js';
 import {StoreMineBreaksDto} from '@app/contracts/store/dto/store-mine-breaks.dto.js';
+import {StoreMineDoorSecretDto} from '@app/contracts/store/dto/store-mine-door-secret.dto.js';
 import {StoreMineFileDeleteParamDto} from '@app/contracts/store/dto/store-mine-file-delete.dto.js';
 import {StoreMineFileOrderDto} from '@app/contracts/store/dto/store-mine-file-order.dto.js';
 import {StoreMineFileDto, StoreMineFileResultDto} from '@app/contracts/store/dto/store-mine-file.dto.js';
@@ -40,6 +43,8 @@ import {PassportJwtAdminAuthGuard} from '../../../../../guards/passport.jwt.auth
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
 import {PassportJwtAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
 import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
+import {Roles} from '../../../../../guards/roles/roles.decorator.js';
+import {RolesGuard} from '../../../../../guards/roles/roles.guard.js';
 import {CommandStreamService} from '../../../../../modules/transport/command-stream.service.js';
 
 /**
@@ -200,7 +205,7 @@ export class StoreQueueController {
     }
 
     /**
-     * 내 업체 예약 · 환불 규정 설정 (업체 관리자) — 이용 시작 n시간 전부터 예약, n시간 전까지 100% 환불(이후 환불 불가). done 의 data 는 null.
+     * 내 업체 예약 · 환불 규정 설정 (업체 관리자) — 이용 시작 n시간 전부터 예약, n분 전까지 100% 환불, 그 뒤 ~ 이용 시작 전 취소는 비율 환불. done 의 data 는 null.
      */
     @Patch('/mine/reservation-policy')
     @UseGuards(PassportJwtManagerAuthGuard)
@@ -215,6 +220,26 @@ export class StoreQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async changeMyStoreReservationPolicy(@PassportActor() actor: Actor, @Body() dto: StoreMineReservationPolicyDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: STORE_COMMAND.MINE_RESERVATION_POLICY, actor, payload: dto, client_ip: ip});
+    }
+
+    /**
+     * 내 업체 문 소켓 시크릿 코드 설정 (업체 총관리자만) — bcrypt 해시로 저장해 원문은 다시 볼 수 없다. 문 쪽 프로그램이 소켓 접속 헤더 x-store-secret 으로 보낸다. done 의 data 는 null.
+     */
+    @Patch('/mine/door-secret')
+    @UseGuards(PassportJwtManagerAuthGuard, RolesGuard)
+    @Roles(AUTH_ID.HEAD_MANAGER)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '내 업체 문 소켓 시크릿 코드 설정'})
+    @ApiBody({type: StoreMineDoorSecretDto})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiForbiddenResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async changeMyStoreDoorSecret(@PassportActor() actor: Actor, @Body() dto: StoreMineDoorSecretDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: STORE_COMMAND.MINE_DOOR_SECRET, actor, payload: dto, client_ip: ip});
     }
 
     /**

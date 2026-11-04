@@ -2,20 +2,27 @@ import {ServiceUnavailableException} from '@nestjs/common';
 import type {TestingModule} from '@nestjs/testing';
 import {ReservationStoreCancelDto} from '@app/contracts/reservation/dto/reservation-store-cancel.dto.js';
 import {RESERVATION_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
 import {
     bootCommandPath,
+    createDoorStoreMock,
     createPaymentGatewayMock,
     createReservationRepositoryMock,
     createSmsSenderMock,
     detailEntity,
+    DoorStoreMock,
     MANAGER_ACTOR,
     PAYMENT_ID,
+    QR,
     RESERVATION_ID,
     reservationEntity,
     ReservationRepositoryMock,
+    ROOM_ID,
+    ROOM_QR_ID,
+    roomQrEntity,
     runCommand,
     SmsSenderMock,
     STORE_ID,
@@ -28,6 +35,7 @@ const PAYLOAD = {reservation_id: RESERVATION_ID, cancel_reason: '설비 고장'}
 describe('user.reservation.store-cancel — 업체 취소 (큐 경로)', () => {
     let repo: ReservationRepositoryMock;
     let sms: SmsSenderMock;
+    let door: DoorStoreMock;
     let dispatcher: CommandDispatcher;
     let module: TestingModule;
 
@@ -39,7 +47,8 @@ describe('user.reservation.store-cancel — 업체 취소 (큐 경로)', () => {
             where.user_id === MANAGER_ACTOR.user_id ? {user_id: MANAGER_ACTOR.user_id, store_id: STORE_ID} : {user_id: USER_ACTOR.user_id, phone: '01012345678'},
         );
         sms = createSmsSenderMock();
-        ({dispatcher, module} = await bootCommandPath(repo, createPaymentGatewayMock(), sms));
+        door = createDoorStoreMock();
+        ({dispatcher, module} = await bootCommandPath(repo, createPaymentGatewayMock(), sms, door));
     });
 
     afterEach(async () => {
@@ -81,6 +90,53 @@ describe('user.reservation.store-cancel — 업체 취소 (큐 경로)', () => {
         const [where, expired] = repo.updatePayment.mock.calls[0] as [unknown, PaymentEntity];
         expect(where).toEqual({payment_id: PAYMENT_ID, payment_state_id: 'READY'});
         expect(expired.payment_state_id).toBe('EXPIRED');
+    });
+
+    it('[SUCCESS] 이용 중 예약 — QR 을 끝낸다: DB 유효 종료 = 지금 · Redis 현재 QR 지우기, 둘 다 SMS 보다 먼저', async () => {
+        vi.setSystemTime(new Date('2026-11-10T05:00:00Z'));
+        repo.findRoomQr.mockResolvedValueOnce(roomQrEntity());
+
+        const {decision} = await runStoreCancel();
+
+        expect(decision.action).toBe('ack');
+        expect(repo.findRoomQr).toHaveBeenCalledWith({reservation_id: RESERVATION_ID});
+        expect(repo.updateRoomQr).toHaveBeenCalledTimes(1);
+        const [where, ended] = repo.updateRoomQr.mock.calls[0] as [unknown, RoomQrEntity];
+        expect(where).toEqual({room_qr_id: ROOM_QR_ID});
+        expect(ended).toBeInstanceOf(RoomQrEntity);
+        expect(ended.ends_at).toEqual(new Date('2026-11-10T05:00:00Z'));
+        expect(door.revokeQr).toHaveBeenCalledTimes(1);
+        expect(door.revokeQr).toHaveBeenCalledWith(ROOM_ID, QR);
+        expect(sms.send.mock.invocationCallOrder[0]).toBeGreaterThan(door.revokeQr.mock.invocationCallOrder[0]);
+    });
+
+    it('[SKIP] 시작 전 예약(QR 행 없음) — QR 끝내기 없음', async () => {
+        await runStoreCancel();
+
+        expect(repo.findRoomQr).toHaveBeenCalledTimes(1);
+        expect(repo.updateRoomQr).not.toHaveBeenCalled();
+        expect(door.revokeQr).not.toHaveBeenCalled();
+    });
+
+    it('[SKIP] QR 유효 종료가 이미 지났으면 — QR 끝내기 없음', async () => {
+        vi.setSystemTime(new Date('2026-11-10T08:00:00Z'));
+        repo.findRoomQr.mockResolvedValueOnce(roomQrEntity());
+
+        await runStoreCancel();
+
+        expect(repo.updateRoomQr).not.toHaveBeenCalled();
+        expect(door.revokeQr).not.toHaveBeenCalled();
+    });
+
+    it('[FAIL:external] Redis 현재 QR 지우기가 503 이면 재시도(쓰기는 롤백), SMS 없음', async () => {
+        vi.setSystemTime(new Date('2026-11-10T05:00:00Z'));
+        repo.findRoomQr.mockResolvedValueOnce(roomQrEntity());
+        door.revokeQr.mockRejectedValueOnce(new ServiceUnavailableException({message: '상태 저장소에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.'}));
+
+        const {decision} = await runStoreCancel();
+
+        expect(decision.action).toBe('requeue');
+        expect(sms.send).not.toHaveBeenCalled();
     });
 
     it('[SKIP] 이용자 번호가 없으면(휴대폰 인증 전) SMS 를 건너뛰고 done', async () => {

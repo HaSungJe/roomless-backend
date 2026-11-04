@@ -1,8 +1,9 @@
 import {BadRequestException, Injectable, InternalServerErrorException} from '@nestjs/common';
 import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import type {FindOptionsWhere, Repository, SelectQueryBuilder} from 'typeorm';
+import type {FindOptionsWhere, InsertQueryBuilder, Repository, SelectQueryBuilder} from 'typeorm';
 import {RESERVATION_DETAIL_TYPE, RESERVATION_STATE} from '@app/contracts/reservation/reservation.constants.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentStateEntity} from '@app/database/entities/payment/payment-state.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailTypeEntity} from '@app/database/entities/reservation/reservation-detail-type.entity.js';
@@ -107,6 +108,11 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     /** t_user */
     private get users(): Repository<UserEntity> {
         return this.txHost.tx.getRepository(UserEntity);
+    }
+
+    /** t_room_qr */
+    private get roomQrs(): Repository<RoomQrEntity> {
+        return this.txHost.tx.getRepository(RoomQrEntity);
     }
 
     /**
@@ -707,5 +713,57 @@ export class ReservationRepository implements ReservationRepositoryInterface {
             .andWhere('r.start_at < :to', {to})
             .andWhere('r.end_at > :from', {from})
             .orderBy('r.start_at', 'ASC');
+    }
+
+    /**
+     * 예약의 QR
+     *
+     * @param where 조회 조건
+     * @returns QR 행 또는 null
+     */
+    async findRoomQr(where: FindOptionsWhere<RoomQrEntity>): Promise<RoomQrEntity | null> {
+        try {
+            return await this.roomQrs.findOne({where, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * QR 발급 — 같은 예약(UK_RoomQr_ReservationId) · 같은 QR(UK_RoomQr_Qr)이 이미 있으면 넣지 않는다. 호출자가 다시 읽어 실제 행을 쓴다.
+     *
+     * @param entity new RoomQrEntity() + 할당 (@BeforeInsert 가 돈다)
+     */
+    async insertRoomQr(entity: RoomQrEntity): Promise<void> {
+        try {
+            await this.buildInsertRoomQrQuery(entity).execute();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * QR 발급 쿼리 — INSERT … ON CONFLICT DO NOTHING(scheduler 발급과 겹쳐도 UK 위반을 내지 않는다 — 트랜잭션 안에서 위반이 나면 그 뒤 쿼리가 모두 실패한다).
+     * 엔티티 인스턴스를 넘겨 @BeforeInsert 가 돈다. 매핑 민감(충돌 처리 절)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param entity QR 엔티티
+     * @returns 쿼리 빌더
+     */
+    buildInsertRoomQrQuery(entity: RoomQrEntity): InsertQueryBuilder<RoomQrEntity> {
+        return this.roomQrs.createQueryBuilder().insert().into(RoomQrEntity).values(entity).orIgnore();
+    }
+
+    /**
+     * QR 수정 (업체 취소 — 유효 종료)
+     *
+     * @param where 수정 조건
+     * @param entity 바꿀 필드만 할당한 엔티티
+     */
+    async updateRoomQr(where: FindOptionsWhere<RoomQrEntity>, entity: RoomQrEntity): Promise<void> {
+        try {
+            await this.roomQrs.update(where, entity);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
     }
 }

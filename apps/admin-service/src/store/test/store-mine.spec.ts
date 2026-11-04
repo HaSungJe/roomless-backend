@@ -84,6 +84,7 @@ describe('GET /internal/v1/admin-service/store/mine — 내 업체 상세 (업�
                 booking_open_hours: 24,
                 refund_deadline_minutes: 120,
                 late_refund_percent: 30,
+                is_door_secret_set: 0,
                 suspend_comment: '민원 접수',
                 hours: [
                     {day_of_week: 0, is_closed: 1, open_time: null, close_time: null},
@@ -114,6 +115,17 @@ describe('GET /internal/v1/admin-service/store/mine — 내 업체 상세 (업�
                 ],
                 updated_at: FIXED_TIME.toISOString(),
             });
+        });
+
+        it('문 소켓 시크릿을 정했으면 is_door_secret_set 1 — 해시 · 원문은 응답에 없다', async () => {
+            repo.findStoreByManager.mockResolvedValueOnce(storeRow({door_secret: '$2b$12$hashed'}));
+
+            const res = await request(app.getHttpServer()).get('/internal/v1/admin-service/store/mine').set(internalHeaders(MANAGER_ACTOR));
+
+            expect(res.status).toBe(200);
+            expect(res.body.is_door_secret_set).toBe(1);
+            expect(res.body).not.toHaveProperty('door_secret');
+            expect(JSON.stringify(res.body)).not.toContain('$2b$12$hashed');
         });
     });
 

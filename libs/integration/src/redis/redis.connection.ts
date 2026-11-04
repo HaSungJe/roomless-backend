@@ -28,6 +28,8 @@ export type RedisClient = ReturnType<typeof buildClient>;
 export class RedisConnection implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly logger = new Logger(RedisConnection.name);
     private client: RedisClient | null = null;
+    /** 구독 전용 연결 — 구독 중인 연결은 다른 명령을 보내지 않으므로 채널마다 따로 연다 */
+    private readonly subscribers: RedisClient[] = [];
 
     /**
      * 연결을 연다 — 기다리지 않는다(부팅을 막지 않는다).
@@ -35,7 +37,7 @@ export class RedisConnection implements OnApplicationBootstrap, OnModuleDestroy 
     onApplicationBootstrap(): void {
         const url = process.env.REDIS_URL;
         if (!url) {
-            this.logger.warn('REDIS_URL 이 비어 있어 Redis 를 쓰는 요청(문 열기 · 닫기)이 실패합니다 — docs/guides/redis-setup.md');
+            this.logger.warn('REDIS_URL 이 비어 있어 Redis 를 쓰는 요청(문 상태 · QR · 문 소켓)이 실패합니다 — docs/guides/redis-setup.md');
             return;
         }
         const client = buildClient(url);
@@ -47,12 +49,39 @@ export class RedisConnection implements OnApplicationBootstrap, OnModuleDestroy 
     }
 
     /**
-     * 종료 시 연결을 닫는다.
+     * 종료 시 연결 · 구독 연결을 닫는다.
      */
     async onModuleDestroy(): Promise<void> {
+        for (const subscriber of this.subscribers) {
+            if (subscriber.isOpen) {
+                await subscriber.close();
+            }
+        }
         if (this.client?.isOpen) {
             await this.client.close();
         }
+    }
+
+    /**
+     * 채널을 구독한다 — 구독 전용 연결을 따로 연다(기다리지 않는다 — 부팅을 막지 않는다). 끊기면 node-redis 가 다시 붙고 같은 채널을 다시 구독한다.
+     * REDIS_URL 이 비어 있으면 경고만 남긴다.
+     *
+     * @param channel 채널
+     * @param listener 메시지마다 부를 함수
+     */
+    subscribe(channel: string, listener: (message: string) => void): void {
+        const url = process.env.REDIS_URL;
+        if (!url) {
+            this.logger.warn(`REDIS_URL 이 비어 있어 ${channel} 을 구독하지 않습니다 — docs/guides/redis-setup.md`);
+            return;
+        }
+        const subscriber = buildClient(url);
+        subscriber.on('error', (error: Error) => this.logger.error(`Redis 구독 오류: ${error.message}`));
+        this.subscribers.push(subscriber);
+        subscriber
+            .connect()
+            .then(() => subscriber.subscribe(channel, listener))
+            .catch((error: Error) => this.logger.error(`Redis 구독 실패(${channel}): ${error.message}`));
     }
 
     /**

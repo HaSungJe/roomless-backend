@@ -1,5 +1,19 @@
+import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import {TOSS_PAYMENT_STATUS_DONE} from './integration.constants.js';
 import type {PaymentLookupResult} from './interfaces/integration.interface.js';
+
+/** 문 시각 형식 — 한국 시각 yyyyMMddHHmmss (Redis 문 정보의 시각 칸) */
+const DOOR_TIME_FORMAT = 'YYYYMMDDHHmmss';
+
+/**
+ * 문을 열거나 닫은 시각 — 한국 시각 `yyyyMMddHHmmss`(밀리초는 버린다). admin-service(바로 열기 · 문 소켓 QR 확인 · 잠금)가 쓴다.
+ *
+ * @param at 시각
+ * @returns 예: 20261101022459
+ */
+export function toDoorTime(at: Date): string {
+    return dayjs(at).tz(KST_TIMEZONE).format(DOOR_TIME_FORMAT);
+}
 
 /**
  * 국내 휴대폰 번호를 E.164 로 바꾼다 — `010-1234-5678` · `01012345678` → `+821012345678`.
