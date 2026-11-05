@@ -1,8 +1,8 @@
 import {ApiProperty} from '@nestjs/swagger';
-import {IsIn, IsInt, IsNotEmpty, Matches, Max, Min, ValidateIf} from 'class-validator';
+import {IsIn, IsInt, IsNotEmpty, IsOptional, Matches, Max, Min, ValidateIf} from 'class-validator';
 
 /**
- * 예약 생성 — 호실 · 상품 · 날짜(한국 날짜). 시간 이용은 시작 시각(30분 단위), 연박은 박수가 필수다. 금액은 서버가 계산한다
+ * 예약 생성 — 호실 · 상품 · 날짜(한국 날짜). 시간 이용은 시작 시각(30분 단위) 또는 지금 바로(is_now 1 — 오늘만), 연박은 박수가 필수다. 금액은 서버가 계산한다
  */
 export class ReservationDto {
     @ApiProperty({description: '호실 ID'})
@@ -20,8 +20,17 @@ export class ReservationDto {
     @IsNotEmpty({message: '날짜를 입력해주세요.'})
     date: string;
 
-    @ApiProperty({description: '시작 시각 (HH:mm — 00분 · 30분, 한국 시각) — 시간 이용이면 필수, 그 밖은 무시', required: false})
-    @ValidateIf((dto: ReservationDto) => dto.room_plan_type_id === 'HOURLY')
+    @ApiProperty({
+        description: '지금 바로 이용 (1: 지금(분 단위 내림)부터 이용 시간만큼 — 시간 이용 · 오늘 날짜만, 시작 시각은 보내지 않는다 / 0 또는 생략: 시작 시각대로)',
+        required: false,
+        enum: [0, 1],
+    })
+    @IsOptional()
+    @IsIn([0, 1], {message: '지금 바로 이용 여부가 올바르지 않습니다.'})
+    is_now?: number;
+
+    @ApiProperty({description: '시작 시각 (HH:mm — 00분 · 30분, 한국 시각) — 시간 이용이면 필수(지금 바로는 빼고), 그 밖은 무시', required: false})
+    @ValidateIf((dto: ReservationDto) => dto.room_plan_type_id === 'HOURLY' && dto.is_now !== 1)
     @Matches(/^([01]\d|2[0-3]):(00|30)$/, {message: '시작 시각을 30분 단위 HH:mm 으로 입력해주세요.'})
     @IsNotEmpty({message: '시간 이용은 시작 시각을 입력해주세요.'})
     start_time?: string;

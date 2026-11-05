@@ -34,12 +34,14 @@ import {verifyPaymentLookup} from '@app/integration/integration.util.js';
 import type {DoorStoreInterface, PaymentGatewayInterface, PaymentLookupResult, SmsSenderInterface} from '@app/integration/interfaces/integration.interface.js';
 import type {ReservationRepositoryInterface} from './interfaces/reservation.repository.interface.js';
 import {
+    RESERVATION_DATE_FORMAT,
     RESERVATION_DATE_INVALID_MESSAGE,
     RESERVATION_MANAGER_STORE_NOT_FOUND_MESSAGE,
     RESERVATION_NOT_CANCELABLE_MESSAGE,
     RESERVATION_NOT_FOUND_MESSAGE,
     RESERVATION_PAYMENT_NOT_FOUND_MESSAGE,
     RESERVATION_PLAN_TYPE,
+    RESERVATION_QR_ISSUE_FAILED_MESSAGE,
     RESERVATION_ROOM_NOT_FOUND_MESSAGE,
     RESERVATION_ROOM_STATE,
     RESERVATION_STATE_CHANGED_MESSAGE,
@@ -51,19 +53,22 @@ import {
     buildBookingContext,
     buildOrderName,
     buildRoomChangeSms,
+    buildRoomQr,
     buildStoreCancelSms,
     calculateRefundAmount,
     calculateStayPrice,
     isGroupPlanOnSale,
     isRoomQrActive,
     isNightsAllowed,
+    isReservationStarted,
     isStayBookable,
     isValidDate,
     judgeReservationQr,
     listStays,
     nowKst,
-    toAvailabilityRooms,
+    toAvailabilityGroups,
     toKstDay,
+    toNowStay,
     toReservationDetail,
     toReservationListItem,
     toReservationQr,
@@ -92,10 +97,11 @@ export class ReservationService {
     ) {}
 
     /**
-     * 호실별 예약 가능 시간 — 업체 · 날짜 · 상품(연박은 박수). 이 상품을 파는 호실만, 구간은 재고 판정을 지난 것만. (내부 HTTP: GET /internal/v1/user-service/reservation/availability)
+     * 객실 그룹별 예약 가능 시간 — 업체 · 날짜 · 상품(연박은 박수) · 그룹 필터(선택). 그룹 → 시간대 → 예약 가능한 호수(사용자 결정 2026-11-06), 이 상품을 파는 그룹만,
+     * 시간대는 재고 판정을 지난 호수가 있는 것만. 시간 이용 · 오늘이면 '지금 바로' 시간대를 맨 앞에 둔다. (내부 HTTP: GET /internal/v1/user-service/reservation/availability)
      *
-     * @param dto 업체 · 날짜 · 상품 · 박수
-     * @returns 호실별 금액 · 예약 가능 구간
+     * @param dto 업체 · 날짜 · 상품 · 박수 · 그룹
+     * @returns 그룹별 금액 · 시간대 · 예약 가능한 호수
      * @throws BadRequestException 없는 날짜 · 박수가 업체 설정 밖
      * @throws NotFoundException 업체가 없거나 활성이 아닐 때
      */
@@ -123,8 +129,8 @@ export class ReservationService {
             throw new BadRequestException({message, validation_errors: createValidationError('nights', message)});
         }
 
-        // 4. 호실 · 판매 중인 그룹 상품 · 기간 가격
-        const rooms = await this.reservationRepository.findBookableRooms(store.store_id);
+        // 4. 호실(그룹 필터) · 판매 중인 그룹 상품 · 기간 가격
+        const rooms = (await this.reservationRepository.findBookableRooms(store.store_id)).filter((room) => !dto.room_group_id || room.room_group_id === dto.room_group_id);
         const group_ids = [...new Set(rooms.map((room) => room.room_group_id))];
         if (group_ids.length === 0) {
             return empty;
@@ -135,8 +141,10 @@ export class ReservationService {
         }
         const periods = await this.reservationRepository.findGroupPlanPrices({room_group_plan_id: In(group_plans.map((item) => item.room_group_plan_id))});
 
-        // 5. 후보 구간 · 재고 판정 재료(조회 범위 안의 일시 예약불가 · 점유 예약)
-        const stays = listStays(plan, toKstDay(dto.date), nights);
+        // 5. 후보 구간 — 시간 이용 · 오늘이면 지금 바로를 맨 앞에(사용자 결정 2026-11-06), 재고 판정 재료(조회 범위 안의 일시 예약불가 · 점유 예약)
+        const now = nowKst();
+        const day_stays = listStays(plan, toKstDay(dto.date), nights);
+        const stays = plan.room_plan_type_id === RESERVATION_PLAN_TYPE.HOURLY && dto.date === now.format(RESERVATION_DATE_FORMAT) ? [toNowStay(plan, now), ...day_stays] : day_stays;
         const range = toStaysRange(stays, store.maintenance_minutes);
         const hours = await this.reservationRepository.findStoreHours(store.store_id);
         const breaks = await this.reservationRepository.findStoreBreaks(store.store_id);
@@ -147,29 +155,44 @@ export class ReservationService {
             start_at: LessThan(range.to),
             blocked_until: MoreThan(range.from),
         });
-        const context = buildBookingContext(nowKst(), store, plan, hours, breaks, unavailable);
+        const context = buildBookingContext(now, store, plan, hours, breaks, unavailable);
 
-        // 6. 호실별 금액 · 구간
-        return {...empty, list: toAvailabilityRooms(rooms, group_plans, periods, stays, context, occupied, nights)};
+        // 6. 그룹 → 시간대 → 호수
+        return {...empty, list: toAvailabilityGroups(rooms, group_plans, periods, stays, context, occupied, nights)};
     }
 
     /**
      * 예약 생성 — 재고 판정을 다시 하고 결제(READY) → 예약(PENDING) → 기본 구간(PENDING · 결제 대기 5분)을 만든다. (RabbitMQ: user.reservation.create)
      * - 환불 마감 시각 · 마감 뒤 환불 비율 · 정비시간은 예약 때 업체 값을 저장한다
      * - 같은 호실 점유 겹침의 최종 판정은 배타 제약(repository 가 400)
+     * - 시간 이용은 is_now 1 이면 지금(분 단위 내림)부터 이용 시간만큼(오늘 날짜만 — 사용자 결정 2026-11-06)
      *
      * @param user_id 이용자 ID
-     * @param dto 호실 · 상품 · 날짜 · 시작 시각 · 박수
+     * @param dto 호실 · 상품 · 날짜 · 시작 시각(또는 지금 바로) · 박수
      * @returns 예약 ID · 결제 정보(토스 orderId · 금액 · 주문명) · 결제 대기 만료 · 이용 구간
      */
     @Transactional()
     async createReservation(user_id: string, dto: ReservationDto): Promise<ReservationResultDto> {
-        // 1. 날짜
+        // 1. 날짜 · 지금 바로(시간 이용 · 오늘만)
         if (!isValidDate(dto.date)) {
             throw new BadRequestException({message: RESERVATION_DATE_INVALID_MESSAGE, validation_errors: createValidationError('date', RESERVATION_DATE_INVALID_MESSAGE)});
         }
+        const now = nowKst();
+        const is_now = dto.is_now === 1;
+        if (is_now && dto.room_plan_type_id !== RESERVATION_PLAN_TYPE.HOURLY) {
+            throw new BadRequestException({
+                message: '지금 바로 이용은 시간 이용만 예약할 수 있습니다.',
+                validation_errors: createValidationError('is_now', '지금 바로 이용은 시간 이용만 예약할 수 있습니다.'),
+            });
+        }
+        if (is_now && dto.date !== now.format(RESERVATION_DATE_FORMAT)) {
+            throw new BadRequestException({
+                message: '지금 바로 이용은 오늘 날짜로만 예약할 수 있습니다.',
+                validation_errors: createValidationError('date', '지금 바로 이용은 오늘 날짜로만 예약할 수 있습니다.'),
+            });
+        }
         const nights = dto.room_plan_type_id === RESERVATION_PLAN_TYPE.LONG ? (dto.nights as number) : null;
-        const start_time = dto.room_plan_type_id === RESERVATION_PLAN_TYPE.HOURLY ? (dto.start_time as string) : null;
+        const start_time = dto.room_plan_type_id === RESERVATION_PLAN_TYPE.HOURLY && !is_now ? (dto.start_time as string) : null;
 
         // 2. 호실 · 그룹 · 업체
         const room = await this.reservationRepository.findReservationRoom({room_id: dto.room_id});
@@ -194,14 +217,13 @@ export class ReservationService {
         }
 
         // 4. 같은 호실 재예약 제한 — 결제 대기 만료 시각부터 10분
-        const now = nowKst();
         const recent = await this.reservationRepository.countRecentExpired(user_id, room.room_id, now.subtract(RESERVATION_REBOOK_BLOCK_MINUTES, 'minute').toDate());
         if (recent > 0) {
             throw new BadRequestException({message: '결제하지 않아 만료된 호실은 10분 뒤에 다시 예약할 수 있습니다.'});
         }
 
-        // 5. 이용 구간 · 재고 판정
-        const stay = toStay(plan, toKstDay(dto.date), start_time, nights);
+        // 5. 이용 구간 · 재고 판정 — 지금 바로는 지금(분)부터
+        const stay = is_now ? toNowStay(plan, now) : toStay(plan, toKstDay(dto.date), start_time, nights);
         const range = toStaysRange([stay], store.maintenance_minutes);
         const hours = await this.reservationRepository.findStoreHours(store.store_id);
         const breaks = await this.reservationRepository.findStoreBreaks(store.store_id);
@@ -294,6 +316,7 @@ export class ReservationService {
      * - 결제됨 → 결제 DONE · 구간 · 예약 CONFIRMED / 미결제 · 다른 주문 → 400(쓰기 없음)
      * - 금액 불일치 · 이미 결제 대기가 끝난 예약 → 결제 환불 신청(+ 예약 만료)을 커밋하고 실패를 **반환**한다(재시도 없음)
      * - 같은 결제 키로 이미 확정 → 그대로 결과(중복 요청)
+     * - 확정한 예약이 이미 이용 시간 안(지금 바로 · 시작 뒤 결제)이면 QR 을 바로 발급하고 Redis 현재 QR 로 쓴다(마지막 단계 — 사용자 요청 2026-11-06)
      *
      * @param user_id 이용자 ID
      * @param dto 결제 ID · 결제 키
@@ -375,6 +398,16 @@ export class ReservationService {
         confirmed.reservation_state_id = RESERVATION_STATE.CONFIRMED;
         if (!(await this.reservationRepository.updateReservation({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.PENDING}, confirmed))) {
             throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+        }
+
+        // 6. 이용이 이미 시작된 예약(지금 바로 · 시작 뒤 결제)은 QR 을 바로 발급하고 Redis 현재 QR 로 쓴다 — 외부 단계라 마지막(사용자 요청 2026-11-06)
+        if (isReservationStarted(reservation, now)) {
+            await this.reservationRepository.insertRoomQr(buildRoomQr(reservation));
+            const roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
+            if (!roomQr) {
+                throw new InternalServerErrorException({message: RESERVATION_QR_ISSUE_FAILED_MESSAGE});
+            }
+            await this.doorStore.setQr(roomQr.room_id, roomQr.qr, roomQr.ends_at);
         }
         return {reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED};
     }
@@ -512,18 +545,11 @@ export class ReservationService {
 
         // 3. 없으면 발급 — 유효 = 이용 시작 ~ 이용 끝, QR 은 32자 무작위. 같은 예약에 이미 들어갔으면 DB 가 무시하고, 다시 읽은 행을 쓴다
         if (verdict === 'ISSUE') {
-            const issued = new RoomQrEntity();
-            issued.room_qr_id = generateId();
-            issued.room_id = reservation.room_id;
-            issued.reservation_id = reservation.reservation_id;
-            issued.qr = generateId();
-            issued.starts_at = reservation.start_at;
-            issued.ends_at = reservation.end_at;
-            await this.reservationRepository.insertRoomQr(issued);
+            await this.reservationRepository.insertRoomQr(buildRoomQr(reservation));
             roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
         }
         if (!roomQr) {
-            throw new InternalServerErrorException({message: 'QR 정보를 발급하지 못했습니다. 관리자에게 문의해주세요.'});
+            throw new InternalServerErrorException({message: RESERVATION_QR_ISSUE_FAILED_MESSAGE});
         }
 
         // 4. Redis 현재 QR 로 — 문 소켓 QR 확인이 이 QR 로 맞는다(유효 종료에 저절로 사라진다)

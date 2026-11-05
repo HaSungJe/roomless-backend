@@ -57,5 +57,8 @@ export const RESERVATION_NOT_CANCELABLE_MESSAGE = '취소할 수 없는 예약�
 /** 결제를 찾을 수 없음 */
 export const RESERVATION_PAYMENT_NOT_FOUND_MESSAGE = '결제를 찾을 수 없습니다.';
 
+/** QR 발급 뒤 다시 읽어도 없음 — 500 (내 예약 QR · 결제 확인) */
+export const RESERVATION_QR_ISSUE_FAILED_MESSAGE = 'QR 정보를 발급하지 못했습니다. 관리자에게 문의해주세요.';
+
 /** QR 을 내주는 예약 상태 — 확정 · 이용 중 */
 export const RESERVATION_QR_STATES: string[] = [RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN];

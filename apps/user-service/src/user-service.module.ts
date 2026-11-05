@@ -9,7 +9,9 @@ import {BROKER_USER} from '@app/messaging/messaging.constants.js';
 import {DoorStoreModule} from '@app/integration/door/door-store.module.js';
 import {PaymentModule} from '@app/integration/payment/payment.module.js';
 import {SmsModule} from '@app/integration/sms/sms.module.js';
+import {StorageModule} from '@app/integration/storage/storage.module.js';
 import {MessagingModule} from '@app/messaging/messaging.module.js';
+import {DiscoveryModule} from './discovery/discovery.module.js';
 import {ReservationModule} from './reservation/reservation.module.js';
 import {UserModule} from './user/user.module.js';
 
@@ -20,20 +22,23 @@ import {UserModule} from './user/user.module.js';
  * - DatabaseModule: TypeORM(PostgreSQL) + `@Transactional()` (nestjs-cls)
  * - MessagingModule.forService: q.user.cmd 소비 → `@OnCommand` 핸들러 디스패치 (user_id 가 gateway 인 명령만 처리)
  * - SmsModule: SMS 발송 포트(SMS_SENDER, Amazon SNS) — 휴대폰 인증 · 아이디 찾기 · 비밀번호 초기화
+ * - StorageModule: 파일 저장소 포트(STORAGE_GATEWAY, Amazon S3 · CloudFront) — 업체 둘러보기의 업체 · 객실 그룹 사진 공개 주소(getPublicUrl)만
  * - DoorStoreModule: 문 정보 포트(DOOR_STORE, Redis — RedisModule 연결 포함) — 내 예약 QR 발급 · 업체 취소 때 호실의 현재 QR 쓰기 · 지우기
  * - PaymentModule: 결제 포트(PAYMENT_GATEWAY, 토스페이먼츠) — 예약 결제 환경 · 결제 확인
  * - SeederService: DB 를 소유하는 이 서비스가 룩업 기본 데이터 · 첫 총관리자를 보장한다
- * 도메인: UserModule(회원) · ReservationModule(예약). crontab 은 scheduler 앱이 돌린다(이 서비스에는 ScheduleModule 이 없다).
+ * 도메인: UserModule(회원) · ReservationModule(예약) · DiscoveryModule(업체 둘러보기). crontab 은 scheduler 앱이 돌린다(이 서비스에는 ScheduleModule 이 없다).
  */
 @Module({
     imports: [
         DatabaseModule,
         MessagingModule.forService({queue: USER_COMMAND_QUEUE, binding_keys: [USER_COMMAND_BINDING], broker_user: BROKER_USER.USER_SERVICE}),
         SmsModule,
+        StorageModule,
         DoorStoreModule,
         PaymentModule,
         UserModule,
         ReservationModule,
+        DiscoveryModule,
     ],
     providers: [{provide: APP_GUARD, useClass: InternalAuthGuard}, {provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor}, SeederService],
 })

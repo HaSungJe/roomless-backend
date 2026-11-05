@@ -1,11 +1,12 @@
-import type {ReservationAvailabilityRoomResultDto, ReservationAvailabilitySlotResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
+import type {ReservationAvailabilityGroupResultDto, ReservationAvailabilityRoomResultDto, ReservationAvailabilitySlotResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import type {ReservationListItemResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import type {ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
 import type {ReservationStoreRoomResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
 import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import type {Dayjs} from '@app/common/utils/dayjs.js';
-import type {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
+import {generateId} from '@app/common/utils/id.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import type {RoomGroupPlanEntity} from '@app/database/entities/room/room-group-plan.entity.js';
@@ -26,11 +27,12 @@ import {
     RESERVATION_ROOM_STATE,
 } from './reservation.constants.js';
 
-/** 이용 구간 — 입실일(요일 · 요금 기준일, 한국 날짜 0시) · 시작 · 끝(한국 시각) */
+/** 이용 구간 — 입실일(요일 · 요금 기준일, 한국 날짜 0시) · 시작 · 끝(한국 시각) · 지금 바로 여부 */
 export interface Stay {
     day: Dayjs;
     start: Dayjs;
     end: Dayjs;
+    is_now: boolean;
 }
 
 /** 점유 구간 — 같은 호실의 점유 예약 [start_at, blocked_until) */
@@ -210,11 +212,24 @@ function isWithinStoreHours(stay: Stay, context: BookingContext): boolean {
 export function toStay(plan: RoomPlanEntity, day: Dayjs, start_time: string | null, nights: number | null): Stay {
     if (plan.room_plan_type_id === RESERVATION_PLAN_TYPE.HOURLY) {
         const start = atTimeOfDay(day, start_time as string);
-        return {day, start, end: start.add(plan.usage_hours as number, 'hour')};
+        return {day, start, end: start.add(plan.usage_hours as number, 'hour'), is_now: false};
     }
     const start = atTimeOfDay(day, plan.check_in_time as string);
     const stay_nights = plan.room_plan_type_id === RESERVATION_PLAN_TYPE.NIGHT ? 1 : (nights as number);
-    return {day, start, end: atTimeOfDay(day.add(stay_nights, 'day'), plan.check_out_time as string)};
+    return {day, start, end: atTimeOfDay(day.add(stay_nights, 'day'), plan.check_out_time as string), is_now: false};
+}
+
+/**
+ * 지금 바로 구간(시간 이용만) — 지금(한국 시각)을 분 단위로 내린 시각부터 업체 이용 시간만큼, 입실일은 오늘(사용자 결정 2026-11-06).
+ * 예: 이용 시간 4시간 · 지금 2026-11-05 23:36:27 → 23:36 ~ 다음 날 03:36.
+ *
+ * @param plan 업체 상품 설정(시간 이용)
+ * @param now 지금(한국 시각)
+ * @returns 구간
+ */
+export function toNowStay(plan: RoomPlanEntity, now: Dayjs): Stay {
+    const start = now.startOf('minute');
+    return {day: toKstDay(now.format(RESERVATION_DATE_FORMAT)), start, end: start.add(plan.usage_hours as number, 'hour'), is_now: true};
 }
 
 /**
@@ -232,7 +247,7 @@ export function listStays(plan: RoomPlanEntity, day: Dayjs, nights: number | nul
     const stays: Stay[] = [];
     for (let minute = 0; minute < 24 * 60; minute += RESERVATION_HOURLY_STEP_MINUTES) {
         const start = day.add(minute, 'minute');
-        stays.push({day, start, end: start.add(plan.usage_hours as number, 'hour')});
+        stays.push({day, start, end: start.add(plan.usage_hours as number, 'hour'), is_now: false});
     }
     return stays;
 }
@@ -305,7 +320,7 @@ export function buildBookingContext(
 }
 
 /**
- * 재고 판정 — 업체 영업중 · 호실 사용중지 아님 · 시작(지금 이후 · 예약 가능 기간 안, 즉시 입실은 예약가능 호실만) · 입실일 요일 ·
+ * 재고 판정 — 업체 영업중 · 호실 사용중지 아님 · 시작(지금 분 이후 — 지금 바로 구간의 시작이 지금 분 · 예약 가능 기간 안, 즉시 입실은 예약가능 호실만) · 입실일 요일 ·
  * 영업시간 · 브레이크 · 일시 예약불가 · 점유([시작, 끝 + 정비시간)이 점유 예약과 겹치지 않음). 반열린 구간이라 맞닿음은 된다.
  *
  * @param stay 이용 구간
@@ -318,7 +333,7 @@ export function isStayBookable(stay: Stay, context: BookingContext, room_state_i
     if (context.is_open !== 1 || room_state_id === RESERVATION_ROOM_STATE.DISABLED) {
         return false;
     }
-    if (stay.start.isBefore(context.now) || stay.start.isAfter(context.now.add(context.booking_open_hours, 'hour'))) {
+    if (stay.start.isBefore(context.now.startOf('minute')) || stay.start.isAfter(context.now.add(context.booking_open_hours, 'hour'))) {
         return false;
     }
     if (stay.start.isBefore(context.now.add(RESERVATION_IMMEDIATE_MINUTES, 'minute')) && room_state_id !== RESERVATION_ROOM_STATE.AVAILABLE) {
@@ -370,18 +385,19 @@ export function calculateStayPrice(room_plan_type_id: string, day: Dayjs, nights
 }
 
 /**
- * 호실별 예약 가능 시간 — 이 상품을 파는 그룹(그룹 상품 판매 · 요금 > 0)의 호실만, 구간은 재고 판정을 지난 것만.
+ * 예약 가능 시간 — 객실 그룹 → 시간대 → 예약 가능한 호수(사용자 결정 2026-11-06). 그룹은 판매 중인 그룹 상품이 있는 것만(시간대가 없어도 나온다) 그룹명 순,
+ * 시간대는 받은 구간 순(지금 바로가 맨 앞)으로 예약 가능한 호수가 1개 이상인 것만, 호수는 받은 호실 순(층 · 호실명). 금액은 그룹 요금(입실일 기준 — 기간 가격 반영).
  *
- * @param rooms 지워지지 않은 호실(층 · 호실명 순)
+ * @param rooms 예약 가능 호실(층 · 호실명 순)
  * @param group_plans 판매 중인 그룹 상품
  * @param periods 그 그룹 상품들의 기간 가격
  * @param stays 후보 구간
  * @param context 재고 판정 재료
  * @param occupied 호실들의 점유 예약
  * @param nights 연박 박수 — 그 밖은 null
- * @returns 호실 목록
+ * @returns 그룹 목록
  */
-export function toAvailabilityRooms(
+export function toAvailabilityGroups(
     rooms: BookableRoomRow[],
     group_plans: RoomGroupPlanEntity[],
     periods: RoomGroupPlanPriceEntity[],
@@ -389,14 +405,14 @@ export function toAvailabilityRooms(
     context: BookingContext,
     occupied: OccupiedRange[],
     nights: number | null,
-): ReservationAvailabilityRoomResultDto[] {
-    const result: ReservationAvailabilityRoomResultDto[] = [];
-    for (const room of rooms) {
-        const plan = group_plans.find((item) => item.room_group_id === room.room_group_id);
+): ReservationAvailabilityGroupResultDto[] {
+    const groups: ReservationAvailabilityGroupResultDto[] = [];
+    for (const room_group_id of new Set(rooms.map((room) => room.room_group_id))) {
+        const plan = group_plans.find((item) => item.room_group_id === room_group_id);
         if (!plan) {
             continue;
         }
-        const roomOccupied = occupied.filter((range) => range.room_id === room.room_id);
+        const groupRooms = rooms.filter((room) => room.room_group_id === room_group_id).map((room) => ({room, occupied: occupied.filter((range) => range.room_id === room.room_id)}));
         const price = calculateStayPrice(
             context.room_plan_type_id,
             stays[0].day,
@@ -404,27 +420,67 @@ export function toAvailabilityRooms(
             plan.price,
             periods.filter((item) => item.room_group_plan_id === plan.room_group_plan_id),
         );
-        result.push({
-            room_id: room.room_id,
-            room_name: room.room_name,
-            floor: Number(room.floor),
-            room_group_id: room.room_group_id,
-            room_group_name: room.room_group_name,
-            price,
-            slots: stays.filter((stay) => isStayBookable(stay, context, room.room_state_id, roomOccupied)).map(toSlot),
-        });
+        const slots = stays
+            .map((stay) =>
+                toSlot(
+                    stay,
+                    groupRooms.filter((item) => isStayBookable(stay, context, item.room.room_state_id, item.occupied)).map((item) => toAvailabilityRoom(item.room)),
+                ),
+            )
+            .filter((slot) => slot.rooms.length > 0);
+        groups.push({room_group_id, room_group_name: groupRooms[0].room.room_group_name, price, slots});
     }
-    return result;
+    return groups.sort((a, b) => a.room_group_name.localeCompare(b.room_group_name, 'ko'));
 }
 
 /**
- * 구간 → 응답(ISO 8601).
+ * 예약 가능한 호수 응답
+ *
+ * @param room 예약 가능 호실 행
+ * @returns 호수
+ */
+export function toAvailabilityRoom(room: BookableRoomRow): ReservationAvailabilityRoomResultDto {
+    return {room_id: room.room_id, room_name: room.room_name, floor: Number(room.floor)};
+}
+
+/**
+ * 구간 → 시간대 응답(ISO 8601).
  *
  * @param stay 이용 구간
- * @returns 구간 응답
+ * @param rooms 이 구간에 예약 가능한 호수
+ * @returns 시간대
  */
-export function toSlot(stay: Stay): ReservationAvailabilitySlotResultDto {
-    return {start_at: stay.start.toISOString(), end_at: stay.end.toISOString()};
+export function toSlot(stay: Stay, rooms: ReservationAvailabilityRoomResultDto[]): ReservationAvailabilitySlotResultDto {
+    return {start_at: stay.start.toISOString(), end_at: stay.end.toISOString(), is_now: stay.is_now ? 1 : 0, rooms};
+}
+
+/**
+ * 예약의 QR — 유효 = 이용 시작 ~ 끝, QR · ID 는 32자 무작위(내 예약 QR · 결제 확인 공용, scheduler buildRoomQr 과 같은 값).
+ *
+ * @param reservation 예약
+ * @returns QR 엔티티
+ */
+export function buildRoomQr(reservation: Pick<ReservationEntity, 'reservation_id' | 'room_id' | 'start_at' | 'end_at'>): RoomQrEntity {
+    const roomQr = new RoomQrEntity();
+    roomQr.room_qr_id = generateId();
+    roomQr.room_id = reservation.room_id;
+    roomQr.reservation_id = reservation.reservation_id;
+    roomQr.qr = generateId();
+    roomQr.starts_at = reservation.start_at;
+    roomQr.ends_at = reservation.end_at;
+    return roomQr;
+}
+
+/**
+ * 이용이 이미 시작됐는지 — [start_at, end_at) 안(결제 확인 때 QR 을 바로 발급할지).
+ *
+ * @param reservation 예약
+ * @param now 지금
+ * @returns 이용 중 시간이면 true
+ */
+export function isReservationStarted(reservation: Pick<ReservationEntity, 'start_at' | 'end_at'>, now: Date): boolean {
+    const at = dayjs(now);
+    return !at.isBefore(reservation.start_at) && at.isBefore(reservation.end_at);
 }
 
 /**

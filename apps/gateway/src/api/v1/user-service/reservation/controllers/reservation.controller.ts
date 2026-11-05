@@ -36,11 +36,11 @@ export class ReservationController {
     constructor(private readonly internalHttp: InternalHttpClient) {}
 
     /**
-     * 호실별 예약 가능 시간 (로그인 없음) — 업체 · 날짜 · 상품(연박은 박수), 이 상품을 파는 호실만
+     * 객실 그룹별 예약 가능 시간 (로그인 없음) — 업체 · 날짜 · 상품(연박은 박수), 그룹 필터(선택). 그룹 → 시간대 → 예약 가능한 호수, 시간 이용 · 오늘이면 '지금 바로' 시간대가 맨 앞
      */
     @Get('/availability')
     @HttpCode(200)
-    @ApiOperation({summary: '호실별 예약 가능 시간'})
+    @ApiOperation({summary: '객실 그룹별 예약 가능 시간'})
     @ApiOkResponse({type: ReservationAvailabilityResultDto})
     @ApiBadRequestResponse({type: ApiFailResultDto})
     @ApiNotFoundResponse({type: ApiFailResultDto})

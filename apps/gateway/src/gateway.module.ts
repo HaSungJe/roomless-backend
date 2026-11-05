@@ -8,6 +8,7 @@ import {AdminModule} from './api/v1/admin-service/admin/admin.module.js';
 import {ManagerModule} from './api/v1/admin-service/manager/manager.module.js';
 import {RoomModule} from './api/v1/admin-service/room/room.module.js';
 import {StoreModule} from './api/v1/admin-service/store/store.module.js';
+import {DiscoveryModule} from './api/v1/user-service/discovery/discovery.module.js';
 import {ReservationModule} from './api/v1/user-service/reservation/reservation.module.js';
 import {UserModule} from './api/v1/user-service/user/user.module.js';
 
@@ -20,6 +21,7 @@ import {UserModule} from './api/v1/user-service/user/user.module.js';
  * - PassportJwtAuthModule: JWT 전략 (guards/)
  * - 로그인 그룹별 라우트: UserModule(/api/v1/user-service/user) · ManagerModule(/api/v1/admin-service/manager) · AdminModule(/api/v1/admin-service/admin) · StoreModule(/api/v1/admin-service/store — 이용자 · 관리자 가드) · RoomModule(/api/v1/admin-service/room — 매니저 가드)
  * - 예약 라우트: ReservationModule(/api/v1/user-service/reservation — 예약 가능 시간은 가드 없음, 내 예약 · 내 예약 QR · 예약 쓰기는 이용자 가드, 업체 현황 · 업체 취소 · 호실 이동은 매니저 가드)
+ * - 업체 둘러보기 라우트: DiscoveryModule(/api/v1/user-service/discovery — 가드 없음, 반경 업체 · 업체 상세 · 객실 그룹 목록)
  * - DoorSocketModule: 문 소켓(`/ws/v1/door` — 업체 ID + 시크릿, 표준 WebSocket) — QR 확인 · 잠금 알림 · 바로 열기 명령
  */
 @Module({
@@ -34,6 +36,7 @@ import {UserModule} from './api/v1/user-service/user/user.module.js';
         StoreModule,
         RoomModule,
         ReservationModule,
+        DiscoveryModule,
         DoorSocketModule,
     ],
 })

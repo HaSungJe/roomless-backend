@@ -19,7 +19,7 @@ export class ReservationController {
     constructor(private readonly reservationService: ReservationService) {}
 
     /**
-     * 호실별 예약 가능 시간 (인증 없음)
+     * 객실 그룹별 예약 가능 시간 (인증 없음)
      */
     @Get('/availability')
     @HttpCode(200)

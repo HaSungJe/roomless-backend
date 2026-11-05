@@ -33,7 +33,7 @@ flowchart LR
   P16 --> P17
   P14 --> P15["Phase 15 · 문 관리·QR 확인 (5)"]:::done
   P17 --> P15
-  P17 --> P18["Phase 18 · discovery (4)"]:::todo
+  P17 --> P18["Phase 18 · discovery (5)"]:::inprog
   P15 --> P19["Phase 19 · 이용 (5)"]:::todo
   P17 --> P19
   P5 --> P19
@@ -73,7 +73,7 @@ flowchart LR
 - Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/{reservation,payment}, libs/database/src/migrations, libs/integration/src/payment · done
 - Phase 17 — 예약·결제 · 유닛 8개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation, libs/integration/src/payment, apps/admin-service/src/{store,room}(환불 규정 · 연박 박수 · 삭제 금지), libs/database(entities · migrations) · done
 - Phase 15 — 문 관리·QR 확인 · 유닛 5개 · 의존: Phase 14, 17 · 푼다: Phase 19 · 파일 집합: apps/admin-service/src/{room,store}(문 상태 · 바로 열기 · 소켓 처리 · 시크릿), apps/user-service/src/{reservation,door 삭제}(내 예약 QR), apps/scheduler/src/reservation(QR 맞추기), apps/gateway/src/modules/door-socket, libs/integration/src/door, libs/database(t_room_qr · door_secret), libs/contracts/src/{door,room,store,reservation} · done
-- Phase 18 — discovery · 유닛 4개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/admin-service/src/discovery, apps/gateway/src/api/v1/admin-service/discovery, libs/contracts/src/discovery · todo
+- Phase 18 — discovery · 유닛 5개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/user-service/src/{discovery,reservation}, apps/gateway/src/api/v1/user-service/discovery, libs/contracts/src/{discovery,reservation} · in-progress
 - Phase 19 — 이용 · 유닛 5개 · 의존: Phase 5, 15, 17 · 푼다: Phase 21 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation(crontabs), apps/gateway/src/api/v1/user-service/reservation · todo
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/admin(이용자 · 업체 관리자 관리 — 공유 DB 의 t_user 를 관리자 도메인 repository 가 다룬다), apps/gateway/src/api/v1/admin-service/admin, libs/contracts/src/admin · todo
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats, apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats · todo
@@ -83,14 +83,15 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 18
+지금: Phase 18 진행 중 · Next up: Phase 18
 
 ## 지금 할 일
-Phase 18 discovery 시작하기
-- #74 지도 영역 업체 조회
-- #75 주변 업체 목록
+Phase 18 discovery build 완료 — 리뷰 후 ship
+- #74 반경 업체 조회(지도 · 목록 공용)
 - #76 업체 상세
 - #77 업체의 객실 그룹 목록
+- #116 예약 가능 시간 — 그룹 → 시간대 → 호수
+- #117 시간 이용 지금 바로 · 결제 확인 QR
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
@@ -98,7 +99,7 @@ Phase 18 discovery 시작하기
 - 사용자 — 마이그레이션 11개를 순서대로(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 남은 것을 순서대로 적용): `LoginScopeStoreDetail` → `StoreSchema` → `StoreFile` → `StoreCodeManagerScope` → `StoreOperation` → `StoreReservationPolicy` → `RoomSchema`(적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한 — RDS 13+ 는 DB 의 CREATE 권한) → `RoomState` → `ReservationSchema` → `ReservationBooking` → `RoomQrDoorSecret`
 - 사용자 — 마이그레이션이 바꾸는 기존 데이터: 회원 `login_scope` 를 권한으로 채움 · 기존 업체는 영업중지 · 좌표 0 · 업체코드 채움 · `t_store_image` 삭제 · `head_manager_phone` → `owner_phone` · 매니저 아이디 · 휴대폰 유일성은 업체 단위 · 기존 브레이크는 매일 · 업체 예약 가능 72시간 · 100% 환불 마감 60분(1시간 × 60) · 마감 뒤 환불 50% · 업체 상품 설정 3행(연박 1 ~ 30박) · 편의시설 `store_detail` 삭제 · 스탠바이 호실 → 예약가능 · 이용중 → 사용중 · 예약에 환불 비율 50 저장. 이미 있던 입점 신청은 업체 총관리자 아이디 · 비밀번호가 비어 있어 반려 후 다시 신청. 새로 생기는 것: 업체 정보 파일 · 일시 예약불가 · 예약 · 구간 · 결제(+ 룩업 3) · `t_room_qr` 테이블, 정지 사유 · `door_secret` 컬럼, store 테이블 5개 소프트 삭제(`is_deleted`), 결제 부분 환불 CHECK
 - 사용자 — 앱을 새 이미지로 다시 띄우기: user-service(migrate 포함) → admin-service → scheduler → gateway(`npm run docker:up` 순서 — gateway-lb 는 `/ws/` 설정 때문에 다시 만든다). scheduler crontab(결제 대기 만료 · 늦은 승인 · 환불 · QR 동기화)은 `NODE_ENV=production` 에서만 돈다
-- 사용자 — 프론트: 업체 예약 규정 `refund_deadline_hours` → `refund_deadline_minutes` + `late_refund_percent`, 업체 상품 설정 연박 `min_nights` · `max_nights`, 결제창 orderId = 예약 결과의 `payment_id` → 토스 승인 뒤 `POST /api/v1/user-service/reservation/payment-confirm`, 내 예약 QR `GET /api/v1/user-service/reservation/:reservation_id/qr`, 호실 목록의 문 상태 · 바로 열기, 업체 총관리자 문 시크릿 설정
+- 사용자 — 프론트: 업체 예약 규정 `refund_deadline_hours` → `refund_deadline_minutes` + `late_refund_percent`, 업체 상품 설정 연박 `min_nights` · `max_nights`, 결제창 orderId = 예약 결과의 `payment_id` → 토스 승인 뒤 `POST /api/v1/user-service/reservation/payment-confirm`, 내 예약 QR `GET /api/v1/user-service/reservation/:reservation_id/qr`, 호실 목록의 문 상태 · 바로 열기, 업체 총관리자 문 시크릿 설정, 업체 둘러보기 API 3개(지도 중심 + 같은 반경으로 다시 조회 · is_truncated 면 반경 줄이기 안내), 예약 가능 시간 응답이 그룹 → 시간대 → 호수(금액은 그룹 price · 지금 바로는 is_now 1 시간대), 지금 바로 예약은 is_now: 1(시작 시각 없이 · 오늘)
 - 사용자 — 문 쪽 프로그램에 연동 규격 변경 알리기(HTTP 문 열기 · 닫기 → 문 소켓 — README "문 소켓"), 업체 총관리자가 시크릿을 먼저 정한다. 확인: 토스는 docs/guides/toss-setup.md 6절, 문 소켓은 `.beaver/output/report/door/door-manage-report.md` 의 7단계
 
 ## Scope & Actors
@@ -416,12 +417,16 @@ ship 완료(e252f8f) — report: `.beaver/output/report/reservation/reservation-
 ### Phase 18 — discovery (이용자 진입 동선 — 활성 업체만) · depends: Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 74 | 지도 영역 업체 조회 | 남서 · 북동 좌표 안의 활성 업체 | 지도 API(카카오 · 네이버) | 34 | todo |
-| 75 | 주변 업체 목록 | 위경도 + 반경 | — | 34 | todo |
-| 76 | 업체 상세 | 소개 · 사진 · 편의시설 · 영업시간 | — | 45 | todo |
-| 77 | 업체의 객실 그룹 목록 | 그룹 사진 · 상품 · 기간 가격 · 호실별 예약 가능 여부 | — | 67 | todo |
+| 74 | 반경 업체 조회 | 지도 중심(처음엔 내 위치) + 반경 5 · 10 · 20 · 50km 안의 활성 업체를 가까운 순 최대 300개 — 지도 · 목록 공용(거리 · 대표 사진 · 최저가) | 지도 API 는 프론트 — 서버는 WGS84 좌표만(사용자 결정 2026-11-06) | 34 | in-progress |
+| 75 | 주변 업체 목록 | 위경도 + 반경 | — | 34 | dropped(#74 에 합침 — 사용자 결정 2026-11-06) |
+| 76 | 업체 상세 | 소개 · 사진 · 연락처 · 영업시간 · 브레이크 · 판매 중인 상품 설정 · 환불 규정(사업자 정보 없음) | 공개 항목(사용자 결정 2026-11-06) | 45 | in-progress |
+| 77 | 업체의 객실 그룹 목록 | 그룹 사진 · 편의시설 · 호실 수 · 판매 중인 상품(기본 요금 · 남은 기간 가격) | 시간대별 호수는 #116 | 67 | in-progress |
+| 116 | 예약 가능 시간 — 그룹 → 시간대 → 호수 | 기존 예약 가능 시간 API 를 객실 그룹 → 시간대 → 예약 가능한 호수로 바꾸고 그룹 필터 | 재고 계산 한 곳(사용자 결정 2026-11-06) | 68 | in-progress |
+| 117 | 시간 이용 지금 바로 · 결제 확인 QR | 지금(분)부터 이용 시간만큼 예약(겹치면 불가), 결제 확인 때 이용이 시작된 예약은 QR 바로 발급 | 시간 이용만(사용자 결정 2026-11-06) | 69, 112 | in-progress |
 
-**Expected APIs** (가칭, 비로그인): `GET /api/v1/admin-service/discovery/store/map`(#74), `/nearby`(#75), `/store/:store_id`(#76), `/store/:store_id/room-group`(#77).
+**Expected APIs** (비로그인): `GET /api/v1/user-service/discovery/store`(#74) · `/store/:store_id`(#76) · `/store/:store_id/room-group`(#77), `GET /api/v1/user-service/reservation/availability`(#116 — 모양 변경 · room_group_id 필터), 예약 생성 `is_now`(#117). user-service 에 둔다(사용자 결정 2026-11-06 — spec `.beaver/output/spec/discovery/discovery-spec.md`). 총관리자용 업체 목록은 좌표 무관 기존 `GET /api/v1/admin-service/store` 그대로.
+
+build 완료 — report: `.beaver/output/report/discovery/discovery-report.md`. 전체 101파일 996건 · typecheck · lint · build · db:check 통과. 거리(haversine)는 SQL 이라 실데이터 확인은 사용자.
 
 ### Phase 19 — 이용 (입장 QR · 체크인 · 연장 · 퇴실) · depends: Phase 5, Phase 15, Phase 17
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -485,7 +490,7 @@ ship 완료(e252f8f) — report: `.beaver/output/report/reservation/reservation-
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 90/108 units done (17/24 phases)
+**Progress**: 90/109 units done (17/24 phases)
 **Next up**: Phase 18 discovery — 의존(Phase 17) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.

@@ -1,23 +1,32 @@
+import {ServiceUnavailableException} from '@nestjs/common';
 import type {TestingModule} from '@nestjs/testing';
 import {ReservationPaymentConfirmDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
 import {RESERVATION_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
 import {
     bootCommandPath,
+    createDoorStoreMock,
     createPaymentGatewayMock,
     createReservationRepositoryMock,
+    createSmsSenderMock,
     detailEntity,
+    DoorStoreMock,
+    ID_PATTERN,
     NOW,
     PAYMENT_ID,
     PAYMENT_KEY,
     paymentEntity,
     PaymentGatewayMock,
+    QR,
     RESERVATION_ID,
     reservationEntity,
     ReservationRepositoryMock,
+    ROOM_ID,
+    roomQrEntity,
     runCommand,
     tossLookup,
     USER_ACTOR,
@@ -29,6 +38,7 @@ const PAYLOAD = {payment_id: PAYMENT_ID, payment_key: PAYMENT_KEY};
 describe('user.reservation.payment-confirm — 결제 확인 (큐 경로)', () => {
     let repo: ReservationRepositoryMock;
     let payment: PaymentGatewayMock;
+    let door: DoorStoreMock;
     let dispatcher: CommandDispatcher;
     let module: TestingModule;
 
@@ -40,7 +50,8 @@ describe('user.reservation.payment-confirm — 결제 확인 (큐 경로)', () =
         repo.findReservationDetails.mockResolvedValue([detailEntity({reservation_state_id: 'PENDING'})]);
         repo.findReservation.mockResolvedValue(reservationEntity({reservation_state_id: 'PENDING'}));
         payment = createPaymentGatewayMock();
-        ({dispatcher, module} = await bootCommandPath(repo, payment));
+        door = createDoorStoreMock();
+        ({dispatcher, module} = await bootCommandPath(repo, payment, createSmsSenderMock(), door));
     });
 
     afterEach(async () => {
@@ -88,6 +99,57 @@ describe('user.reservation.payment-confirm — 결제 확인 (큐 경로)', () =
             expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CONFIRMED'});
             expect(payment.getPayment).not.toHaveBeenCalled();
             expect(repo.updatePayment).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('[SUCCESS] 이용이 시작된 예약 — QR 바로 발급', () => {
+        /** 지금 바로 예약 — 2026-11-03 08:59 ~ 12:59(한국), 지금 09:00 */
+        const STARTED = {reservation_state_id: 'PENDING', start_at: new Date('2026-11-02T23:59:00Z'), end_at: new Date('2026-11-03T03:59:00Z')};
+
+        it('확정 뒤 QR 발급(INSERT … ON CONFLICT) → 다시 읽기 → Redis 현재 QR — 모두 예약 확정 뒤', async () => {
+            repo.findReservation.mockResolvedValue(reservationEntity(STARTED));
+            repo.findRoomQr.mockResolvedValueOnce(roomQrEntity({starts_at: STARTED.start_at, ends_at: STARTED.end_at}));
+
+            const {decision, result} = await runConfirm();
+
+            expect(decision.action).toBe('ack');
+            expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CONFIRMED'});
+            const [issued] = repo.insertRoomQr.mock.calls[0] as [RoomQrEntity];
+            expect(issued).toBeInstanceOf(RoomQrEntity);
+            expect(issued.room_qr_id).toMatch(ID_PATTERN);
+            expect(issued.qr).toMatch(ID_PATTERN);
+            expect(issued).toMatchObject({room_id: ROOM_ID, reservation_id: RESERVATION_ID, starts_at: STARTED.start_at, ends_at: STARTED.end_at});
+            expect(repo.findRoomQr).toHaveBeenCalledWith({reservation_id: RESERVATION_ID});
+            expect(door.setQr).toHaveBeenCalledTimes(1);
+            expect(door.setQr).toHaveBeenCalledWith(ROOM_ID, QR, STARTED.end_at);
+            expect(repo.insertRoomQr.mock.invocationCallOrder[0]).toBeGreaterThan(repo.updateReservation.mock.invocationCallOrder[0]);
+            expect(door.setQr.mock.invocationCallOrder[0]).toBeGreaterThan(repo.findRoomQr.mock.invocationCallOrder[0]);
+        });
+
+        it('시작 전 예약이면 QR 을 발급하지 않는다(이용 시작 때 scheduler · 내 예약 QR)', async () => {
+            await runConfirm();
+
+            expect(repo.insertRoomQr).not.toHaveBeenCalled();
+            expect(door.setQr).not.toHaveBeenCalled();
+        });
+
+        it('[FAIL:external] Redis 503 이면 재시도(requeue) — 확정은 롤백되어 다시 확인한다', async () => {
+            repo.findReservation.mockResolvedValue(reservationEntity(STARTED));
+            repo.findRoomQr.mockResolvedValueOnce(roomQrEntity());
+            door.setQr.mockRejectedValueOnce(new ServiceUnavailableException({message: '상태 저장소에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.'}));
+
+            const {decision} = await runConfirm();
+
+            expect(decision.action).toBe('requeue');
+        });
+
+        it('[FAIL:service] 발급 뒤 다시 읽어도 없으면 500 → 재시도, Redis 쓰기 없음', async () => {
+            repo.findReservation.mockResolvedValue(reservationEntity(STARTED));
+
+            const {decision} = await runConfirm();
+
+            expect(decision.action).toBe('requeue');
+            expect(door.setQr).not.toHaveBeenCalled();
         });
     });
 

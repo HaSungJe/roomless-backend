@@ -28,6 +28,9 @@ import {
 
 const HOURLY = {room_id: ROOM_ID, room_plan_type_id: 'HOURLY', date: '2026-11-04', start_time: '13:30'};
 
+/** 지금 바로(시간 이용 · 오늘 2026-11-03) */
+const NOW_HOURLY = {room_id: ROOM_ID, room_plan_type_id: 'HOURLY', date: '2026-11-03', is_now: 1};
+
 describe('user.reservation.create — 예약 생성 (큐 경로)', () => {
     let repo: ReservationRepositoryMock;
     let payment: PaymentGatewayMock;
@@ -136,6 +139,55 @@ describe('user.reservation.create — 예약 생성 (큐 경로)', () => {
         });
     });
 
+    describe('[SUCCESS] 지금 바로', () => {
+        it('지금 10:21:45 → 10:21 ~ 13:21 (분 단위 내림 · 시작 시각 없이), 점유 끝 13:51 · 환불 마감 09:21', async () => {
+            vi.setSystemTime(new Date('2026-11-03T01:21:45Z'));
+
+            const {decision} = await runCreate(NOW_HOURLY);
+
+            expect(decision.action).toBe('ack');
+            const [reservation] = repo.insertReservation.mock.calls[0] as [ReservationEntity];
+            expect(reservation).toMatchObject({
+                start_at: new Date('2026-11-03T01:21:00Z'),
+                end_at: new Date('2026-11-03T04:21:00Z'),
+                blocked_until: new Date('2026-11-03T04:51:00Z'),
+                refund_deadline_at: new Date('2026-11-03T00:21:00Z'),
+            });
+        });
+    });
+
+    describe('[FAIL:service] 지금 바로', () => {
+        it('1박이면 400 validation_errors.is_now, 호실 조회 없음', async () => {
+            const {result} = await runCreate({...NOW_HOURLY, room_plan_type_id: 'NIGHT'});
+
+            expect(result?.error).toEqual({
+                status_code: 400,
+                body: {message: '지금 바로 이용은 시간 이용만 예약할 수 있습니다.', validation_errors: [{property: 'is_now', message: '지금 바로 이용은 시간 이용만 예약할 수 있습니다.'}]},
+            });
+            expect(repo.findReservationRoom).not.toHaveBeenCalled();
+        });
+
+        it('오늘이 아닌 날짜면 400 validation_errors.date, 호실 조회 없음', async () => {
+            const {result} = await runCreate({...NOW_HOURLY, date: '2026-11-04'});
+
+            expect(result?.error).toEqual({
+                status_code: 400,
+                body: {message: '지금 바로 이용은 오늘 날짜로만 예약할 수 있습니다.', validation_errors: [{property: 'date', message: '지금 바로 이용은 오늘 날짜로만 예약할 수 있습니다.'}]},
+            });
+            expect(repo.findReservationRoom).not.toHaveBeenCalled();
+        });
+
+        it('점유와 겹치면 400 예약할 수 없는 시간, 결제 쓰기 없음', async () => {
+            vi.setSystemTime(new Date('2026-11-03T01:21:45Z'));
+            repo.findReservations.mockResolvedValueOnce([{room_id: ROOM_ID, start_at: new Date('2026-11-03T02:00:00Z'), blocked_until: new Date('2026-11-03T05:30:00Z')}]);
+
+            const {result} = await runCreate(NOW_HOURLY);
+
+            expect(result?.error).toEqual({status_code: 400, body: {message: '예약할 수 없는 시간입니다.', validation_errors: null}});
+            expect(repo.insertPayment).not.toHaveBeenCalled();
+        });
+    });
+
     describe('[FAIL:service]', () => {
         it('호실이 없으면 404, 쓰기 없음', async () => {
             repo.findReservationRoom.mockResolvedValueOnce(null);
@@ -228,6 +280,17 @@ describe('user.reservation.create — 예약 생성 (큐 경로)', () => {
                 message: '박수는 1 ~ 180박 사이로 입력해주세요.',
                 validation_errors: [{property: 'nights', message: '박수는 1 ~ 180박 사이로 입력해주세요.'}],
             });
+        });
+
+        it('지금 바로 이용 여부가 0 · 1 이 아니면 → is_now', async () => {
+            await expect(validateBody(ReservationDto, {...HOURLY, is_now: 2})).resolves.toEqual({
+                message: '지금 바로 이용 여부가 올바르지 않습니다.',
+                validation_errors: [{property: 'is_now', message: '지금 바로 이용 여부가 올바르지 않습니다.'}],
+            });
+        });
+
+        it('시간 이용 + 지금 바로 1 이면 시작 시각 없이 통과', async () => {
+            await expect(validateBody(ReservationDto, NOW_HOURLY)).resolves.toBeNull();
         });
     });
 

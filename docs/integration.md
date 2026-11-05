@@ -1,6 +1,6 @@
 # 외부 연동 (`libs/integration`)
 
-> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 내 예약 QR(현재 QR — Redis), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화 · 호실 문 상태 · 바로 열기 · 문 소켓 QR 확인 · 잠금(문 정보 — Redis), gateway 의 문 소켓 명령 구독, scheduler 의 QR 동기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 중 쓰는 것을 import 한다). 결제(`PaymentModule`)는 user-service 예약(결제 환경 · 결제 확인 `getPayment`)과 scheduler(결제 대기 만료 · 늦은 승인 재확인 `findByPaymentId` · 환불 `cancel`)가 쓴다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md), 토스는 [guides/toss-setup.md](guides/toss-setup.md).
+> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 내 예약 QR · 결제 확인 QR(현재 QR — Redis) · 업체 둘러보기 사진(공개 주소 `getPublicUrl` 만 — `StorageModule`), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화 · 호실 문 상태 · 바로 열기 · 문 소켓 QR 확인 · 잠금(문 정보 — Redis), gateway 의 문 소켓 명령 구독, scheduler 의 QR 동기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 중 쓰는 것을 import 한다). 결제(`PaymentModule`)는 user-service 예약(결제 환경 · 결제 확인 `getPayment`)과 scheduler(결제 대기 만료 · 늦은 승인 재확인 `findByPaymentId` · 환불 `cancel`)가 쓴다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md), 토스는 [guides/toss-setup.md](guides/toss-setup.md).
 
 ## 원칙
 
