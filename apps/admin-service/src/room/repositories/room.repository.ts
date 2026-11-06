@@ -19,7 +19,7 @@ import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
 import {isExclusionViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
-import type {RoomDoorRow, RoomGroupPlanRow, RoomGroupRow, RoomListFilter, RoomPlanRow, RoomRepositoryInterface, RoomRow} from '../interfaces/room.repository.interface.js';
+import type {RoomGroupPlanRow, RoomGroupRow, RoomListFilter, RoomPlanRow, RoomRepositoryInterface, RoomRow} from '../interfaces/room.repository.interface.js';
 import {ROOM_GROUP_IMAGE_TAKEN_MESSAGE, ROOM_GROUP_NAME_TAKEN_MESSAGE, ROOM_NAME_TAKEN_MESSAGE, ROOM_PLAN_PRICE_OVERLAP_MESSAGE, ROOM_STORE_STATE_LEAVE} from '../room.constants.js';
 
 /** DB 최종 실패 메시지 */
@@ -773,54 +773,5 @@ export class RoomRepository implements RoomRepositoryInterface {
             .where('r.room_group_id = :room_group_id', {room_group_id})
             .andWhere('r.is_deleted = 0')
             .andWhere('v.reservation_state_id IN (:...states)', {states: RESERVATION_OCCUPYING_STATES});
-    }
-
-    /**
-     * 문 소켓 접속 확인의 업체 — 지워지지 않은 업체
-     *
-     * @param where 조회 조건 (service 는 is_deleted 를 넣지 않는다)
-     * @returns 업체 또는 null
-     */
-    async findDoorStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null> {
-        try {
-            return await this.stores.findOne({where: notDeleted(where), loadRelationIds: true});
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
-     * 업체 호실 문 목록 행
-     *
-     * @param store_id 업체 ID
-     * @returns 호실 행 (층 · 호실명 순)
-     */
-    async findStoreDoorRoomRows(store_id: string): Promise<RoomDoorRow[]> {
-        try {
-            return await this.buildStoreDoorRoomRowsQuery(store_id).getRawMany<RoomDoorRow>();
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
-     * 업체 호실 문 목록 쿼리 — 지워지지 않은 호실 · 그룹(조인), 층 · 호실명 순(페이지 없음 — 문 소켓 접속 때 업체 전체).
-     * 매핑 민감(조인 · raw select — 별칭이 RoomDoorRow 키와 같다)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
-     *
-     * @param store_id 업체 ID
-     * @returns 쿼리 빌더
-     */
-    buildStoreDoorRoomRowsQuery(store_id: string): SelectQueryBuilder<RoomEntity> {
-        return this.rooms
-            .createQueryBuilder('r')
-            .select('r.room_id', 'room_id')
-            .addSelect('r.room_name', 'room_name')
-            .addSelect('r.floor', 'floor')
-            .innerJoin(RoomGroupEntity, 'g', 'g.room_group_id = r.room_group_id')
-            .where('r.store_id = :store_id', {store_id})
-            .andWhere('r.is_deleted = 0')
-            .andWhere('g.is_deleted = 0')
-            .orderBy('r.floor', 'ASC')
-            .addOrderBy('r.room_name', 'ASC');
     }
 }

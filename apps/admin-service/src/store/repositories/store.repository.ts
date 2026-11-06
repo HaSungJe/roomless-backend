@@ -134,19 +134,6 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 입점 신청 등록
-     *
-     * @param entity new StoreApplicationEntity() + 할당
-     */
-    async insertApplication(entity: StoreApplicationEntity): Promise<void> {
-        try {
-            await this.applications.insert(entity);
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
      * 입점 신청 수정 — 승인 · 반려. 상태를 조건에 넣으면 그 사이 바뀐(취소 · 승인 · 반려) 신청은 0건이다.
      *
      * @param where 수정 조건
@@ -155,23 +142,6 @@ export class StoreRepository implements StoreRepositoryInterface {
      */
     async updateApplication(where: FindOptionsWhere<StoreApplicationEntity>, entity: StoreApplicationEntity): Promise<boolean> {
         try {
-            const result = await this.applications.update(notDeleted(where), entity);
-            return result.affected === 1;
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
-     * 입점 신청 삭제 — 취소. 삭제 표시(is_deleted = 1)로 남긴다(소프트 삭제). 업체 정보 파일은 같은 트랜잭션에서 먼저 삭제 표시한다.
-     *
-     * @param where 삭제 조건 (지워지지 않은 행만)
-     * @returns 지웠으면 true, 조건에 맞는 행이 없으면 false
-     */
-    async deleteApplication(where: FindOptionsWhere<StoreApplicationEntity>): Promise<boolean> {
-        try {
-            const entity = new StoreApplicationEntity();
-            entity.is_deleted = 1;
             const result = await this.applications.update(notDeleted(where), entity);
             return result.affected === 1;
         } catch {
@@ -324,36 +294,6 @@ export class StoreRepository implements StoreRepositoryInterface {
     }
 
     /**
-     * 신청의 업체 정보 파일 삭제 — 신청 취소. 아직 업체에 붙지 않은(store_id 없음) 파일만 삭제 표시한다(소프트 삭제) — 그 사이 승인된 신청의 파일은 남는다.
-     *
-     * @param store_application_id 입점 신청 ID
-     */
-    async deleteApplicationFiles(store_application_id: string): Promise<void> {
-        try {
-            await this.buildDeleteApplicationFilesQuery(store_application_id).execute();
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
-     * 신청의 업체 정보 파일 삭제 쿼리 — 삭제 표시(is_deleted = 1 · 수정일)로 바꾼다(소프트 삭제 — QueryBuilder 갱신은 훅이 돌지 않아 수정일을 직접 넣는다).
-     * 매핑 민감(QueryBuilder 갱신 · 관계 컬럼 IS NULL)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
-     *
-     * @param store_application_id 입점 신청 ID
-     * @returns 쿼리 빌더
-     */
-    buildDeleteApplicationFilesQuery(store_application_id: string): UpdateQueryBuilder<StoreFileEntity> {
-        return this.storeFiles
-            .createQueryBuilder()
-            .update(StoreFileEntity)
-            .set({is_deleted: 1, updated_at: () => 'CURRENT_TIMESTAMP'})
-            .where('store_application_id = :store_application_id', {store_application_id})
-            .andWhere('store_id IS NULL')
-            .andWhere('is_deleted = 0');
-    }
-
-    /**
      * 신청의 업체 정보 파일을 업체로 — 승인 때 store_id 를 채운다(파일은 옮기지 않는다)
      *
      * @param store_application_id 입점 신청 ID
@@ -393,20 +333,6 @@ export class StoreRepository implements StoreRepositoryInterface {
     async findStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null> {
         try {
             return await this.stores.findOne({where: notDeleted(where), loadRelationIds: true});
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
-        }
-    }
-
-    /**
-     * 업체 여러 건
-     *
-     * @param where 조회 조건
-     * @returns 업체 목록
-     */
-    async findStores(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity[]> {
-        try {
-            return await this.stores.find({where: notDeleted(where), loadRelationIds: true});
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }

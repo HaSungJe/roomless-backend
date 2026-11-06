@@ -12,9 +12,6 @@ export const RESERVATION_ROOM_STATE = {AVAILABLE: 'AVAILABLE', DISABLED: 'DISABL
 /** 예약을 받는 업체 상태 — 활성 */
 export const RESERVATION_STORE_STATE_ACTIVE = 'ACTIVE';
 
-/** 업체 예약 현황에 나오는 예약 상태 — 결제 대기 · 확정 · 이용 중 · 이용 완료 */
-export const RESERVATION_STORE_VISIBLE_STATES: string[] = [RESERVATION_STATE.PENDING, RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN, RESERVATION_STATE.COMPLETED];
-
 /** 시간 이용 시작 시각 단위(분) — :00 · :30 (사용자 결정 2026-11-03) */
 export const RESERVATION_HOURLY_STEP_MINUTES = 30;
 
@@ -36,17 +33,11 @@ export const RESERVATION_STORE_NOT_FOUND_MESSAGE = '업체를 찾을 수 없습�
 /** 호실을 찾을 수 없음 */
 export const RESERVATION_ROOM_NOT_FOUND_MESSAGE = '호실을 찾을 수 없습니다.';
 
-/** 매니저의 소속 업체를 찾을 수 없음 */
-export const RESERVATION_MANAGER_STORE_NOT_FOUND_MESSAGE = '소속 업체를 찾을 수 없습니다.';
-
 /** 없는 날짜 */
 export const RESERVATION_DATE_INVALID_MESSAGE = '없는 날짜입니다.';
 
 /** 같은 호실의 점유 예약과 겹침 — 배타 제약 23P01 */
 export const RESERVATION_TIME_TAKEN_MESSAGE = '이미 예약된 시간입니다.';
-
-/** 옮길 호실의 점유 예약과 겹침 — 배타 제약 23P01 */
-export const RESERVATION_ROOM_TAKEN_MESSAGE = '옮길 호실에 겹치는 예약이 있습니다.';
 
 /** 상태 조건을 건 쓰기가 0행 — 그 사이 바뀌었다(crontab · 다른 요청) */
 export const RESERVATION_STATE_CHANGED_MESSAGE = '예약 상태가 바뀌었습니다. 다시 확인해주세요.';

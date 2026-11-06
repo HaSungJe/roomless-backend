@@ -1,7 +1,7 @@
 import {BadRequestException, InternalServerErrorException} from '@nestjs/common';
 import type {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import {DataSource, ILike, In, Not, QueryFailedError} from 'typeorm';
+import {DataSource, ILike, In, QueryFailedError} from 'typeorm';
 import type {EntityTarget, FindManyOptions, ObjectLiteral} from 'typeorm';
 import {ENTITIES} from '@app/database/entities.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
@@ -12,7 +12,7 @@ import {RoomGroupEntity} from '@app/database/entities/room/room-group.entity.js'
 import {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
-import type {RoomDoorRow, RoomGroupPlanRow, RoomGroupRow, RoomPlanRow, RoomRow} from '../interfaces/room.repository.interface.js';
+import type {RoomGroupPlanRow, RoomGroupRow, RoomPlanRow, RoomRow} from '../interfaces/room.repository.interface.js';
 import {RoomRepository} from '../repositories/room.repository.js';
 import {buildPlanPriceOverlapWhere} from '../room.util.js';
 
@@ -39,9 +39,6 @@ const ROOM_GROUP_PLAN_ROW_KEYS: (keyof RoomGroupPlanRow)[] = ['room_group_plan_i
 
 /** RoomRow 키 */
 const ROOM_ROW_KEYS: (keyof RoomRow)[] = ['room_id', 'room_group_id', 'room_group_name', 'room_name', 'floor', 'room_state_id', 'room_state_name', 'created_at'];
-
-/** RoomDoorRow 키 */
-const ROOM_DOOR_ROW_KEYS: (keyof RoomDoorRow)[] = ['room_id', 'room_name', 'floor'];
 
 /**
  * repository 가 manager.find · count 에 넘긴 옵션을 SQL 로 빌드한다 — EntityManager.find · count 와 같은 방식(실행만 뺀다).
@@ -307,7 +304,6 @@ describe('RoomRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         ['findRoomGroupPlanPriceList', 'buildRoomGroupPlanPriceListQuery', [{room_group_plan_id: 'gp1'}, 20, 0]],
         ['findRoomRows', 'buildRoomRowsQuery', [{store_id: 's1', floor: null, room_group_id: null}, 20, 0]],
         ['countGroupActiveReservations', 'buildGroupActiveReservationsQuery', ['g1']],
-        ['findStoreDoorRoomRows', 'buildStoreDoorRoomRowsQuery', ['s1']],
     ] as const)('%s 는 같은 인자로 %s 를 실행하고, 실패는 통일 500', async (method, builder, args) => {
         const {repository} = makeRepository();
         const failing = {
@@ -329,22 +325,6 @@ describe('RoomRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         await repository.countRoomActiveReservations('r1');
 
         expect(reservation.count).toHaveBeenCalledWith({where: {room_id: 'r1', reservation_state_id: In(['PENDING', 'CONFIRMED', 'CHECKED_IN'])}});
-    });
-
-    it('[SUCCESS] findDoorStore — 받은 조건에 is_deleted: 0 을 더하고 loadRelationIds', async () => {
-        const {repository, store} = makeRepository();
-
-        await repository.findDoorStore({store_id: 's1', store_state_id: Not('LEAVE')});
-
-        expect(store.findOne).toHaveBeenCalledTimes(1);
-        expect(store.findOne).toHaveBeenCalledWith({where: {store_id: 's1', store_state_id: Not('LEAVE'), is_deleted: 0}, loadRelationIds: true});
-    });
-
-    it('[FAIL:repository] findDoorStore — 조회 실패는 통일 500', async () => {
-        const {repository, store} = makeRepository();
-        store.findOne.mockRejectedValueOnce(new Error('db'));
-
-        await expect(repository.findDoorStore({store_id: 's1'})).rejects.toBeInstanceOf(InternalServerErrorException);
     });
 });
 
@@ -388,13 +368,6 @@ describe('[SMOKE:data-access] 소속 업체 · 상품 설정 · 그룹 목록 ·
     /** 호실 목록 — 0층 필터(0 도 필터다) */
     const ROOM_ROWS_FLOOR_ZERO_SQL =
         'SELECT "r"."room_id" AS "room_id", "r"."room_group_id" AS "room_group_id", "r"."room_name" AS "room_name", "r"."floor" AS "floor", "r"."room_state_id" AS "room_state_id", "r"."created_at" AS "created_at", "g"."room_group_name" AS "room_group_name", "st"."room_state_name" AS "room_state_name" FROM "t_room" "r" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "r"."room_group_id" INNER JOIN "t_room_state" "st" ON "st"."room_state_id" = "r"."room_state_id" WHERE "r"."store_id" = $1 AND "r"."is_deleted" = 0 AND "g"."is_deleted" = 0 AND "r"."floor" = $2 ORDER BY "r"."floor" ASC, "r"."room_name" ASC LIMIT 20 OFFSET 0';
-
-    /** 업체 호실 문 목록 — 지워지지 않은 호실 · 그룹, 층 · 호실명 순 */
-    const STORE_DOOR_ROOM_ROWS_SQL =
-        'SELECT "r"."room_id" AS "room_id", "r"."room_name" AS "room_name", "r"."floor" AS "floor" FROM "t_room" "r" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "r"."room_group_id" WHERE "r"."store_id" = $1 AND "r"."is_deleted" = 0 AND "g"."is_deleted" = 0 ORDER BY "r"."floor" ASC, "r"."room_name" ASC';
-    /** 문 소켓 접속 확인의 업체 — findOne 에 넘긴 조건(탈퇴 제외 · 지운 업체 제외) */
-    const DOOR_STORE_SQL =
-        'SELECT "StoreEntity"."store_id" AS "StoreEntity_store_id", "StoreEntity"."store_code" AS "StoreEntity_store_code", "StoreEntity"."store_name" AS "StoreEntity_store_name", "StoreEntity"."business_number" AS "StoreEntity_business_number", "StoreEntity"."owner_name" AS "StoreEntity_owner_name", "StoreEntity"."phone" AS "StoreEntity_phone", "StoreEntity"."address" AS "StoreEntity_address", "StoreEntity"."address_detail" AS "StoreEntity_address_detail", "StoreEntity"."latitude" AS "StoreEntity_latitude", "StoreEntity"."longitude" AS "StoreEntity_longitude", "StoreEntity"."introduction" AS "StoreEntity_introduction", "StoreEntity"."is_always_open" AS "StoreEntity_is_always_open", "StoreEntity"."is_open" AS "StoreEntity_is_open", "StoreEntity"."maintenance_minutes" AS "StoreEntity_maintenance_minutes", "StoreEntity"."booking_open_hours" AS "StoreEntity_booking_open_hours", "StoreEntity"."refund_deadline_minutes" AS "StoreEntity_refund_deadline_minutes", "StoreEntity"."late_refund_percent" AS "StoreEntity_late_refund_percent", "StoreEntity"."door_secret" AS "StoreEntity_door_secret", "StoreEntity"."suspend_comment" AS "StoreEntity_suspend_comment", "StoreEntity"."is_deleted" AS "StoreEntity_is_deleted", "StoreEntity"."delete_backup" AS "StoreEntity_delete_backup", "StoreEntity"."created_at" AS "StoreEntity_created_at", "StoreEntity"."updated_at" AS "StoreEntity_updated_at", "StoreEntity"."store_state_id" AS "StoreEntity_store_state_id" FROM "t_store" "StoreEntity" WHERE (("StoreEntity"."store_id" = $1) AND ("StoreEntity"."store_state_id" != $2) AND ("StoreEntity"."is_deleted" = $3))';
 
     beforeAll(async () => {
         // 접속하지 않는다 — 엔티티 메타데이터만 만들어 QueryBuilder 가 SQL 을 조립하게 한다
@@ -566,31 +539,5 @@ describe('[SMOKE:data-access] 소속 업체 · 상품 설정 · 그룹 목록 ·
 
         expect(parameters).toEqual(['r1', 'PENDING', 'CONFIRMED', 'CHECKED_IN']);
         expect(sql).toContain('WHERE (("ReservationEntity"."room_id" = $1) AND ("ReservationEntity"."reservation_state_id" IN ($2, $3, $4)))');
-    });
-
-    it('업체 호실 문 목록 — 그룹 조인 · 지워지지 않은 호실 · 그룹만 · 층 · 호실명 순(페이지 없음), select 별칭 = RoomDoorRow 키', () => {
-        const [sql, parameters] = repository.buildStoreDoorRoomRowsQuery('s1').getQueryAndParameters();
-        const flat = sql.replace(/\s+/g, ' ');
-
-        expect(parameters).toEqual(['s1']);
-        expect(flat).toContain('INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "r"."room_group_id"');
-        expect(flat).toContain('"r"."store_id" = $1 AND "r"."is_deleted" = 0 AND "g"."is_deleted" = 0');
-        expect(flat).toContain('ORDER BY "r"."floor" ASC, "r"."room_name" ASC');
-        expect(flat).not.toContain('LIMIT');
-        expect([...selectAliases(flat)].sort()).toEqual([...ROOM_DOOR_ROW_KEYS].sort());
-        expect(flat).toBe(STORE_DOOR_ROOM_ROWS_SQL);
-    });
-
-    it('문 소켓 접속 확인의 업체 — findOne 에 넘긴 조건(업체 · 탈퇴 아님 · 지워지지 않음) 그대로', async () => {
-        const findOne = vi.spyOn(dataSource.manager, 'findOne').mockResolvedValue(null);
-
-        await repository.findDoorStore({store_id: 's1', store_state_id: Not('LEAVE')});
-        const [sql, parameters] = buildFindQuery(dataSource, findOne.mock.calls[0]);
-        findOne.mockRestore();
-
-        expect(parameters).toEqual(['s1', 'LEAVE', 0]);
-        expect(sql).toContain('"StoreEntity"."store_state_id" != $2');
-        expect(sql).toContain('"StoreEntity"."is_deleted" = $3');
-        expect(sql).toBe(DOOR_STORE_SQL);
     });
 });

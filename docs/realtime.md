@@ -5,16 +5,16 @@
 ## 흐름
 
 ```
-문 프로그램        gateway-lb(nginx)   gateway(여러 대)                 admin-service             Redis
+문 프로그램        gateway-lb(nginx)   gateway(여러 대)                 user-service              Redis
   │ GET /ws/v1/door   │                   │                               │                        │
   │ Upgrade + 헤더     │── /ws/ 업그레이드 ─▶│ 헤더 모양 확인                   │                        │
-  │                   │                   │── POST …/room/door-snapshot ─▶│ 업체 · 시크릿(bcrypt)    │
+  │                   │                   │── POST …/door/snapshot ──────▶│ 업체 · 시크릿(bcrypt)    │
   │                   │                   │◀── {store_id, list} ──────────│ + 호실 문 상태 ──MGET──▶│
   │◀── 101 Switching ──────────────────────│ 업체 묶음에 등록                │                        │
   │◀── door.snapshot ──────────────────────│                               │                        │
-  │ door.verify {room_id, qr} ────────────▶│── POST …/room/door-verify ───▶│ 현재 QR 비교 + 열림 ─Lua─▶│
+  │ door.verify {room_id, qr} ────────────▶│── POST …/door/verify ────────▶│ 현재 QR 비교 + 열림 ─Lua─▶│
   │◀── door.verified {room_id, ok} ────────│◀── {room_id, ok} ─────────────│                        │
-  │ door.closed {room_id} ────────────────▶│── POST …/room/door-close ────▶│ close + 시각 ──────────▶│
+  │ door.closed {room_id} ────────────────▶│── POST …/door/close ─────────▶│ close + 시각 ──────────▶│
   │                   │                   │◀══ SUBSCRIBE door-commands (인스턴스마다) ═══════════════│
   │                   │  (관리자 바로 열기 — admin-service 가 같은 Lua 로 SET + PUBLISH)                │
   │◀── door.open {room_id} ────────────────│ 그 업체 연결에만                 │                        │
@@ -40,7 +40,7 @@
 | 헤더가 없거나 모양이 틀림 | HTTP 401 `업체 ID 또는 시크릿 코드가 올바르지 않습니다.`(서비스에 묻지 않는다) |
 | 업체 총관리자가 시크릿을 바꿈 | 그 업체 연결을 모두 끊는다(종료 코드 1008 `store secret changed`) — 새 시크릿으로 다시 붙는다 |
 | 업체 없음 · 탈퇴 · 지움 · 시크릿 미설정 · 불일치 | HTTP 401 같은 문구(이유를 가르지 않는다) |
-| admin-service · Redis 에 닿지 못함 | 그 상태 코드(503 등)로 업그레이드 거절 |
+| user-service · Redis 에 닿지 못함 | 그 상태 코드(503 등)로 업그레이드 거절 |
 | JSON 아님 · 모르는 event · `room_id` · `qr` 모양 틀림 | `error {status_code: 400, message: '알 수 없는 메시지입니다.'}` |
 | 그 업체 호실이 아님(없음 · 다른 업체 · 지움) | `error {status_code: 404, message: '호실을 찾을 수 없습니다.'}` |
 | `door.verify` QR 불일치 · 현재 QR 없음 | `door.verified {room_id, ok: false}` — 실패가 아니다(문을 열지 않는다) |
@@ -49,5 +49,5 @@
 
 ## 테스트
 
-- 소켓 서버 · util 은 게이트웨이 인프라라 spec 을 두지 않는다([testing.md](testing.md)). 대신 소켓이 부르는 서비스 내부 API(접속 확인 · QR 확인 · 잠금)는 service 기능 spec 이 두 경로로 지난다.
+- 소켓 서버 · util 은 게이트웨이 인프라라 spec 을 두지 않는다([testing.md](testing.md)). 대신 소켓이 부르는 서비스 내부 API(접속 확인 · QR 확인 · 잠금 — user-service `door` 도메인, 이용자 흐름이라 user-service 에 둔다 · 사용자 결정 2026-11-07)는 service 기능 spec 이 두 경로로 지난다.
 - 소켓 자체의 확인은 사용자가 실제로 띄워서 한다 — 헤더 틀림 401 · snapshot · door.verify 맞음 · 틀림 · door.closed · 바로 열기 → door.open · 잘못된 메시지 → error · ping.

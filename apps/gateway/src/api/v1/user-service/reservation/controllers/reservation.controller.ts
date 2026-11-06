@@ -16,16 +16,14 @@ import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
-import {ReservationStoreDto, ReservationStoreResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
 import {RESERVATION_INTERNAL_PATH} from '@app/contracts/reservation/reservation.commands.js';
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
 import {PassportJwtAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
-import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
 import {InternalHttpClient} from '../../../../../modules/transport/internal-http.client.js';
 
 /**
- * 예약 공개 API — 동기 경로(내부 HTTP → user-service). 예약 가능 시간은 로그인 없이, 내 예약은 이용자 가드, 업체 현황은 매니저 가드.
- * 정적 경로(`/availability` · `/store`)를 `/:reservation_id` 보다 먼저 선언한다. 쓰기(큐)는 같은 경로 접두의 reservation.controller.queue.ts.
+ * 예약 공개 API — 동기 경로(내부 HTTP → user-service). 예약 가능 시간은 로그인 없이, 내 예약은 이용자 가드(매니저의 업체 예약 현황은 /api/v1/admin-service/reservation).
+ * 정적 경로(`/availability`)를 `/:reservation_id` 보다 먼저 선언한다. 쓰기(큐)는 같은 경로 접두의 reservation.controller.queue.ts.
  */
 @ApiTags('예약')
 @Controller('/api/v1/user-service/reservation')
@@ -49,25 +47,6 @@ export class ReservationController {
     async getAvailability(@Query() query: ReservationAvailabilityDto): Promise<ReservationAvailabilityResultDto> {
         const dto = new ReservationAvailabilityDto(query);
         return this.internalHttp.request<ReservationAvailabilityResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.AVAILABILITY, {query: dto});
-    }
-
-    /**
-     * 내 업체 예약 현황 (업체 관리자) — 날짜 하루와 겹치는 예약을 호실별로
-     */
-    @Get('/store')
-    @UseGuards(PassportJwtManagerAuthGuard)
-    @HttpCode(200)
-    @ApiBearerAuth()
-    @ApiOperation({summary: '내 업체 예약 현황'})
-    @ApiOkResponse({type: ReservationStoreResultDto})
-    @ApiBadRequestResponse({type: ApiFailResultDto})
-    @ApiUnauthorizedResponse({type: ApiFailResultDto})
-    @ApiNotFoundResponse({type: ApiFailResultDto})
-    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
-    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
-    async getStoreReservations(@PassportActor() actor: Actor, @Query() query: ReservationStoreDto): Promise<ReservationStoreResultDto> {
-        const dto = new ReservationStoreDto(query);
-        return this.internalHttp.request<ReservationStoreResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.STORE, {actor, query: dto});
     }
 
     /**

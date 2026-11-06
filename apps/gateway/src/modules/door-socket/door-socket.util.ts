@@ -2,8 +2,8 @@ import type {IncomingHttpHeaders} from 'node:http';
 import {STATUS_CODES} from 'node:http';
 import {HttpException} from '@nestjs/common';
 import {DOOR_SOCKET_EVENT, DOOR_SOCKET_HEADER, DOOR_SOCKET_PATH} from '@app/contracts/door/door.commands.js';
-import type {RoomDoorSnapshotResultDto} from '@app/contracts/room/dto/room-door-snapshot.dto.js';
-import type {RoomDoorVerifyResultDto} from '@app/contracts/room/dto/room-door-verify.dto.js';
+import type {DoorSnapshotResultDto} from '@app/contracts/door/dto/door-snapshot.dto.js';
+import type {DoorVerifyResultDto} from '@app/contracts/door/dto/door-verify.dto.js';
 import type {DoorOpenCommand} from '@app/integration/interfaces/integration.interface.js';
 
 /** 서버가 ping 을 보내는 간격 — 다음 ping 때까지 pong 이 없으면 끊는다 */
@@ -12,7 +12,7 @@ export const DOOR_SOCKET_HEARTBEAT_MS = 30_000;
 /** 업체 문 시크릿이 바뀌어 끊을 때의 종료 코드 · 이유 — 1008(정책 위반): 옛 시크릿으로 붙은 연결이다, 새 시크릿으로 다시 붙는다 */
 export const DOOR_SOCKET_SECRET_CHANGED_CLOSE = {code: 1008, reason: 'store secret changed'} as const;
 
-/** 접속 헤더가 없거나 모양이 틀렸을 때 — admin-service 의 확인 실패와 같은 문구(401) */
+/** 접속 헤더가 없거나 모양이 틀렸을 때 — user-service 의 확인 실패와 같은 문구(401) */
 export const DOOR_SOCKET_AUTH_FAILED_MESSAGE = '업체 ID 또는 시크릿 코드가 올바르지 않습니다.';
 
 /** 문 소켓이 아닌 경로의 업그레이드 */
@@ -30,7 +30,7 @@ const ID_PATTERN = /^[a-f0-9]{32}$/;
 /** 시크릿 코드 — 영문 · 숫자 16 ~ 64자 */
 const SECRET_PATTERN = /^[A-Za-z0-9]{16,64}$/;
 
-/** 소켓 접속 자격 — 업그레이드 요청 헤더 (admin-service RoomDoorSnapshotDto 와 같은 모양) */
+/** 소켓 접속 자격 — 업그레이드 요청 헤더 (user-service DoorSnapshotDto 와 같은 모양) */
 export interface DoorSocketCredential {
     store_id: string;
     door_secret: string;
@@ -56,7 +56,7 @@ export function isDoorSocketPath(url: string | undefined): boolean {
 }
 
 /**
- * 업그레이드 요청 헤더에서 업체 ID · 시크릿을 읽는다 — 없거나 모양이 틀리면 null(admin-service 에 묻지 않고 401).
+ * 업그레이드 요청 헤더에서 업체 ID · 시크릿을 읽는다 — 없거나 모양이 틀리면 null(user-service 에 묻지 않고 401).
  *
  * @param headers 요청 헤더
  * @returns 자격 또는 null
@@ -96,20 +96,20 @@ export function readDoorSocketRequest(raw: string): DoorSocketRequest | null {
 /**
  * 접속 직후 메시지 — 업체 호실 전체의 문 상태
  *
- * @param snapshot admin-service 접속 확인 결과
+ * @param snapshot user-service 접속 확인 결과
  * @returns JSON 문자열
  */
-export function buildSnapshotMessage(snapshot: RoomDoorSnapshotResultDto): string {
+export function buildSnapshotMessage(snapshot: DoorSnapshotResultDto): string {
     return JSON.stringify({event: DOOR_SOCKET_EVENT.SNAPSHOT, data: snapshot});
 }
 
 /**
  * QR 확인 결과 메시지 — 물어본 연결에만
  *
- * @param result admin-service QR 확인 결과
+ * @param result user-service QR 확인 결과
  * @returns JSON 문자열
  */
-export function buildVerifiedMessage(result: RoomDoorVerifyResultDto): string {
+export function buildVerifiedMessage(result: DoorVerifyResultDto): string {
     return JSON.stringify({event: DOOR_SOCKET_EVENT.VERIFIED, data: {room_id: result.room_id, ok: result.ok}});
 }
 

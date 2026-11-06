@@ -9,7 +9,7 @@ import {validationExceptionFactory} from '@app/common/utils/validation.js';
 import type {Actor} from '@app/contracts/actor.js';
 import {INTERNAL_HEADER} from '@app/contracts/actor.js';
 import type {MessageEnvelope, ResultPayload} from '@app/contracts/message-envelope.js';
-import {DOOR_STORE, PAYMENT_GATEWAY, SMS_SENDER} from '@app/integration/integration.symbols.js';
+import {DOOR_STORE, PAYMENT_GATEWAY} from '@app/integration/integration.symbols.js';
 import type {PaymentLookupResult} from '@app/integration/interfaces/integration.interface.js';
 import {CommandHandlerRegistry} from '@app/messaging/command-handler.registry.js';
 import {CommandDispatcher, DispatchDecision} from '@app/messaging/command.dispatcher.js';
@@ -34,7 +34,6 @@ export const ID_PATTERN = /^[a-f0-9]{32}$/;
 
 /** 이용자 · 매니저 actor */
 export const USER_ACTOR: Actor = {user_id: 'a'.repeat(32), auth_id: 'USER'};
-export const MANAGER_ACTOR: Actor = {user_id: 'm'.repeat(32), auth_id: 'MANAGER'};
 
 /** 업체 · 그룹 · 호실 · 그룹 상품 · 예약 · 결제 · 구간 ID */
 export const STORE_ID = 'b'.repeat(32);
@@ -61,9 +60,6 @@ export type ReservationRepositoryMock = {[K in keyof ReservationRepositoryInterf
 /** 결제 포트 mock */
 export type PaymentGatewayMock = {environment: Mock; getPayment: Mock; findByPaymentId: Mock; cancel: Mock};
 
-/** SMS 포트 mock */
-export type SmsSenderMock = {send: Mock};
-
 /** 문 정보 포트 mock — 이 도메인은 현재 QR 쓰기 · 지우기만 쓴다 */
 export type DoorStoreMock = {setQr: Mock; revokeQr: Mock};
 
@@ -89,23 +85,18 @@ export function createReservationRepositoryMock(): ReservationRepositoryMock {
         findReservation: vi.fn().mockResolvedValue(reservationEntity()),
         findReservationDetails: vi.fn().mockResolvedValue([detailEntity()]),
         findPayment: vi.fn().mockResolvedValue(paymentEntity()),
-        findReservationUser: vi.fn().mockResolvedValue({user_id: MANAGER_ACTOR.user_id, store_id: STORE_ID, name: '김이용', phone: '01012345678'}),
         insertPayment: vi.fn(),
         insertReservation: vi.fn(),
         insertReservationDetail: vi.fn(),
         updateReservation: vi.fn().mockResolvedValue(true),
-        changeReservationRoom: vi.fn().mockResolvedValue(true),
         updateReservationDetails: vi.fn(),
         updatePayment: vi.fn().mockResolvedValue(true),
         countReservations: vi.fn().mockResolvedValue(0),
         findMyReservationRows: vi.fn().mockResolvedValue([]),
         findMyReservationRow: vi.fn().mockResolvedValue(null),
         findReservationSegmentRows: vi.fn().mockResolvedValue([]),
-        findStoreRoomRows: vi.fn().mockResolvedValue([]),
-        findStoreReservationRows: vi.fn().mockResolvedValue([]),
         findRoomQr: vi.fn().mockResolvedValue(null),
         insertRoomQr: vi.fn(),
-        updateRoomQr: vi.fn(),
     };
 }
 
@@ -119,15 +110,6 @@ export function createPaymentGatewayMock(): PaymentGatewayMock {
 }
 
 /**
- * SMS 포트 mock
- *
- * @returns mock
- */
-export function createSmsSenderMock(): SmsSenderMock {
-    return {send: vi.fn().mockResolvedValue(undefined)};
-}
-
-/**
  * 문 정보 포트 mock — 현재 QR 쓰기 · 지우기는 성공
  *
  * @returns mock
@@ -137,18 +119,16 @@ export function createDoorStoreMock(): DoorStoreMock {
 }
 
 /**
- * 큐 경로 부팅 — 실제 ReservationQueueController · ReservationService · CommandHandlerRegistry · CommandDispatcher, repository · 결제 · SMS · 문 정보 포트만 mock.
+ * 큐 경로 부팅 — 실제 ReservationQueueController · ReservationService · CommandHandlerRegistry · CommandDispatcher, repository · 결제 · 문 정보 포트만 mock.
  *
  * @param repo repository mock
  * @param payment 결제 포트 mock
- * @param sms SMS 포트 mock
  * @param door 문 정보 포트 mock
  * @returns dispatcher · module
  */
 export async function bootCommandPath(
     repo: ReservationRepositoryMock,
     payment: PaymentGatewayMock = createPaymentGatewayMock(),
-    sms: SmsSenderMock = createSmsSenderMock(),
     door: DoorStoreMock = createDoorStoreMock(),
 ): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
     const module = await Test.createTestingModule({
@@ -160,7 +140,6 @@ export async function bootCommandPath(
             CommandDispatcher,
             {provide: RESERVATION_REPOSITORY, useValue: repo},
             {provide: PAYMENT_GATEWAY, useValue: payment},
-            {provide: SMS_SENDER, useValue: sms},
             {provide: DOOR_STORE, useValue: door},
         ],
     }).compile();
@@ -183,7 +162,6 @@ export async function bootHttpPath(repo: ReservationRepositoryMock, door: DoorSt
             ReservationService,
             {provide: RESERVATION_REPOSITORY, useValue: repo},
             {provide: PAYMENT_GATEWAY, useValue: createPaymentGatewayMock()},
-            {provide: SMS_SENDER, useValue: createSmsSenderMock()},
             {provide: DOOR_STORE, useValue: door},
             {provide: APP_GUARD, useClass: InternalAuthGuard},
             {provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor},

@@ -33,7 +33,7 @@ async login(@Body() dto: UserLoginDto, @Ip() ip: string): Promise<UserLoginResul
 ```
 
 - 실측 순서(인증 없는 핸들러 — 그룹별 로그인 · 재발급 6개): **HTTP verb → `@HttpCode(200)` → `@ApiOperation({summary})` → `@ApiBody` → `@ApiOkResponse` → `@ApiBadRequestResponse` → `@ApiUnauthorizedResponse` 또는 `@ApiForbiddenResponse` → `@ApiNotFoundResponse` → `@ApiServiceUnavailableResponse` → `@ApiInternalServerErrorResponse`**.
-- 인증이 붙는 동기 핸들러(store 조회 · 업로드 주소 · 내 업체 — store.controller.ts): HTTP verb → `@UseGuards`(그 그룹의 가드 — 내 업체 `/mine…` 은 매니저 가드, 그룹 안 권한이면 `RolesGuard` 를 뒤에) → `@Roles`(그룹 안 권한 시 — 업체 관리자 목록 · 상세) → `@HttpCode(200)` → `@ApiBearerAuth()` → `@ApiOperation` → `@ApiBody`(입력 시) → `@ApiOkResponse` → 에러 응답들.
+- 인증이 붙는 동기 핸들러(입점 신청 조회 · 업로드 주소 — user-service store.controller.ts, 업체 조회 · 내 업체 — admin-service store.controller.ts): HTTP verb → `@UseGuards`(그 그룹의 가드 — 내 업체 `/mine…` 은 매니저 가드, 그룹 안 권한이면 `RolesGuard` 를 뒤에) → `@Roles`(그룹 안 권한 시 — 업체 관리자 목록 · 상세) → `@HttpCode(200)` → `@ApiBearerAuth()` → `@ApiOperation` → `@ApiBody`(입력 시) → `@ApiOkResponse` → 에러 응답들.
 - **목록(GET + `@Query()`)** — 컨트롤러가 Query DTO 를 `new` 로 만들어 `query` 옵션으로 넘긴다([conventions.md](conventions.md) "Query DTO"). `InternalHttpClient` 는 undefined · null 값을 빼고 쿼리 문자열로 붙인다. 파라미터가 있는 경로는 contracts 의 경로 함수를 쓴다.
 
 ```ts
@@ -49,7 +49,7 @@ async login(@Body() dto: UserLoginDto, @Ip() ip: string): Promise<UserLoginResul
 @ApiInternalServerErrorResponse({type: ApiFailResultDto})
 async getMyApplicationList(@PassportActor() actor: Actor, @Query() query: StoreMyApplicationListDto): Promise<StoreMyApplicationListResultDto> {
     const dto = new StoreMyApplicationListDto(query);
-    return this.internalHttp.request<StoreMyApplicationListResultDto>('admin', 'GET', STORE_INTERNAL_PATH.MY_APPLICATION_LIST, {actor, query: dto});
+    return this.internalHttp.request<StoreMyApplicationListResultDto>('user', 'GET', STORE_USER_INTERNAL_PATH.MY_APPLICATION_LIST, {actor, query: dto});
 }
 ```
 

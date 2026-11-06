@@ -53,13 +53,6 @@ export interface RoomRow {
     created_at: Date;
 }
 
-/** 문 소켓 접속 — 업체 호실 문 1개 (QueryBuilder raw — t_room_group 조인, 지워지지 않은 호실 · 그룹) */
-export interface RoomDoorRow {
-    room_id: string;
-    room_name: string;
-    floor: number;
-}
-
 /** 호실 목록 조건 — 업체 + 선택 필터(층 · 그룹, 없으면 null) */
 export interface RoomListFilter {
     store_id: string;
@@ -143,8 +136,4 @@ export interface RoomRepositoryInterface {
     countRoomActiveReservations(room_id: string): Promise<number>;
     /** 그룹 호실들의 점유 예약 수 — 지워지지 않은 호실 */
     countGroupActiveReservations(room_group_id: string): Promise<number>;
-    /** 문 소켓 접속 확인의 업체 — 지워지지 않은 업체(조건은 service: 탈퇴 제외) */
-    findDoorStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null>;
-    /** 업체 호실 문 목록 행 — 지워지지 않은 호실 · 그룹, 층 · 호실명 순 */
-    findStoreDoorRoomRows(store_id: string): Promise<RoomDoorRow[]>;
 }

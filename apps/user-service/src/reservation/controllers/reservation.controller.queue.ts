@@ -3,8 +3,6 @@ import {Injectable} from '@nestjs/common';
 import type {MessageEnvelope} from '@app/contracts/message-envelope.js';
 import type {ReservationCancelDto, ReservationCancelParamDto, ReservationCancelResultDto} from '@app/contracts/reservation/dto/reservation-cancel.dto.js';
 import type {ReservationPaymentConfirmDto, ReservationPaymentConfirmResultDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
-import type {ReservationRoomChangeDto, ReservationRoomChangeParamDto} from '@app/contracts/reservation/dto/reservation-room-change.dto.js';
-import type {ReservationStoreCancelDto, ReservationStoreCancelParamDto} from '@app/contracts/reservation/dto/reservation-store-cancel.dto.js';
 import type {ReservationDto, ReservationResultDto} from '@app/contracts/reservation/dto/reservation.dto.js';
 import {RESERVATION_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
 import {requireActor} from '@app/messaging/messaging.util.js';
@@ -50,25 +48,5 @@ export class ReservationQueueController {
     @OnCommand(RESERVATION_COMMAND.CANCEL)
     async cancelReservation(command: MessageEnvelope<ReservationCancelParamDto & ReservationCancelDto>): Promise<ReservationCancelResultDto> {
         return this.reservationService.cancelReservation(requireActor(command).user_id, command.payload.reservation_id, command.payload);
-    }
-
-    /**
-     * 업체 취소 — 매니저
-     *
-     * @param command 명령 봉투 (actor 필수, payload = path param + 본문)
-     */
-    @OnCommand(RESERVATION_COMMAND.STORE_CANCEL)
-    async cancelStoreReservation(command: MessageEnvelope<ReservationStoreCancelParamDto & ReservationStoreCancelDto>): Promise<void> {
-        return this.reservationService.cancelStoreReservation(requireActor(command).user_id, command.payload.reservation_id, command.payload);
-    }
-
-    /**
-     * 호실 이동 — 매니저
-     *
-     * @param command 명령 봉투 (actor 필수, payload = path param + 본문)
-     */
-    @OnCommand(RESERVATION_COMMAND.ROOM_CHANGE)
-    async changeReservationRoom(command: MessageEnvelope<ReservationRoomChangeParamDto & ReservationRoomChangeDto>): Promise<void> {
-        return this.reservationService.changeReservationRoom(requireActor(command).user_id, command.payload.reservation_id, command.payload);
     }
 }

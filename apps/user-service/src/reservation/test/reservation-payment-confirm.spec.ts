@@ -12,7 +12,6 @@ import {
     createDoorStoreMock,
     createPaymentGatewayMock,
     createReservationRepositoryMock,
-    createSmsSenderMock,
     detailEntity,
     DoorStoreMock,
     ID_PATTERN,
@@ -51,7 +50,7 @@ describe('user.reservation.payment-confirm — 결제 확인 (큐 경로)', () =
         repo.findReservation.mockResolvedValue(reservationEntity({reservation_state_id: 'PENDING'}));
         payment = createPaymentGatewayMock();
         door = createDoorStoreMock();
-        ({dispatcher, module} = await bootCommandPath(repo, payment, createSmsSenderMock(), door));
+        ({dispatcher, module} = await bootCommandPath(repo, payment, door));
     });
 
     afterEach(async () => {

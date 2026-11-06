@@ -36,12 +36,8 @@ export interface StoreRepositoryInterface {
     countApplications(where: FindOptionsWhere<StoreApplicationEntity> | FindOptionsWhere<StoreApplicationEntity>[]): Promise<number>;
     /** 입점 신청 목록 — 신청일 최신순 */
     findApplicationList(where: FindOptionsWhere<StoreApplicationEntity> | FindOptionsWhere<StoreApplicationEntity>[], limit: number, offset: number): Promise<StoreApplicationEntity[]>;
-    /** 입점 신청 등록 */
-    insertApplication(entity: StoreApplicationEntity): Promise<void>;
     /** 입점 신청 수정 (승인 · 반려) — 조건에 맞는 행을 바꿨으면 true */
     updateApplication(where: FindOptionsWhere<StoreApplicationEntity>, entity: StoreApplicationEntity): Promise<boolean>;
-    /** 입점 신청 삭제 (취소) — 삭제 표시(소프트 삭제), 조건에 맞는 행을 지웠으면 true */
-    deleteApplication(where: FindOptionsWhere<StoreApplicationEntity>): Promise<boolean>;
     /** 업체 정보 파일 용도 단건 (비공개 여부) */
     findStoreFilePurpose(store_file_purpose_id: string): Promise<StoreFilePurposeEntity | null>;
     /** 신청의 업체 정보 파일 — 용도 · 정렬 순서, 비공개 여부 포함 */
@@ -58,14 +54,10 @@ export interface StoreRepositoryInterface {
     deleteStoreFile(where: FindOptionsWhere<StoreFileEntity>): Promise<void>;
     /** 업체 정보 파일 수정 (업체 사진 정렬 순서) */
     updateStoreFile(where: FindOptionsWhere<StoreFileEntity>, entity: StoreFileEntity): Promise<void>;
-    /** 신청의 업체 정보 파일 삭제 (신청 취소) — 아직 업체에 붙지 않은 파일만 삭제 표시(소프트 삭제) */
-    deleteApplicationFiles(store_application_id: string): Promise<void>;
     /** 신청의 업체 정보 파일을 업체로 — 승인 때 store_id 를 채운다 */
     assignStoreFiles(store_application_id: string, store_id: string): Promise<void>;
     /** 업체 단건 */
     findStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null>;
-    /** 업체 여러 건 — 내 신청 목록의 업체코드 */
-    findStores(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity[]>;
     /** 업체 개수 — 목록 · 사업자번호 중복 확인 */
     countStores(where: FindOptionsWhere<StoreEntity> | FindOptionsWhere<StoreEntity>[]): Promise<number>;
     /** 업체 목록 — 등록일 최신순 */

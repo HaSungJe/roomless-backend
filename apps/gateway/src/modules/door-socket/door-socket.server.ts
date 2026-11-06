@@ -4,11 +4,10 @@ import {Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy} fro
 import {HttpAdapterHost} from '@nestjs/core';
 import {WebSocket, WebSocketServer} from 'ws';
 import type {RawData} from 'ws';
-import {DOOR_SOCKET_EVENT} from '@app/contracts/door/door.commands.js';
-import type {RoomDoorCloseResultDto} from '@app/contracts/room/dto/room-door-close.dto.js';
-import type {RoomDoorSnapshotResultDto} from '@app/contracts/room/dto/room-door-snapshot.dto.js';
-import type {RoomDoorVerifyResultDto} from '@app/contracts/room/dto/room-door-verify.dto.js';
-import {ROOM_INTERNAL_PATH} from '@app/contracts/room/room.commands.js';
+import {DOOR_INTERNAL_PATH, DOOR_SOCKET_EVENT} from '@app/contracts/door/door.commands.js';
+import type {DoorCloseResultDto} from '@app/contracts/door/dto/door-close.dto.js';
+import type {DoorSnapshotResultDto} from '@app/contracts/door/dto/door-snapshot.dto.js';
+import type {DoorVerifyResultDto} from '@app/contracts/door/dto/door-verify.dto.js';
 import {DOOR_COMMAND} from '@app/integration/integration.constants.js';
 import {DOOR_STORE} from '@app/integration/integration.symbols.js';
 import type {DoorCommand, DoorOpenCommand, DoorStoreInterface} from '@app/integration/interfaces/integration.interface.js';
@@ -33,9 +32,9 @@ import type {DoorSocketFailure} from './door-socket.util.js';
 
 /**
  * 문 소켓 — 문 쪽 타 업체 프로그램이 업체 단위로 붙는 표준 WebSocket(`/ws/v1/door`).
- * - HTTP 서버의 업그레이드를 직접 받아 헤더(x-store-id · x-store-secret)를 admin-service 에 확인한 뒤에만 연결한다(틀리면 업그레이드 전 HTTP 401).
+ * - HTTP 서버의 업그레이드를 직접 받아 헤더(x-store-id · x-store-secret)를 user-service 에 확인한 뒤에만 연결한다(틀리면 업그레이드 전 HTTP 401).
  * - 연결 직후 그 업체 호실 전체의 문 상태(door.snapshot).
- * - 문 프로그램의 QR 확인(door.verify)은 admin-service 가 Redis 현재 QR 과 비교해 답하고(door.verified — 그 연결에만), 잠금 알림(door.closed)은 기록만 한다(성공은 답하지 않는다). 실패는 error 메시지(연결 유지).
+ * - 문 프로그램의 QR 확인(door.verify)은 user-service 가 Redis 현재 QR 과 비교해 답하고(door.verified — 그 연결에만), 잠금 알림(door.closed)은 기록만 한다(성공은 답하지 않는다). 실패는 error 메시지(연결 유지).
  * - 관리자 바로 열기는 Redis 채널 door-commands 를 구독해 그 업체 연결 모두에 door.open 으로 보낸다.
  * - 30초마다 ping, 다음 ping 까지 pong 이 없으면 끊는다. 재연결은 문 프로그램이 한다.
  * - 연결 목록은 인스턴스 메모리다(연결 자체가 이 인스턴스에 붙어 있다) — 상태 원본은 Redis · DB, 인스턴스마다 따로 구독한다(sticky 불필요).
@@ -54,7 +53,7 @@ export class DoorSocketServer implements OnApplicationBootstrap, OnModuleDestroy
 
     /**
      * @param httpAdapterHost 게이트웨이 HTTP 서버(업그레이드를 받는다)
-     * @param internalHttp admin-service 내부 HTTP (접속 확인 · QR 확인 · 잠금)
+     * @param internalHttp user-service 내부 HTTP (접속 확인 · QR 확인 · 잠금)
      * @param doorStore 문 정보 포트 (바로 열기 명령 구독)
      */
     constructor(
@@ -87,7 +86,7 @@ export class DoorSocketServer implements OnApplicationBootstrap, OnModuleDestroy
     }
 
     /**
-     * 업그레이드 요청 — 경로 · 헤더 모양을 보고, admin-service 에 업체 ID · 시크릿을 확인한 뒤에만 연결한다.
+     * 업그레이드 요청 — 경로 · 헤더 모양을 보고, user-service 에 업체 ID · 시크릿을 확인한 뒤에만 연결한다.
      *
      * @param request 업그레이드 요청
      * @param socket TCP 소켓
@@ -104,9 +103,9 @@ export class DoorSocketServer implements OnApplicationBootstrap, OnModuleDestroy
             this.reject(socket, {status_code: 401, message: DOOR_SOCKET_AUTH_FAILED_MESSAGE});
             return;
         }
-        let snapshot: RoomDoorSnapshotResultDto;
+        let snapshot: DoorSnapshotResultDto;
         try {
-            snapshot = await this.internalHttp.request<RoomDoorSnapshotResultDto>('admin', 'POST', ROOM_INTERNAL_PATH.DOOR_SNAPSHOT, {body: credential});
+            snapshot = await this.internalHttp.request<DoorSnapshotResultDto>('user', 'POST', DOOR_INTERNAL_PATH.SNAPSHOT, {body: credential});
         } catch (error) {
             this.reject(socket, toDoorSocketFailure(error));
             return;
@@ -123,7 +122,7 @@ export class DoorSocketServer implements OnApplicationBootstrap, OnModuleDestroy
      * @param client 연결
      * @param snapshot 업체 호실 전체의 문 상태
      */
-    private accept(client: WebSocket, snapshot: RoomDoorSnapshotResultDto): void {
+    private accept(client: WebSocket, snapshot: DoorSnapshotResultDto): void {
         const store_id = snapshot.store_id;
         const group = this.connections.get(store_id) ?? new Set<WebSocket>();
         group.add(client);
@@ -151,10 +150,10 @@ export class DoorSocketServer implements OnApplicationBootstrap, OnModuleDestroy
         }
         try {
             if (request.event === DOOR_SOCKET_EVENT.VERIFY) {
-                const result = await this.internalHttp.request<RoomDoorVerifyResultDto>('admin', 'POST', ROOM_INTERNAL_PATH.DOOR_VERIFY, {body: {store_id, room_id: request.room_id, qr: request.qr}});
+                const result = await this.internalHttp.request<DoorVerifyResultDto>('user', 'POST', DOOR_INTERNAL_PATH.VERIFY, {body: {store_id, room_id: request.room_id, qr: request.qr}});
                 this.send(client, buildVerifiedMessage(result));
             } else {
-                await this.internalHttp.request<RoomDoorCloseResultDto>('admin', 'POST', ROOM_INTERNAL_PATH.DOOR_CLOSE, {body: {store_id, room_id: request.room_id}});
+                await this.internalHttp.request<DoorCloseResultDto>('user', 'POST', DOOR_INTERNAL_PATH.CLOSE, {body: {store_id, room_id: request.room_id}});
             }
         } catch (error) {
             this.send(client, buildErrorMessage(toDoorSocketFailure(error)));

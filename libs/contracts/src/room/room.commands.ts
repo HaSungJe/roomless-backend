@@ -52,12 +52,6 @@ export const ROOM_INTERNAL_PATH = {
     groupImageUploadUrl: (room_group_id: string) => `${ROOM_INTERNAL_BASE}/group/${encodeURIComponent(room_group_id)}/image/upload-url`,
     /** 상품별 기간 가격 목록 (GET, 업체 관리자) */
     groupPlanPrices: (room_group_id: string, room_plan_type_id: string) => `${ROOM_INTERNAL_BASE}/group/${encodeURIComponent(room_group_id)}/plan/${encodeURIComponent(room_plan_type_id)}/price`,
-    /** 문 소켓 접속 확인 + 업체 호실 문 상태 (POST, gateway 문 소켓 — 내부 토큰만, actor 없음) */
-    DOOR_SNAPSHOT: `${ROOM_INTERNAL_BASE}/door-snapshot`,
-    /** 문 소켓 QR 확인 (POST, gateway 문 소켓 — 내부 토큰만, actor 없음) */
-    DOOR_VERIFY: `${ROOM_INTERNAL_BASE}/door-verify`,
-    /** 문 소켓 잠금 알림 (POST, gateway 문 소켓 — 내부 토큰만, actor 없음) */
-    DOOR_CLOSE: `${ROOM_INTERNAL_BASE}/door-close`,
     /** 호실 문 바로 열기 (POST, 업체 관리자) */
     doorOpen: (room_id: string) => `${ROOM_INTERNAL_BASE}/${encodeURIComponent(room_id)}/door-open`,
     /** 호실 목록 (GET, 업체 관리자) */

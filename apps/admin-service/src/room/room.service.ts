@@ -1,17 +1,13 @@
-import {BadRequestException, Inject, Injectable, NotFoundException, UnauthorizedException} from '@nestjs/common';
+import {BadRequestException, Inject, Injectable, NotFoundException} from '@nestjs/common';
 import {Transactional} from '@nestjs-cls/transactional';
-import {ILike, Not} from 'typeorm';
+import {ILike} from 'typeorm';
 import type {FindOptionsWhere} from 'typeorm';
-import {matchBcrypt} from '@app/common/utils/bcrypt.js';
 import {dayjs} from '@app/common/utils/dayjs.js';
 import {generateId} from '@app/common/utils/id.js';
 import {Pagination} from '@app/common/utils/pagination.js';
 import {toContainsPattern} from '@app/common/utils/search.js';
 import {createValidationError} from '@app/common/utils/validation.js';
-import type {RoomDoorCloseDto, RoomDoorCloseResultDto} from '@app/contracts/room/dto/room-door-close.dto.js';
 import type {RoomDoorOpenResultDto} from '@app/contracts/room/dto/room-door-open.dto.js';
-import type {RoomDoorSnapshotDto, RoomDoorSnapshotResultDto} from '@app/contracts/room/dto/room-door-snapshot.dto.js';
-import type {RoomDoorVerifyDto, RoomDoorVerifyResultDto} from '@app/contracts/room/dto/room-door-verify.dto.js';
 import type {RoomGroupDetailResultDto} from '@app/contracts/room/dto/room-group-detail.dto.js';
 import type {RoomGroupImageOrderDto} from '@app/contracts/room/dto/room-group-image-order.dto.js';
 import type {RoomGroupImageUploadUrlDto, RoomGroupImageUploadUrlResultDto} from '@app/contracts/room/dto/room-group-image-upload-url.dto.js';
@@ -62,7 +58,6 @@ import {
     ROOM_PLAN_TYPE_ORDER,
     ROOM_STATE,
     ROOM_STATE_CHANGE_INVALID_MESSAGE,
-    ROOM_STORE_STATE_LEAVE,
 } from './room.constants.js';
 import {ROOM_REPOSITORY} from './room.symbols.js';
 import {
@@ -81,7 +76,6 @@ import {
     toRoomGroupListItem,
     toRoomGroupPlanItem,
     toRoomGroupPlanPriceItem,
-    toRoomDoorSnapshotItem,
     toRoomListItem,
     toRoomPlanItem,
 } from './room.util.js';
@@ -98,7 +92,7 @@ export class RoomService {
     /**
      * @param roomRepository room repository 포트
      * @param storageGateway 파일 저장소 포트 (Amazon S3 · CloudFront 공개 주소)
-     * @param doorStore 문 정보 포트 (Redis — 호실 목록 문 상태 · 바로 열기 · 문 소켓 접속 · QR 확인 · 잠금)
+     * @param doorStore 문 정보 포트 (Redis — 호실 목록 문 상태 · 바로 열기)
      */
     constructor(
         @Inject(ROOM_REPOSITORY)
@@ -807,68 +801,6 @@ export class RoomService {
         const changed_at = toDoorTime(new Date());
         await this.doorStore.open(room.room_id, store.store_id, changed_at);
         return {room_id: room.room_id, door_state: DOOR_STATE.OPEN, door_changed_at: changed_at};
-    }
-
-    /**
-     * 문 소켓 접속 확인 (gateway 문 소켓) — 지워지지 않고 탈퇴하지 않은 업체 · 시크릿 설정 · bcrypt 일치면 그 업체 호실 전체의 문 상태. 영업 상태는 보지 않는다(문은 영업과 별개).
-     * 실패 이유(업체 없음 · 탈퇴 · 시크릿 미설정 · 불일치)는 가르지 않고 모두 401 — 업체가 있는지 알려 주지 않는다. (내부 HTTP: POST /internal/v1/admin-service/room/door-snapshot)
-     *
-     * @param dto 업체 ID · 시크릿 코드
-     * @returns 업체 ID · 호실 문 목록
-     * @throws UnauthorizedException 확인 실패
-     */
-    async getDoorSnapshot(dto: RoomDoorSnapshotDto): Promise<RoomDoorSnapshotResultDto> {
-        // 1. 업체 · 시크릿
-        const store = await this.roomRepository.findDoorStore({store_id: dto.store_id, store_state_id: Not(ROOM_STORE_STATE_LEAVE)});
-        if (!store?.door_secret || !(await matchBcrypt(dto.door_secret, store.door_secret))) {
-            throw new UnauthorizedException({message: '업체 ID 또는 시크릿 코드가 올바르지 않습니다.'});
-        }
-
-        // 2. 호실 · 문 상태 (업체 전체 — 페이지 없음)
-        const rows = await this.roomRepository.findStoreDoorRoomRows(store.store_id);
-        const doors = await this.doorStore.getMany(rows.map((row) => row.room_id));
-        return {store_id: store.store_id, list: rows.map((row, index) => toRoomDoorSnapshotItem(row, doors[index]))};
-    }
-
-    /**
-     * 문 소켓 QR 확인 (gateway 문 소켓) — 문이 읽은 QR 을 그 호실의 Redis 현재 QR 과 비교한다. 같으면 open + 지금 시각으로 쓰고 ok, 다르거나 없으면 그대로 두고 ok false.
-     * QR 값은 서버 밖으로 나가지 않는다(사용자 결정 2026-11-04). (내부 HTTP: POST /internal/v1/admin-service/room/door-verify)
-     *
-     * @param dto 업체 ID(소켓이 확인한 값) · 호실 ID · 읽은 QR
-     * @returns 호실 ID · 일치 여부
-     * @throws NotFoundException 그 업체의 호실이 아닐 때
-     */
-    async verifyStoreDoor(dto: RoomDoorVerifyDto): Promise<RoomDoorVerifyResultDto> {
-        // 1. 그 업체의 호실
-        const room = await this.roomRepository.findRoom({room_id: dto.room_id, store_id: dto.store_id});
-        if (!room) {
-            throw new NotFoundException({message: ROOM_NOT_FOUND_MESSAGE});
-        }
-
-        // 2. 현재 QR 과 비교 + 같으면 열림 기록 (포트가 스크립트 1개로)
-        const ok = await this.doorStore.verify(room.room_id, dto.qr, toDoorTime(new Date()));
-        return {room_id: room.room_id, ok};
-    }
-
-    /**
-     * 문 소켓 잠금 알림 (gateway 문 소켓) — 하드웨어가 잠겼다(잠금 버튼 · 자동 잠금, 인증된 소켓이라 QR 없이). 그 업체의 지워지지 않은 호실이면 close + 지금 시각.
-     * (내부 HTTP: POST /internal/v1/admin-service/room/door-close)
-     *
-     * @param dto 업체 ID(소켓이 확인한 값) · 호실 ID
-     * @returns 잠근 문의 room_id · 상태 · 시각
-     * @throws NotFoundException 그 업체의 호실이 아닐 때
-     */
-    async closeStoreDoor(dto: RoomDoorCloseDto): Promise<RoomDoorCloseResultDto> {
-        // 1. 그 업체의 호실
-        const room = await this.roomRepository.findRoom({room_id: dto.room_id, store_id: dto.store_id});
-        if (!room) {
-            throw new NotFoundException({message: ROOM_NOT_FOUND_MESSAGE});
-        }
-
-        // 2. close + 지금 시각
-        const changed_at = toDoorTime(new Date());
-        await this.doorStore.close(room.room_id, changed_at);
-        return {room_id: room.room_id, door_state: DOOR_STATE.CLOSE, door_changed_at: changed_at};
     }
 
     /**

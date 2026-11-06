@@ -17,18 +17,15 @@ import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
 import {ReservationCancelDto, ReservationCancelParamDto, ReservationCancelResultDto} from '@app/contracts/reservation/dto/reservation-cancel.dto.js';
 import {ReservationPaymentConfirmDto, ReservationPaymentConfirmResultDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
-import {ReservationRoomChangeDto, ReservationRoomChangeParamDto} from '@app/contracts/reservation/dto/reservation-room-change.dto.js';
-import {ReservationStoreCancelDto, ReservationStoreCancelParamDto} from '@app/contracts/reservation/dto/reservation-store-cancel.dto.js';
 import {ReservationDto, ReservationResultDto} from '@app/contracts/reservation/dto/reservation.dto.js';
 import {RESERVATION_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
 import {PassportJwtAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
-import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
 import {CommandStreamService} from '../../../../../modules/transport/command-stream.service.js';
 
 /**
  * 예약 공개 API — 큐 경로(RabbitMQ `user.reservation.*` → user-service + 요청 단위 SSE).
- * 예약 생성 · 결제 확인 · 취소는 이용자 가드, 업체 취소 · 호실 이동은 매니저 가드(내 업체 예약만). path param 은 payload 에 합쳐 보낸다.
+ * 예약 생성 · 결제 확인 · 취소 — 이용자 가드. path param 은 payload 에 합쳐 보낸다. 매니저의 업체 취소 · 호실 이동은 /api/v1/admin-service/reservation 이다.
  */
 @ApiTags('예약')
 @Controller('/api/v1/user-service/reservation')
@@ -93,53 +90,5 @@ export class ReservationQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async cancelReservation(@PassportActor() actor: Actor, @Param() param: ReservationCancelParamDto, @Body() dto: ReservationCancelDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: RESERVATION_COMMAND.CANCEL, actor, payload: {...param, ...dto}, client_ip: ip});
-    }
-
-    /**
-     * 업체 취소 (업체 관리자) — 100% 환불 + 이용자 SMS. done 의 data 는 null
-     */
-    @Patch('/:reservation_id/store-cancel')
-    @UseGuards(PassportJwtManagerAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({summary: '업체 예약 취소'})
-    @ApiBody({type: ReservationStoreCancelDto})
-    @ApiProduces('text/event-stream')
-    @ApiBadRequestResponse({type: ApiFailResultDto})
-    @ApiUnauthorizedResponse({type: ApiFailResultDto})
-    @ApiNotFoundResponse({type: ApiFailResultDto})
-    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
-    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
-    async cancelStoreReservation(
-        @PassportActor() actor: Actor,
-        @Param() param: ReservationStoreCancelParamDto,
-        @Body() dto: ReservationStoreCancelDto,
-        @Ip() ip: string,
-        @Res() res: Response,
-    ): Promise<void> {
-        await this.commandStream.dispatch(res, {type: RESERVATION_COMMAND.STORE_CANCEL, actor, payload: {...param, ...dto}, client_ip: ip});
-    }
-
-    /**
-     * 호실 이동 (업체 관리자) — 같은 객실 그룹의 다른 호실로 + 이용자 SMS. done 의 data 는 null
-     */
-    @Patch('/:reservation_id/room')
-    @UseGuards(PassportJwtManagerAuthGuard)
-    @ApiBearerAuth()
-    @ApiOperation({summary: '예약 호실 이동'})
-    @ApiBody({type: ReservationRoomChangeDto})
-    @ApiProduces('text/event-stream')
-    @ApiBadRequestResponse({type: ApiFailResultDto})
-    @ApiUnauthorizedResponse({type: ApiFailResultDto})
-    @ApiNotFoundResponse({type: ApiFailResultDto})
-    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
-    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
-    async changeReservationRoom(
-        @PassportActor() actor: Actor,
-        @Param() param: ReservationRoomChangeParamDto,
-        @Body() dto: ReservationRoomChangeDto,
-        @Ip() ip: string,
-        @Res() res: Response,
-    ): Promise<void> {
-        await this.commandStream.dispatch(res, {type: RESERVATION_COMMAND.ROOM_CHANGE, actor, payload: {...param, ...dto}, client_ip: ip});
     }
 }

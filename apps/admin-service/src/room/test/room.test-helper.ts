@@ -113,8 +113,6 @@ export function createRoomRepositoryMock(): RoomRepositoryMock {
         deleteRooms: vi.fn(),
         countRoomActiveReservations: vi.fn().mockResolvedValue(0),
         countGroupActiveReservations: vi.fn().mockResolvedValue(0),
-        findDoorStore: vi.fn(),
-        findStoreDoorRoomRows: vi.fn().mockResolvedValue([]),
     };
 }
 

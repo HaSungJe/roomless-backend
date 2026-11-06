@@ -4,12 +4,11 @@ import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
-import {ReservationStoreDto, ReservationStoreResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
 import {ReservationService} from '../reservation.service.js';
 
 /**
  * 예약 내부 HTTP 인바운드 어댑터 — 게이트웨이의 동기 경로(조회)만 받는다(외부 비공개, Swagger 없음).
- * 정적 경로(`/availability` · `/store`)를 `/:reservation_id` 보다 먼저 선언한다. 내부 토큰 검사는 전역 InternalAuthGuard 가 한다.
+ * 정적 경로(`/availability`)를 `/:reservation_id` 보다 먼저 선언한다. 내부 토큰 검사는 전역 InternalAuthGuard 가 한다.
  */
 @Controller('/internal/v1/user-service/reservation')
 export class ReservationController {
@@ -26,16 +25,6 @@ export class ReservationController {
     async getAvailability(@Query() query: ReservationAvailabilityDto): Promise<ReservationAvailabilityResultDto> {
         const dto = new ReservationAvailabilityDto(query);
         return this.reservationService.getAvailability(dto);
-    }
-
-    /**
-     * 내 업체 예약 현황 (매니저)
-     */
-    @Get('/store')
-    @HttpCode(200)
-    async getStoreReservations(@InternalActor('user_id') user_id: string, @Query() query: ReservationStoreDto): Promise<ReservationStoreResultDto> {
-        const dto = new ReservationStoreDto(query);
-        return this.reservationService.getStoreReservations(user_id, dto);
     }
 
     /**

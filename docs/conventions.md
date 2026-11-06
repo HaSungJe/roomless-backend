@@ -42,7 +42,7 @@
 
 **DTO 파일** — `libs/contracts/src/<domain>/dto/<domain>-<feature>.dto.ts` (kebab). 요청 DTO 와 응답 `ResultDto` 는 같은 파일에 함께 export. 결과가 없는(void) 기능은 ResultDto 를 두지 않는다(user-leave.dto.ts · user-password.dto.ts).
 
-**규격 상수** — `libs/contracts/src/<domain>/<domain>.commands.ts` 에 명령 type · 큐 이름 · 바인딩 키 · **내부 HTTP 경로(`USER_INTERNAL_PATH`)** 를 둔다(user.commands.ts:8-34). 게이트웨이 동기 핸들러와 JWT 전략은 경로 문자열을 직접 쓰지 않고 이 상수만 쓴다. **파라미터가 있는 경로는 경로 함수**로 둔다 — `STORE_INTERNAL_PATH.myApplication(store_application_id)`(store.commands.ts, 값은 `encodeURIComponent`). 게이트웨이가 경로를 문자열로 이어 붙이지 않게 한다. 명령 type 은 `<server>.<resource>.<action-kebab>` — server 는 서비스 앱(`user.member.leave-cancel` → user-service, `admin.manager.find-login-id` · `admin.admin.password` → admin-service). 앱의 큐 · 바인딩 상수는 그 앱 이름의 commands 파일(`USER_COMMAND_QUEUE` · `ADMIN_COMMAND_QUEUE`)에 둔다.
+**규격 상수** — `libs/contracts/src/<domain>/<domain>.commands.ts` 에 명령 type · 큐 이름 · 바인딩 키 · **내부 HTTP 경로(`USER_INTERNAL_PATH`)** 를 둔다(user.commands.ts:8-34). 게이트웨이 동기 핸들러와 JWT 전략은 경로 문자열을 직접 쓰지 않고 이 상수만 쓴다. **파라미터가 있는 경로는 경로 함수**로 둔다 — `STORE_USER_INTERNAL_PATH.myApplication(store_application_id)`(store.commands.ts, 값은 `encodeURIComponent`). 같은 이름 도메인이 두 서비스에 있으면(행위자별 서버 — `store` · `reservation`) 한 파일에 상수 이름으로 가른다(`STORE_USER_*` — user-service, `RESERVATION_MANAGER_*` — admin-service). 게이트웨이가 경로를 문자열로 이어 붙이지 않게 한다. 명령 type 은 `<server>.<resource>.<action-kebab>` — server 는 서비스 앱(`user.member.leave-cancel` → user-service, `admin.manager.find-login-id` · `admin.admin.password` → admin-service). 앱의 큐 · 바인딩 상수는 그 앱 이름의 commands 파일(`USER_COMMAND_QUEUE` · `ADMIN_COMMAND_QUEUE`)에 둔다.
 
 **권한 · 로그인 그룹 상수** — 도메인 공통이라 `libs/contracts/src/roles.ts` 의 `AUTH_ID`(t_auth PK) · `LOGIN_SCOPE`(USER · MANAGER · ADMIN) · `type LoginScope`. 서비스(`userEntity.auth_id = AUTH_ID.USER`, `findManager({login_scope: LOGIN_SCOPE.MANAGER})`)와 게이트웨이 `@Roles(AUTH_ID.HEAD_MANAGER)`(미적용)가 같은 상수를 쓴다. libs/database 는 contracts 를 import 하지 않으므로 시드는 문자열 리터럴이다.
 
@@ -69,7 +69,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 - 공개 `/api/v1/<service>/<domain>/<action>` · 내부 `/internal/v1/<service>/<domain>/<action>` — service 는 서비스 앱(`user-service` · `admin-service`), domain 은 그 앱의 도메인 폴더. 로그인 그룹은 경로가 아니라 게이트웨이 가드로 가른다.
 - 공개(게이트웨이): `@Controller('/api/v1/<service>/<domain>')`(`/api/v1/user-service/user` · `/api/v1/admin-service/manager` · `/api/v1/admin-service/admin`). 내부(서비스): `@Controller('/internal/v1/<service>/<domain>')`(`/internal/v1/admin-service/manager/login`). 내부 경로 문자열은 contracts 의 `*_INTERNAL_PATH` 상수로만 쓴다.
-- 이후 기능도 같은 규칙이다 — 객실 관리(매니저)는 `/api/v1/admin-service/room`, 입점 승인(관리자)은 `/api/v1/admin-service/store`, 예약(이용자)은 `/api/v1/user-service/reservation`. 같은 도메인 안에서 그룹이 다른 라우트는 가드로 가른다.
+- 이후 기능도 같은 규칙이다 — 객실 관리(매니저)는 `/api/v1/admin-service/room`, 입점 승인(관리자)은 `/api/v1/admin-service/store`, 입점 신청(이용자)은 `/api/v1/user-service/store`, 예약(이용자)은 `/api/v1/user-service/reservation`, 업체 예약(매니저)은 `/api/v1/admin-service/reservation`. 이용자 기능은 user-service, 업체 관리자 · 관리자 전용 기능은 admin-service 에 두고(같은 이름 도메인을 서버마다 따로), 한 서비스의 같은 도메인 안에서 그룹이 다른 라우트(관리자 · 매니저)는 가드로 가른다.
 - 앞 `/` 필수, 다단어 kebab(`/token-refresh`), path param 은 snake_case(`/auth-user/:user_id`).
 - 같은 경로 다른 verb 가능(`DELETE /leave` · `PATCH /leave`). 통째로 교체하는 쓰기는 `PUT`(`/mine/hours` · `/mine/breaks` · `/mine/file/order`), 일부만 바꾸는 쓰기는 `PATCH`.
 
@@ -90,7 +90,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 **게이트웨이 인증 값** — 서비스로 넘기면 `@PassportActor() actor: Actor`(첫 파라미터). 게이트웨이 안에서만 쓰는 `@PassportUser('user_id')` 는 정의만 있고 사용처 0(미적용 규약).
 
-**서비스 내부 HTTP 핸들러** — `@Ip()` 대신 `@ClientIp() ip`(게이트웨이가 넘긴 원래 클라이언트 IP). service 에는 DTO 또는 원시값(`param.user_id`)을 넘긴다. 로그인 회원은 `@InternalActor('user_id') user_id: string` — 게이트웨이가 넘긴 actor 헤더에서 꺼낸다(store.controller.ts 내 신청 라우트).
+**서비스 내부 HTTP 핸들러** — `@Ip()` 대신 `@ClientIp() ip`(게이트웨이가 넘긴 원래 클라이언트 IP). service 에는 DTO 또는 원시값(`param.user_id`)을 넘긴다. 로그인 회원은 `@InternalActor('user_id') user_id: string` — 게이트웨이가 넘긴 actor 헤더에서 꺼낸다(user-service store.controller.ts 내 신청 · admin-service reservation.controller.ts 업체 현황 라우트).
 
 **서비스 RabbitMQ 핸들러** — `(command: MessageEnvelope<XDto>)` 하나만 받는다. IP 는 `command.meta.client_ip ?? ''`, 로그인 필요 명령은 `requireActor(command).user_id`.
 
@@ -114,7 +114,7 @@ camelCase 는 코드 안에서만 쓰는 이름에 한한다 — 함수 · util 
 
 ## Query DTO 는 생성자를 갖고, 컨트롤러가 `new` 로 만들어 넘긴다
 
-> 적용: store 목록 3종 `StoreMyApplicationListDto` · `StoreApplicationListDto` · `StoreListDto`(libs/contracts/src/store/dto/) · 업체 관리자 목록 `ManagerStaffListDto`(libs/contracts/src/manager/dto/) · room 목록 3종 `RoomGroupListDto` · `RoomGroupPlanPriceListDto` · `RoomListDto`(libs/contracts/src/room/dto/), 컨트롤러는 게이트웨이 · admin-service 의 store.controller.ts · manager.controller.ts · room.controller.ts. `PaginationDto` 는 `libs/common/src/dto/pagination.dto.ts`(기본값 상수 `PAGINATION_DEFAULTS`). 출처: 사용자 결정(2026-07-27).
+> 적용: store 목록 3종 `StoreMyApplicationListDto` · `StoreApplicationListDto` · `StoreListDto`(libs/contracts/src/store/dto/) · 업체 관리자 목록 `ManagerStaffListDto`(libs/contracts/src/manager/dto/) · room 목록 3종 `RoomGroupListDto` · `RoomGroupPlanPriceListDto` · `RoomListDto`(libs/contracts/src/room/dto/), 컨트롤러는 게이트웨이 · 서비스의 store.controller.ts(내 신청 목록 — user-service, 신청 · 업체 목록 — admin-service) · manager.controller.ts · room.controller.ts. `PaginationDto` 는 `libs/common/src/dto/pagination.dto.ts`(기본값 상수 `PAGINATION_DEFAULTS`). 출처: 사용자 결정(2026-07-27).
 
 1. `@Query()` 로 받는 DTO 는 **생성자를 세트로** 갖는다 — 쿼리는 키가 통째로 빠질 수 있고 그 누락은 정상 요청이라 잡아줄 검증기가 없다.
 2. **컨트롤러가 `const dto = new XListDto(query);` 로 지역변수를 만든 뒤 service 에 넘긴다** — 받은 쿼리 객체를 그대로 흘리지 않고, 생성자를 한 번 태워 기본값이 확정된 인스턴스를 만든다. 호출부 `new` 인라인 ❌, 필드 하나씩 대입 ❌. 앞선 인자가 있으면 dto 를 마지막에 둔다 — `this.xService.list(user_id, dto)`.

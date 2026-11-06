@@ -6,7 +6,7 @@ import type {PaymentLookupResult} from './interfaces/integration.interface.js';
 const DOOR_TIME_FORMAT = 'YYYYMMDDHHmmss';
 
 /**
- * 문을 열거나 닫은 시각 — 한국 시각 `yyyyMMddHHmmss`(밀리초는 버린다). admin-service(바로 열기 · 문 소켓 QR 확인 · 잠금)가 쓴다.
+ * 문을 열거나 닫은 시각 — 한국 시각 `yyyyMMddHHmmss`(밀리초는 버린다). admin-service(바로 열기) · user-service(문 소켓 QR 확인 · 잠금)가 쓴다.
  *
  * @param at 시각
  * @returns 예: 20261101022459

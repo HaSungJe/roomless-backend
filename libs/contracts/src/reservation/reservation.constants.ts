@@ -1,5 +1,5 @@
 /**
- * 예약 · 결제 공통 값 — user-service(예약) · scheduler(만료 · 환불 crontab) · admin-service(호실 삭제 확인)가 함께 쓰고 API 응답 값이기도 하다.
+ * 예약 · 결제 공통 값 — user-service(이용자 예약) · admin-service(업체 예약 · 호실 삭제 확인) · scheduler(만료 · 환불 crontab)가 함께 쓰고 API 응답 값이기도 하다.
  * 값은 룩업 시드(libs/database/src/seeder/seeder.targets.ts)와 같다.
  */
 

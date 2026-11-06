@@ -1,7 +1,7 @@
 import {BadRequestException, InternalServerErrorException} from '@nestjs/common';
 import type {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import {DataSource, In, MoreThan, QueryFailedError} from 'typeorm';
+import {DataSource, MoreThan, QueryFailedError} from 'typeorm';
 import {StoreApplicationListDto} from '@app/contracts/store/dto/store-application-list.dto.js';
 import {StoreListDto} from '@app/contracts/store/dto/store-list.dto.js';
 import {ENTITIES} from '@app/database/entities.js';
@@ -104,14 +104,6 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
         expect(user.findOne).toHaveBeenCalledWith({where: {user_id: 'u1', login_scope: 'USER'}, loadRelationIds: true});
     });
 
-    it('findStores 는 받은 조건에 is_deleted: 0 을 더해 여러 건을 loadRelationIds 로 조회한다(내 신청 목록의 업체코드)', async () => {
-        const {repository, store} = makeRepository();
-
-        await repository.findStores({store_id: In(['s1', 's2'])});
-
-        expect(store.find).toHaveBeenCalledWith({where: {store_id: In(['s1', 's2']), is_deleted: 0}, loadRelationIds: true});
-    });
-
     it('is_deleted 가 있는 테이블의 조회 · 개수 · 수정은 받은 조건에 is_deleted: 0 을 더한다(배열 OR 조건은 조건마다)', async () => {
         const {repository, application, file, store, period} = makeRepository();
         const fileEntity = new StoreFileEntity();
@@ -176,20 +168,14 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     it.each([
         [1, true],
         [0, false],
-    ])('updateApplication · deleteApplication — affected %s → %s (그 사이 바뀐 신청 판별), 지워지지 않은 행만 · 삭제는 삭제 표시', async (affected, expected) => {
+    ])('updateApplication — affected %s → %s (그 사이 바뀐 신청 판별), 지워지지 않은 행만', async (affected, expected) => {
         const {repository, application} = makeRepository();
         application.update.mockResolvedValue({affected});
         const entity = Object.assign(new StoreApplicationEntity(), {store_application_state_id: 'APPROVED'});
 
         await expect(repository.updateApplication({store_application_id: 'a1', store_application_state_id: 'WAIT'}, entity)).resolves.toBe(expected);
-        await expect(repository.deleteApplication({store_application_id: 'a1', store_application_state_id: 'WAIT'})).resolves.toBe(expected);
-        expect(application.update).toHaveBeenCalledTimes(2);
+        expect(application.update).toHaveBeenCalledTimes(1);
         expect(application.update).toHaveBeenNthCalledWith(1, {store_application_id: 'a1', store_application_state_id: 'WAIT', is_deleted: 0}, entity);
-        const [where, deleted] = application.update.mock.calls[1] as [unknown, object];
-        expect(where).toEqual({store_application_id: 'a1', store_application_state_id: 'WAIT', is_deleted: 0});
-        expect(deleted).toBeInstanceOf(StoreApplicationEntity);
-        expect({...deleted}).toEqual({is_deleted: 1});
-        expect(application.delete).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -225,16 +211,13 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     it.each([
         ['findApplication', 'application', 'findOne'],
         ['countApplications', 'application', 'count'],
-        ['insertApplication', 'application', 'insert'],
         ['updateApplication', 'application', 'update'],
-        ['deleteApplication', 'application', 'update'],
         ['findStoreFilePurpose', 'purpose', 'findOne'],
         ['countStoreFiles', 'file', 'count'],
         ['findStoreFile', 'file', 'findOne'],
         ['insertStoreFile', 'file', 'insert'],
         ['deleteStoreFile', 'file', 'update'],
         ['findStore', 'store', 'findOne'],
-        ['findStores', 'store', 'find'],
         ['countStores', 'store', 'count'],
         ['insertStore', 'store', 'insert'],
         ['insertStorePlans', 'roomPlan', 'insert'],
@@ -257,7 +240,7 @@ describe('StoreRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
     });
 });
 
-describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 · 신청 파일 삭제 · 매니저 상태 · 소속 업체 · 영업시간 · 브레이크타임 · 일시 예약불가 쿼리 — DB 연결 없이 SQL 빌드, 지워지지 않은 행만', () => {
+describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 · 매니저 상태 · 소속 업체 · 영업시간 · 브레이크타임 · 일시 예약불가 쿼리 — DB 연결 없이 SQL 빌드, 지워지지 않은 행만', () => {
     let dataSource: DataSource;
     let repository: StoreRepository;
 
@@ -306,15 +289,6 @@ describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 ·
         );
     });
 
-    it('내 입점 신청 목록 — 신청자 + 대기 · 반려(IN)', () => {
-        const [sql, parameters] = repository.buildApplicationListQuery({user_id: 'u1', store_application_state_id: In(['WAIT', 'REJECTED'])}, 20, 0).getQueryAndParameters();
-
-        expect(parameters).toEqual(['u1', 'WAIT', 'REJECTED', 0]);
-        expect(sql.replace(/\s+/g, ' ')).toBe(
-            `${APPLICATION_SELECT} WHERE (("a"."user_id" = $1) AND ("a"."store_application_state_id" IN ($2, $3)) AND ("a"."is_deleted" = $4)) ORDER BY "a"."created_at" DESC LIMIT 20 OFFSET 0`,
-        );
-    });
-
     it('업체 목록 — 상태 + 검색어 OR(상호명 · 사업자번호 · 대표자명), 이스케이프한 패턴 · 페이지', () => {
         const [sql, parameters] = repository.buildStoreListQuery(buildStoreListWhere(new StoreListDto({store_state_id: 'ACTIVE', keyword: 'a_b'})), 10, 20).getQueryAndParameters();
 
@@ -348,13 +322,6 @@ describe('[SMOKE:data-access] 목록 · 파일 조회 · 파일 업체 지정 ·
 
         expect(parameters).toEqual(['s1', 'a1']);
         expect(sql).toBe('UPDATE "t_store_file" SET "store_id" = $1, "updated_at" = CURRENT_TIMESTAMP WHERE "store_application_id" = $2 AND "is_deleted" = 0');
-    });
-
-    it('신청 취소 — 아직 업체에 붙지 않은(store_id IS NULL) 지워지지 않은 신청 파일만 삭제 표시한다(소프트 삭제 — DELETE 없음)', () => {
-        const [sql, parameters] = repository.buildDeleteApplicationFilesQuery('a1').getQueryAndParameters();
-
-        expect(parameters).toEqual([1, 'a1']);
-        expect(sql).toBe('UPDATE "t_store_file" SET "is_deleted" = $1, "updated_at" = CURRENT_TIMESTAMP WHERE "store_application_id" = $2 AND "store_id" IS NULL AND "is_deleted" = 0');
     });
 
     it('업체 탈퇴 — 그 업체 매니저 그룹 회원 상태 · 정지 사유 · 수정일', () => {
