@@ -20,6 +20,8 @@ export interface RoomPlanRow {
     check_out_time: string | null;
     min_nights: number | null;
     max_nights: number | null;
+    is_extendable: number;
+    max_extensions: number;
 }
 
 /** 객실 그룹 목록 행 — 그룹 컬럼 + 지워지지 않은 호실 수 · 대표 사진(지워지지 않은 사진 중 정렬 순서 · 등록일이 가장 앞) 저장 키 (QueryBuilder raw — 서브쿼리) */

@@ -15,6 +15,7 @@ import type {Actor} from '@app/contracts/actor.js';
 import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import {ReservationCancelRequestParamDto, ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
+import {ReservationExtensionParamDto, ReservationExtensionResultDto} from '@app/contracts/reservation/dto/reservation-extension.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
 import {RESERVATION_INTERNAL_PATH} from '@app/contracts/reservation/reservation.commands.js';
@@ -120,5 +121,23 @@ export class ReservationController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async getMyCancelRequest(@PassportActor() actor: Actor, @Param() param: ReservationCancelRequestParamDto): Promise<ReservationCancelRequestResultDto> {
         return this.internalHttp.request<ReservationCancelRequestResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.cancelRequest(param.reservation_id), {actor});
+    }
+
+    /**
+     * 연장 조회 — 지금 끝에서 한 단위(시간 이용 · 1박: 업체 이용 시간, 연박: 1일) 늘리면 몇 시까지 · 얼마인지, 못 하면 사유(잡아 두지 않는다). 이용 중에만 연장할 수 있다
+     */
+    @Get('/:reservation_id/extension')
+    @UseGuards(PassportJwtAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '연장 조회'})
+    @ApiOkResponse({type: ReservationExtensionResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getExtension(@PassportActor() actor: Actor, @Param() param: ReservationExtensionParamDto): Promise<ReservationExtensionResultDto> {
+        return this.internalHttp.request<ReservationExtensionResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.extension(param.reservation_id), {actor});
     }
 }

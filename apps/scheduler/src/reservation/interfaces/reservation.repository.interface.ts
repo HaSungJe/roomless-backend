@@ -2,13 +2,22 @@ import type {FindOptionsWhere} from 'typeorm';
 import type {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import type {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
-import type {PendingTransition, UsageTransition} from '../reservation.util.js';
+import type {ExtensionTransition, PendingTransition, UsageTransition} from '../reservation.util.js';
 
-/** 결제 대기가 끝난 기본 구간 행 — 구간 + 결제(QueryBuilder raw) */
+/** 결제 대기가 끝난 구간 행 — 구간(기본 · 연장) + 결제 + 예약(QueryBuilder raw) */
 export interface ExpiredPendingRow {
     reservation_id: string;
+    reservation_detail_id: string;
+    reservation_detail_type_id: string;
     payment_id: string;
     amount: number;
+    price: number;
+    detail_start_at: Date;
+    detail_end_at: Date;
+    reservation_state_id: string;
+    reservation_end_at: Date;
+    total_price: number;
+    maintenance_minutes: number;
 }
 
 /** QR 을 맞출 예약 행 — 이용 중 예약 + 그 예약의 QR(없으면 null) (QueryBuilder raw — t_room_qr 왼쪽 조인) */
@@ -41,10 +50,12 @@ export interface QrLinkRow {
  * 예약 repository 포트(scheduler) — 결제 대기 만료 · 늦은 승인 · 환불 · QR 맞추기 · 이용 전환 · QR 링크 SMS crontab 의 데이터 접근. 상태 전환은 상태 조건을 건다(두 번 돌아도 같은 결과).
  */
 export interface ReservationRepositoryInterface {
-    /** 결제 대기 만료 시각이 지난 기본 구간(구간 PENDING · 결제 READY) */
+    /** 결제 대기 만료 시각이 지난 구간(기본 · 연장 — 구간 PENDING · 결제 READY) */
     findExpiredPendingRows(now: Date): Promise<ExpiredPendingRow[]>;
-    /** 결제 대기 전환 — 결제(READY) → 구간(PENDING) → 예약(PENDING) 을 한 트랜잭션으로, 결제가 이미 바뀌었으면 false */
+    /** 결제 대기 전환(기본 구간) — 결제(READY) → 구간(PENDING) → 예약(PENDING) 을 한 트랜잭션으로, 결제가 이미 바뀌었으면 false */
     transitionPending(row: ExpiredPendingRow, transition: PendingTransition): Promise<boolean>;
+    /** 연장 결제 대기 전환 — 결제(READY) → 구간(PENDING) → 예약(끝 = 연장 시작 조건 — 확정이면 끝 · 합계, 아니면 점유 끝 되돌림) · QR(확정만)을 한 트랜잭션으로, 결제가 이미 바뀌었으면 false */
+    transitionExtension(row: ExpiredPendingRow, transition: ExtensionTransition): Promise<boolean>;
     /** 다시 확인할 만료 결제 — 결제 EXPIRED · since 뒤에 바뀜 */
     findRecheckPayments(since: Date): Promise<PaymentEntity[]>;
     /** 환불 신청 결제 */
@@ -59,7 +70,7 @@ export interface ReservationRepositoryInterface {
     insertRoomQr(entity: RoomQrEntity): Promise<void>;
     /** 이용 시작 대상 — 확정 · start_at ≤ now < end_at, 시작 순 */
     findUsageStartRows(now: Date): Promise<UsageRow[]>;
-    /** 이용 종료 대상 — 확정 · 이용 중 · end_at ≤ now, 끝 순 */
+    /** 이용 종료 대상 — 확정 · 이용 중 · end_at ≤ now · 결제 대기 중인 연장 없음(결제 결과를 기다린다), 끝 순 */
     findUsageEndRows(now: Date): Promise<UsageRow[]>;
     /** 이용 시작 — 예약(확정 → 이용 중) · 호실(예약가능 · 예약완료 · 정비중 → 사용중) · QR 발급을 한 트랜잭션으로, 예약이 이미 바뀌었으면 false */
     startUsage(row: UsageRow, transition: UsageTransition, roomQr: RoomQrEntity): Promise<boolean>;

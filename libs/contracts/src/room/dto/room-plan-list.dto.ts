@@ -30,6 +30,12 @@ export class RoomPlanItemResultDto {
 
     @ApiProperty({description: '최대 박수 — 연박만, 시간 이용 · 1박은 null', nullable: true, type: Number})
     max_nights: number | null;
+
+    @ApiProperty({description: '연장 가능 여부 (0 · 1)'})
+    is_extendable: number;
+
+    @ApiProperty({description: '최대 연장 횟수 (1 ~ 10)'})
+    max_extensions: number;
 }
 
 /**

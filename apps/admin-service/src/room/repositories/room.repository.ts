@@ -146,6 +146,8 @@ export class RoomRepository implements RoomRepositoryInterface {
             .addSelect('p.check_out_time', 'check_out_time')
             .addSelect('p.min_nights', 'min_nights')
             .addSelect('p.max_nights', 'max_nights')
+            .addSelect('p.is_extendable', 'is_extendable')
+            .addSelect('p.max_extensions', 'max_extensions')
             .innerJoin(RoomPlanTypeEntity, 't', 't.room_plan_type_id = p.room_plan_type_id')
             .where('p.store_id = :store_id', {store_id});
     }

@@ -43,6 +43,8 @@ const STORE_PLAN_ROW_KEYS: (keyof DiscoveryStorePlanRow)[] = [
     'check_out_time',
     'min_nights',
     'max_nights',
+    'is_extendable',
+    'max_extensions',
 ];
 
 /** DiscoveryRoomCountRow 키 */
@@ -170,7 +172,7 @@ describe('[SMOKE:data-access] 반경 업체 · 상품 설정 · 그룹별 호실
         'SELECT "r"."room_group_id" AS "room_group_id", CAST(COUNT(*) AS integer) AS "room_count" FROM "t_room" "r" WHERE "r"."room_group_id" IN ($1, $2) AND "r"."is_deleted" = 0 AND "r"."room_state_id" <> $3 GROUP BY "r"."room_group_id"';
     /** 업체 상품 설정 + 종류명 */
     const STORE_PLAN_ROWS_SQL =
-        'SELECT "p"."room_plan_type_id" AS "room_plan_type_id", "p"."is_used" AS "is_used", "p"."days_of_week" AS "days_of_week", "p"."usage_hours" AS "usage_hours", "p"."check_in_time" AS "check_in_time", "p"."check_out_time" AS "check_out_time", "p"."min_nights" AS "min_nights", "p"."max_nights" AS "max_nights", "t"."room_plan_type_name" AS "room_plan_type_name" FROM "t_room_plan" "p" INNER JOIN "t_room_plan_type" "t" ON "t"."room_plan_type_id" = "p"."room_plan_type_id" WHERE "p"."store_id" = $1';
+        'SELECT "p"."room_plan_type_id" AS "room_plan_type_id", "p"."is_used" AS "is_used", "p"."days_of_week" AS "days_of_week", "p"."usage_hours" AS "usage_hours", "p"."check_in_time" AS "check_in_time", "p"."check_out_time" AS "check_out_time", "p"."min_nights" AS "min_nights", "p"."max_nights" AS "max_nights", "p"."is_extendable" AS "is_extendable", "p"."max_extensions" AS "max_extensions", "t"."room_plan_type_name" AS "room_plan_type_name" FROM "t_room_plan" "p" INNER JOIN "t_room_plan_type" "t" ON "t"."room_plan_type_id" = "p"."room_plan_type_id" WHERE "p"."store_id" = $1';
 
     beforeAll(async () => {
         // 접속하지 않는다 — 엔티티 메타데이터만 만들어 QueryBuilder 가 SQL 을 조립하게 한다

@@ -61,6 +61,7 @@ import {
     STORE_LATE_REFUND_PERCENT_DEFAULT,
     STORE_PLAN_DAYS_OF_WEEK_ALL,
     STORE_PLAN_DEFAULTS,
+    STORE_PLAN_MAX_EXTENSIONS_DEFAULT,
     STORE_REFUND_DEADLINE_MINUTES_DEFAULT,
     STORE_SAME_STATE_MESSAGE,
     STORE_STATE,
@@ -214,7 +215,7 @@ export class StoreService {
         store.delete_backup = null;
         await this.storeRepository.insertStore(store);
 
-        // 5. 업체 상품 설정 — 상품 종류마다 1행(판매 · 매일 · 기본 이용 시간 · 입실 · 퇴실 시각)
+        // 5. 업체 상품 설정 — 상품 종류마다 1행(판매 · 매일 · 기본 이용 시간 · 입실 · 퇴실 시각 · 연장 가능 · 3회)
         const plans = STORE_PLAN_DEFAULTS.map((defaults) => {
             const plan = new RoomPlanEntity();
             plan.room_plan_id = generateId();
@@ -227,6 +228,8 @@ export class StoreService {
             plan.check_out_time = defaults.check_out_time;
             plan.min_nights = defaults.min_nights;
             plan.max_nights = defaults.max_nights;
+            plan.is_extendable = 1;
+            plan.max_extensions = STORE_PLAN_MAX_EXTENSIONS_DEFAULT;
             return plan;
         });
         await this.storeRepository.insertStorePlans(plans);

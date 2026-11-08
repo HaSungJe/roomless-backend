@@ -8,7 +8,8 @@ import {ReservationEntity} from './reservation.entity.js';
 /**
  * 예약 구간 — 기본(BASE) 1개 + 연장(EXTENSION) n개. 구간마다 상품 · 시각 · 금액 · 상태 · 결제가 있다.
  * 결제 1건 = 구간 1개(payment_id UK) — 결제가 실패해 다시 하면 이 행이 새 결제 행을 가리키고, 실패한 결제 행은 기록으로 남는다.
- * 상태는 예약 상태 중 PENDING · CONFIRMED · CANCELED · EXPIRED 만 쓴다(CHECK). 점유는 예약 행(t_reservation)이 맡는다.
+ * 상태는 예약 상태 중 PENDING · CONFIRMED · CANCELED · EXPIRED 만 쓴다(CHECK). 점유는 예약 행(t_reservation)이 맡는다 — 연장은 신청 때 예약의 blocked_until 을 늘려 잡아 둔다.
+ * 결제 대기(PENDING) 구간은 예약당 1개(부분 유니크 — 결제 대기 중인 연장이 있으면 더 신청할 수 없다, 사용자 결정 2026-11-09).
  * 지우지 않는다(취소 · 만료는 상태).
  */
 @Entity({name: 't_reservation_detail', comment: '예약 구간(기본 · 연장)'})
@@ -16,6 +17,7 @@ import {ReservationEntity} from './reservation.entity.js';
 @Check('CHK_ReservationDetail_State', `"reservation_state_id" IN ('PENDING', 'CONFIRMED', 'CANCELED', 'EXPIRED')`)
 @Unique('UK_ReservationDetail_PaymentId', ['payment_id'])
 @Index('IDX_ReservationDetail_ReservationId', ['reservation_id'])
+@Index('UK_ReservationDetail_ReservationIdPending', ['reservation_id'], {unique: true, where: `"reservation_state_id" = 'PENDING'`})
 export class ReservationDetailEntity {
     @PrimaryColumn({name: 'reservation_detail_id', length: 32, comment: '예약 구간 ID', primaryKeyConstraintName: 'PK_ReservationDetail'})
     reservation_detail_id: string;

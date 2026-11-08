@@ -85,7 +85,7 @@ describe('admin.store.application-approve — 입점 승인 (큐 경로)', () =>
             for (const plan of plans) {
                 expect(plan).toBeInstanceOf(RoomPlanEntity);
                 expect(plan.room_plan_id).toMatch(/^[a-f0-9]{32}$/);
-                expect(plan).toMatchObject({store_id: store.store_id, is_used: 1, days_of_week: 127});
+                expect(plan).toMatchObject({store_id: store.store_id, is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3});
             }
             expect(
                 plans.map(({room_plan_type_id, usage_hours, check_in_time, check_out_time, min_nights, max_nights}) => ({

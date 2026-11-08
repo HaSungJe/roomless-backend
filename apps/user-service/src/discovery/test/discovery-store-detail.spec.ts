@@ -57,8 +57,30 @@ describe('GET /internal/v1/user-service/discovery/store/:store_id — 업체 상
                 ],
                 breaks: [{start_time: '13:00', end_time: '14:00'}],
                 plans: [
-                    {room_plan_type_id: 'HOURLY', room_plan_type_name: '시간 이용', days_of_week: 127, usage_hours: 3, check_in_time: null, check_out_time: null, min_nights: null, max_nights: null},
-                    {room_plan_type_id: 'LONG', room_plan_type_name: '연박', days_of_week: 127, usage_hours: null, check_in_time: '15:00', check_out_time: '11:00', min_nights: 2, max_nights: 7},
+                    {
+                        room_plan_type_id: 'HOURLY',
+                        room_plan_type_name: '시간 이용',
+                        days_of_week: 127,
+                        usage_hours: 3,
+                        check_in_time: null,
+                        check_out_time: null,
+                        min_nights: null,
+                        max_nights: null,
+                        is_extendable: 1,
+                        max_extensions: 3,
+                    },
+                    {
+                        room_plan_type_id: 'LONG',
+                        room_plan_type_name: '연박',
+                        days_of_week: 127,
+                        usage_hours: null,
+                        check_in_time: '15:00',
+                        check_out_time: '11:00',
+                        min_nights: 2,
+                        max_nights: 7,
+                        is_extendable: 1,
+                        max_extensions: 3,
+                    },
                 ],
             });
             expect(repo.findDiscoveryStore).toHaveBeenCalledWith({store_id: STORE_ID, store_state_id: 'ACTIVE'});

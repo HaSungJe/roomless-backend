@@ -7,6 +7,7 @@ import {RESERVATION_OCCUPYING_STATES, RESERVATION_STATE} from '@app/contracts/re
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {ENTITIES} from '@app/database/entities.js';
 import {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
+import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
@@ -112,6 +113,46 @@ describe('ReservationRepository — 조건 · 오류 변환', () => {
 
         expect(taken).toBeInstanceOf(BadRequestException);
         expect((taken as BadRequestException).getResponse()).toEqual({message: '이미 예약된 시간입니다.'});
+        expect(failed).toBeInstanceOf(InternalServerErrorException);
+        expect((failed as InternalServerErrorException).getResponse()).toEqual({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'});
+    });
+
+    it('[FAIL:duplicate] insertReservationDetail 은 결제 대기 구간 겹침(UK_ReservationDetail_ReservationIdPending)을 400 으로, 그 밖은 통일 500', async () => {
+        const {repository, of} = makeRepository();
+        of(ReservationDetailEntity).insert.mockRejectedValueOnce(constraintError('23505', 'UK_ReservationDetail_ReservationIdPending'));
+        of(ReservationDetailEntity).insert.mockRejectedValueOnce(constraintError('23505', 'UK_ReservationDetail_PaymentId'));
+
+        const pending = await repository.insertReservationDetail(new ReservationDetailEntity()).catch((e: unknown) => e);
+        const failed = await repository.insertReservationDetail(new ReservationDetailEntity()).catch((e: unknown) => e);
+
+        expect(pending).toBeInstanceOf(BadRequestException);
+        expect((pending as BadRequestException).getResponse()).toEqual({message: '결제 대기 중인 연장이 있습니다.'});
+        expect(failed).toBeInstanceOf(InternalServerErrorException);
+        expect((failed as InternalServerErrorException).getResponse()).toEqual({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'});
+    });
+
+    it('[SUCCESS] updateReservationHold 는 받은 조건 · 엔티티 그대로, 1행이면 true · 0행이면 false', async () => {
+        const {repository, of} = makeRepository();
+        of(ReservationEntity).update.mockResolvedValueOnce({affected: 1}).mockResolvedValueOnce({affected: 0});
+        const held = new ReservationEntity();
+        held.blocked_until = new Date('2026-11-10T11:30:00Z');
+        const where = {reservation_id: 'v1', reservation_state_id: 'CHECKED_IN', end_at: new Date('2026-11-10T07:00:00Z')};
+
+        await expect(repository.updateReservationHold(where, held)).resolves.toBe(true);
+        await expect(repository.updateReservationHold(where, held)).resolves.toBe(false);
+        expect(of(ReservationEntity).update).toHaveBeenCalledWith(where, held);
+    });
+
+    it('[FAIL:duplicate] updateReservationHold 는 다음 예약과 점유 겹침(EXC_Reservation_RoomIdBlockedRange)을 400 으로, 그 밖은 통일 500', async () => {
+        const {repository, of} = makeRepository();
+        of(ReservationEntity).update.mockRejectedValueOnce(constraintError('23P01', 'EXC_Reservation_RoomIdBlockedRange'));
+        of(ReservationEntity).update.mockRejectedValueOnce(new Error('db'));
+
+        const taken = await repository.updateReservationHold({reservation_id: 'v1'}, new ReservationEntity()).catch((e: unknown) => e);
+        const failed = await repository.updateReservationHold({reservation_id: 'v1'}, new ReservationEntity()).catch((e: unknown) => e);
+
+        expect(taken).toBeInstanceOf(BadRequestException);
+        expect((taken as BadRequestException).getResponse()).toEqual({message: '다음 예약이 있어 연장할 수 없습니다.'});
         expect(failed).toBeInstanceOf(InternalServerErrorException);
         expect((failed as InternalServerErrorException).getResponse()).toEqual({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'});
     });
@@ -324,6 +365,11 @@ describe('[SMOKE:data-access] find · update 조건(관계 필드 In · LessThan
     const COUNT_RESERVATIONS_SQL =
         'SELECT "ReservationEntity"."reservation_id" AS "ReservationEntity_reservation_id", "ReservationEntity"."start_at" AS "ReservationEntity_start_at", "ReservationEntity"."end_at" AS "ReservationEntity_end_at", "ReservationEntity"."maintenance_minutes" AS "ReservationEntity_maintenance_minutes", "ReservationEntity"."blocked_until" AS "ReservationEntity_blocked_until", "ReservationEntity"."total_price" AS "ReservationEntity_total_price", "ReservationEntity"."refund_deadline_at" AS "ReservationEntity_refund_deadline_at", "ReservationEntity"."late_refund_percent" AS "ReservationEntity_late_refund_percent", "ReservationEntity"."qr_link_sent_at" AS "ReservationEntity_qr_link_sent_at", "ReservationEntity"."canceled_at" AS "ReservationEntity_canceled_at", "ReservationEntity"."cancel_actor" AS "ReservationEntity_cancel_actor", "ReservationEntity"."cancel_reason" AS "ReservationEntity_cancel_reason", "ReservationEntity"."created_at" AS "ReservationEntity_created_at", "ReservationEntity"."updated_at" AS "ReservationEntity_updated_at", "ReservationEntity"."user_id" AS "ReservationEntity_user_id", "ReservationEntity"."store_id" AS "ReservationEntity_store_id", "ReservationEntity"."room_id" AS "ReservationEntity_room_id", "ReservationEntity"."room_plan_type_id" AS "ReservationEntity_room_plan_type_id", "ReservationEntity"."reservation_state_id" AS "ReservationEntity_reservation_state_id" FROM "t_reservation" "ReservationEntity" WHERE (("ReservationEntity"."user_id" = $1) AND ("ReservationEntity"."reservation_state_id" != $2))';
 
+    const EXTENSION_OCCUPIED_SQL =
+        'SELECT "ReservationEntity"."reservation_id" AS "ReservationEntity_reservation_id", "ReservationEntity"."start_at" AS "ReservationEntity_start_at", "ReservationEntity"."end_at" AS "ReservationEntity_end_at", "ReservationEntity"."maintenance_minutes" AS "ReservationEntity_maintenance_minutes", "ReservationEntity"."blocked_until" AS "ReservationEntity_blocked_until", "ReservationEntity"."total_price" AS "ReservationEntity_total_price", "ReservationEntity"."refund_deadline_at" AS "ReservationEntity_refund_deadline_at", "ReservationEntity"."late_refund_percent" AS "ReservationEntity_late_refund_percent", "ReservationEntity"."qr_link_sent_at" AS "ReservationEntity_qr_link_sent_at", "ReservationEntity"."canceled_at" AS "ReservationEntity_canceled_at", "ReservationEntity"."cancel_actor" AS "ReservationEntity_cancel_actor", "ReservationEntity"."cancel_reason" AS "ReservationEntity_cancel_reason", "ReservationEntity"."created_at" AS "ReservationEntity_created_at", "ReservationEntity"."updated_at" AS "ReservationEntity_updated_at", "ReservationEntity"."user_id" AS "ReservationEntity_user_id", "ReservationEntity"."store_id" AS "ReservationEntity_store_id", "ReservationEntity"."room_id" AS "ReservationEntity_room_id", "ReservationEntity"."room_plan_type_id" AS "ReservationEntity_room_plan_type_id", "ReservationEntity"."reservation_state_id" AS "ReservationEntity_reservation_state_id" FROM "t_reservation" "ReservationEntity" WHERE (("ReservationEntity"."room_id" = $1) AND ("ReservationEntity"."reservation_id" != $2) AND ("ReservationEntity"."reservation_state_id" IN ($3, $4, $5)) AND ("ReservationEntity"."start_at" < $6) AND ("ReservationEntity"."blocked_until" > $7))';
+    const RESERVATION_DETAILS_SQL =
+        'SELECT "ReservationDetailEntity"."reservation_detail_id" AS "ReservationDetailEntity_reservation_detail_id", "ReservationDetailEntity"."start_at" AS "ReservationDetailEntity_start_at", "ReservationDetailEntity"."end_at" AS "ReservationDetailEntity_end_at", "ReservationDetailEntity"."price" AS "ReservationDetailEntity_price", "ReservationDetailEntity"."expires_at" AS "ReservationDetailEntity_expires_at", "ReservationDetailEntity"."created_at" AS "ReservationDetailEntity_created_at", "ReservationDetailEntity"."updated_at" AS "ReservationDetailEntity_updated_at", "ReservationDetailEntity"."reservation_id" AS "ReservationDetailEntity_reservation_id", "ReservationDetailEntity"."reservation_detail_type_id" AS "ReservationDetailEntity_reservation_detail_type_id", "ReservationDetailEntity"."room_plan_type_id" AS "ReservationDetailEntity_room_plan_type_id", "ReservationDetailEntity"."reservation_state_id" AS "ReservationDetailEntity_reservation_state_id", "ReservationDetailEntity"."payment_id" AS "ReservationDetailEntity_payment_id" FROM "t_reservation_detail" "ReservationDetailEntity" WHERE (("ReservationDetailEntity"."reservation_id" = $1) AND ("ReservationDetailEntity"."reservation_state_id" = $2))';
+
     /** 마지막 이용 중 취소 요청 — findOne 에 넘긴 조건 · 정렬 */
     const LATEST_CANCEL_REQUEST_SQL =
         'SELECT "ReservationCancelRequestEntity"."reservation_cancel_request_id" AS "ReservationCancelRequestEntity_reservation_cancel_request_id", "ReservationCancelRequestEntity"."cancel_reason" AS "ReservationCancelRequestEntity_cancel_reason", "ReservationCancelRequestEntity"."expires_at" AS "ReservationCancelRequestEntity_expires_at", "ReservationCancelRequestEntity"."responded_at" AS "ReservationCancelRequestEntity_responded_at", "ReservationCancelRequestEntity"."created_at" AS "ReservationCancelRequestEntity_created_at", "ReservationCancelRequestEntity"."updated_at" AS "ReservationCancelRequestEntity_updated_at", "ReservationCancelRequestEntity"."reservation_id" AS "ReservationCancelRequestEntity_reservation_id", "ReservationCancelRequestEntity"."user_id" AS "ReservationCancelRequestEntity_user_id", "ReservationCancelRequestEntity"."reservation_cancel_request_state_id" AS "a2ccf08b00457cb3c0d3f278591697f184e826a6" FROM "t_reservation_cancel_request" "ReservationCancelRequestEntity" WHERE (("ReservationCancelRequestEntity"."reservation_id" = $1)) ORDER BY "ReservationCancelRequestEntity"."created_at" DESC';
@@ -352,6 +398,25 @@ describe('[SMOKE:data-access] find · update 조건(관계 필드 In · LessThan
             'WHERE (("ReservationEntity"."room_id" IN ($1, $2)) AND ("ReservationEntity"."reservation_state_id" IN ($3, $4, $5)) AND ("ReservationEntity"."start_at" < $6) AND ("ReservationEntity"."blocked_until" > $7))',
         );
         expect(sql).toBe(OCCUPIED_SQL);
+    });
+
+    it('연장 — 그 호실의 다른 점유 예약(자기 예약 Not · 점유 상태 IN · 시작 < 새 끝 + 정비 · 막힌 끝 > 연장 시작)', async () => {
+        await repository.findReservations({room_id: 'r1', reservation_id: Not('v1'), reservation_state_id: In(RESERVATION_OCCUPYING_STATES), start_at: LessThan(to), blocked_until: MoreThan(from)});
+        const [sql, parameters] = buildFindQuery(dataSource, find.mock.calls[0]);
+
+        expect(find).toHaveBeenCalledTimes(1);
+        expect(parameters).toEqual(['r1', 'v1', 'PENDING', 'CONFIRMED', 'CHECKED_IN', to, from]);
+        expect(sql).toBe(EXTENSION_OCCUPIED_SQL);
+    });
+
+    it('예약 구간 — 예약(관계 컬럼) · 구간 상태(관계 컬럼) 조건', async () => {
+        await repository.findReservationDetails({reservation_id: 'v1', reservation_state_id: 'PENDING'});
+        const [sql, parameters] = buildFindQuery(dataSource, find.mock.calls[0]);
+
+        expect(find).toHaveBeenCalledTimes(1);
+        expect(parameters).toEqual(['v1', 'PENDING']);
+        expect(sql).toContain('WHERE (("ReservationDetailEntity"."reservation_id" = $1) AND ("ReservationDetailEntity"."reservation_state_id" = $2))');
+        expect(sql).toBe(RESERVATION_DETAILS_SQL);
     });
 
     it('일시 예약불가 — 업체 · 시작 < 범위 끝 · 끝 > 범위 시작 · 지워지지 않은 것', async () => {
@@ -413,6 +478,35 @@ describe('[SMOKE:data-access] find · update 조건(관계 필드 In · LessThan
         expect(parameters).toEqual(['v1']);
         expect(sql).toContain('WHERE (("ReservationCancelRequestEntity"."reservation_id" = $1)) ORDER BY "ReservationCancelRequestEntity"."created_at" DESC');
         expect(sql).toBe(LATEST_CANCEL_REQUEST_SQL);
+    });
+
+    it('연장 잡아 두기 — update 에 넘긴 조건(예약 · 관계 컬럼 상태 · 지금 끝) 그대로, 점유 끝만 쓴다', async () => {
+        const update = vi.spyOn(dataSource.manager, 'update').mockResolvedValue({affected: 1, raw: [], generatedMaps: []});
+        const held = new ReservationEntity();
+        held.blocked_until = new Date('2026-11-10T11:30:00Z');
+        const end_at = new Date('2026-11-10T07:00:00Z');
+
+        await repository.updateReservationHold({reservation_id: 'v1', reservation_state_id: 'CHECKED_IN', end_at}, held);
+        const [sql, parameters] = buildUpdateQuery(dataSource, update.mock.calls[0]);
+        update.mockRestore();
+
+        expect(parameters).toEqual([held.blocked_until, 'v1', 'CHECKED_IN', end_at]);
+        expect(sql).toBe('UPDATE "t_reservation" SET "blocked_until" = $1 WHERE ("reservation_id" = $2 AND "reservation_state_id" = $3 AND "end_at" = $4)');
+    });
+
+    it('연장 확정 — update 에 넘긴 조건(예약 · 관계 컬럼 상태 IN · 끝 = 연장 시작) 그대로, 끝 · 합계를 쓴다', async () => {
+        const update = vi.spyOn(dataSource.manager, 'update').mockResolvedValue({affected: 1, raw: [], generatedMaps: []});
+        const extended = new ReservationEntity();
+        extended.end_at = new Date('2026-11-10T11:00:00Z');
+        extended.total_price = 60000;
+        const start_at = new Date('2026-11-10T07:00:00Z');
+
+        await repository.updateReservation({reservation_id: 'v1', reservation_state_id: In(['CONFIRMED', 'CHECKED_IN']), end_at: start_at}, extended);
+        const [sql, parameters] = buildUpdateQuery(dataSource, update.mock.calls[0]);
+        update.mockRestore();
+
+        expect(parameters).toEqual([extended.end_at, 60000, 'v1', 'CONFIRMED', 'CHECKED_IN', start_at]);
+        expect(sql).toBe('UPDATE "t_reservation" SET "end_at" = $1, "total_price" = $2 WHERE ("reservation_id" = $3 AND "reservation_state_id" IN ($4, $5) AND "end_at" = $6)');
     });
 
     it('예약 호실 상태 쓰기 — update 에 넘긴 조건(호실 · 관계 컬럼 상태 IN · 지워지지 않음) 그대로', async () => {

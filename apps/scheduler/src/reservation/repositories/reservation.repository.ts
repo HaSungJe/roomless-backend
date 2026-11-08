@@ -3,7 +3,7 @@ import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
 import {In, IsNull, MoreThanOrEqual} from 'typeorm';
 import type {FindOptionsWhere, InsertQueryBuilder, Repository, SelectQueryBuilder} from 'typeorm';
-import {PAYMENT_STATE, RESERVATION_DETAIL_TYPE, RESERVATION_STATE, USAGE_ROOM_STATE} from '@app/contracts/reservation/reservation.constants.js';
+import {PAYMENT_STATE, RESERVATION_STATE, USAGE_ROOM_STATE} from '@app/contracts/reservation/reservation.constants.js';
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
@@ -13,7 +13,7 @@ import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
 import type {ExpiredPendingRow, QrLinkRow, QrSyncTargetRow, ReservationRepositoryInterface, UsageRow} from '../interfaces/reservation.repository.interface.js';
-import type {PendingTransition, UsageTransition} from '../reservation.util.js';
+import type {ExtensionTransition, PendingTransition, UsageTransition} from '../reservation.util.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
@@ -55,7 +55,7 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * 결제 대기 만료 시각이 지난 기본 구간
+     * 결제 대기 만료 시각이 지난 구간(기본 · 연장)
      *
      * @param now 지금
      * @returns 구간 행
@@ -69,7 +69,8 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * 결제 대기 만료 쿼리 — 기본 구간 PENDING · expires_at ≤ now · 결제 READY. 매핑 민감(결제 조인 · raw select — 별칭이 ExpiredPendingRow 키와 같다)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 결제 대기 만료 쿼리 — 구간(기본 · 연장) PENDING · expires_at ≤ now · 결제 READY, 예약 상태 · 끝 · 합계 · 정비시간(연장 확정 · 되돌림).
+     * 매핑 민감(결제 · 예약 조인 · raw select — 별칭이 ExpiredPendingRow 키와 같다)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param now 지금
      * @returns 쿼리 빌더
@@ -78,18 +79,27 @@ export class ReservationRepository implements ReservationRepositoryInterface {
         return this.reservationDetails
             .createQueryBuilder('d')
             .select('d.reservation_id', 'reservation_id')
+            .addSelect('d.reservation_detail_id', 'reservation_detail_id')
+            .addSelect('d.reservation_detail_type_id', 'reservation_detail_type_id')
             .addSelect('d.payment_id', 'payment_id')
             .addSelect('p.amount', 'amount')
+            .addSelect('d.price', 'price')
+            .addSelect('d.start_at', 'detail_start_at')
+            .addSelect('d.end_at', 'detail_end_at')
+            .addSelect('r.reservation_state_id', 'reservation_state_id')
+            .addSelect('r.end_at', 'reservation_end_at')
+            .addSelect('r.total_price', 'total_price')
+            .addSelect('r.maintenance_minutes', 'maintenance_minutes')
             .innerJoin(PaymentEntity, 'p', 'p.payment_id = d.payment_id')
-            .where('d.reservation_detail_type_id = :base', {base: RESERVATION_DETAIL_TYPE.BASE})
-            .andWhere('d.reservation_state_id = :pending', {pending: RESERVATION_STATE.PENDING})
+            .innerJoin(ReservationEntity, 'r', 'r.reservation_id = d.reservation_id')
+            .where('d.reservation_state_id = :pending', {pending: RESERVATION_STATE.PENDING})
             .andWhere('d.expires_at <= :now', {now})
             .andWhere('p.payment_state_id = :ready', {ready: PAYMENT_STATE.READY})
             .orderBy('d.expires_at', 'ASC');
     }
 
     /**
-     * 결제 대기 전환 — 결제(READY) → 구간(PENDING) → 예약(PENDING). 결제가 이미 바뀌었으면(결제 확인 · 취소가 먼저) 아무것도 바꾸지 않고 false, 그 뒤가 어긋나면 롤백(500).
+     * 결제 대기 전환(기본 구간) — 결제(READY) → 구간(PENDING) → 예약(PENDING). 결제가 이미 바뀌었으면(결제 확인 · 취소가 먼저) 아무것도 바꾸지 않고 false, 그 뒤가 어긋나면 롤백(500).
      *
      * @param row 구간 행
      * @param transition 결제 · 구간 · 예약 엔티티
@@ -106,6 +116,42 @@ export class ReservationRepository implements ReservationRepositoryInterface {
                 const reservation = await this.reservations.update({reservation_id: row.reservation_id, reservation_state_id: RESERVATION_STATE.PENDING}, transition.reservation);
                 if (reservation.affected !== 1) {
                     throw new Error('reservation state changed');
+                }
+                return true;
+            });
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 연장 결제 대기 전환 — 결제(READY) → 구간(그 연장 구간 · PENDING) → 예약 · QR 을 한 트랜잭션으로. 예약은 끝 = 연장 시작 조건(그 사이 끝이 바뀌지 않았을 때만)으로,
+     * 확정(QR 엔티티가 있다)이면 확정 · 이용 중 예약의 끝 · 합계를 늘리고(0행이면 롤백 500) QR 유효 끝(= 연장 시작인 것)을 연장 끝으로, 아니면(환불 · 만료) 점유 끝만 되돌린다.
+     * 결제가 이미 바뀌었으면(결제 확인 · 취소가 먼저) 아무것도 바꾸지 않고 false.
+     *
+     * @param row 연장 구간 행
+     * @param transition 결제 · 구간 · 예약 · QR(확정만) 엔티티
+     * @returns 바꿨으면 true
+     */
+    async transitionExtension(row: ExpiredPendingRow, transition: ExtensionTransition): Promise<boolean> {
+        try {
+            return await this.txHost.withTransaction(async () => {
+                const payment = await this.payments.update({payment_id: row.payment_id, payment_state_id: PAYMENT_STATE.READY}, transition.payment);
+                if (payment.affected !== 1) {
+                    return false;
+                }
+                await this.reservationDetails.update({reservation_detail_id: row.reservation_detail_id, reservation_state_id: RESERVATION_STATE.PENDING}, transition.detail);
+                if (transition.room_qr) {
+                    const reservation = await this.reservations.update(
+                        {reservation_id: row.reservation_id, reservation_state_id: In([RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN]), end_at: row.detail_start_at},
+                        transition.reservation,
+                    );
+                    if (reservation.affected !== 1) {
+                        throw new Error('reservation changed');
+                    }
+                    await this.roomQrs.update({reservation_id: row.reservation_id, ends_at: row.detail_start_at}, transition.room_qr);
+                } else {
+                    await this.reservations.update({reservation_id: row.reservation_id, end_at: row.detail_start_at}, transition.reservation);
                 }
                 return true;
             });
@@ -281,8 +327,8 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * 이용 종료 대상 쿼리 — 확정 · 이용 중 · end_at ≤ now(끝 정각부터 — 시작을 놓친 확정도), 끝 순.
-     * 매핑 민감(raw select — 별칭이 UsageRow 키와 같다 · IN · 시각 경계)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 이용 종료 대상 쿼리 — 확정 · 이용 중 · end_at ≤ now(끝 정각부터 — 시작을 놓친 확정도), 결제 대기 중인 연장이 있는 예약은 빼고 결제 결과를 기다린다(최대 5분), 끝 순.
+     * 매핑 민감(raw select — 별칭이 UsageRow 키와 같다 · IN · 시각 경계 · NOT EXISTS 서브쿼리)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param now 지금
      * @returns 쿼리 빌더
@@ -296,6 +342,11 @@ export class ReservationRepository implements ReservationRepositoryInterface {
             .addSelect('r.end_at', 'end_at')
             .where('r.reservation_state_id IN (:...states)', {states: [RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN]})
             .andWhere('r.end_at <= :now', {now})
+            .andWhere(
+                (qb) =>
+                    `NOT EXISTS ${qb.subQuery().select('1').from(ReservationDetailEntity, 'pd').where('pd.reservation_id = r.reservation_id').andWhere('pd.reservation_state_id = :pending').getQuery()}`,
+            )
+            .setParameter('pending', RESERVATION_STATE.PENDING)
             .orderBy('r.end_at', 'ASC');
     }
 

@@ -22,6 +22,8 @@ describe('GET /internal/v1/admin-service/room/plan — 업체 상품 설정 조�
                 check_out_time: '12:00:00',
                 min_nights: 2,
                 max_nights: 14,
+                is_extendable: 0,
+                max_extensions: 10,
             }),
             planRow({room_plan_id: '1'.repeat(32), room_plan_type_id: 'HOURLY', room_plan_type_name: '시간 이용', usage_hours: 3, check_in_time: null, check_out_time: null}),
             planRow(),
@@ -55,6 +57,8 @@ describe('GET /internal/v1/admin-service/room/plan — 업체 상품 설정 조�
                         check_out_time: null,
                         min_nights: null,
                         max_nights: null,
+                        is_extendable: 1,
+                        max_extensions: 3,
                     },
                     {
                         room_plan_type_id: 'NIGHT',
@@ -66,6 +70,8 @@ describe('GET /internal/v1/admin-service/room/plan — 업체 상품 설정 조�
                         check_out_time: '11:00',
                         min_nights: null,
                         max_nights: null,
+                        is_extendable: 1,
+                        max_extensions: 3,
                     },
                     {
                         room_plan_type_id: 'LONG',
@@ -77,6 +83,8 @@ describe('GET /internal/v1/admin-service/room/plan — 업체 상품 설정 조�
                         check_out_time: '12:00',
                         min_nights: 2,
                         max_nights: 14,
+                        is_extendable: 0,
+                        max_extensions: 10,
                     },
                 ],
             });

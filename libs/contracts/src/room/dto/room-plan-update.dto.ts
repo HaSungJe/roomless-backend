@@ -12,7 +12,8 @@ export class RoomPlanUpdateParamDto {
 }
 
 /**
- * 업체 상품 설정 수정 — 종류별. 시간 이용(HOURLY)은 이용 시간 필수 · 시각은 받지 않고, 1박 · 연박은 입실 · 퇴실 시각 필수(서로 달라야 한다) · 이용 시간은 받지 않는다.
+ * 업체 상품 설정 수정 — 종류별. 사용 여부 · 예약 가능 요일 · 연장 가능 여부 · 최대 연장 횟수는 모든 종류 필수.
+ * 시간 이용(HOURLY)은 이용 시간 필수 · 시각은 받지 않고, 1박 · 연박은 입실 · 퇴실 시각 필수(서로 달라야 한다) · 이용 시간은 받지 않는다.
  * 연박(LONG)은 최소 · 최대 박수도 필수(1 ~ 180, 최소 ≤ 최대) · 시간 이용 · 1박은 받지 않는다.
  * 종류가 경로라 종류별 값은 선택 필드로 두고 service 가 종류로 가른다(없으면 400 — validation_errors 에 그 필드)
  */
@@ -28,6 +29,18 @@ export class RoomPlanUpdateDto {
     @Max(127, {message: '예약 가능 요일은 1 ~ 127 사이로 입력해주세요.'})
     @IsNotEmpty({message: '예약 가능 요일을 입력해주세요.'})
     days_of_week: number;
+
+    @ApiProperty({description: '연장 가능 여부 (0: 이 상품 예약은 연장할 수 없다, 1: 연장 가능 — 최대 연장 횟수까지)', enum: [0, 1]})
+    @IsIn([0, 1], {message: '연장 가능 여부가 올바르지 않습니다.'})
+    @IsNotEmpty({message: '연장 가능 여부를 입력해주세요.'})
+    is_extendable: number;
+
+    @ApiProperty({description: '최대 연장 횟수 (1 ~ 10 — 예약 1건에 확정되는 연장 수, 연장 불가여도 값은 남는다)'})
+    @IsInt({message: '최대 연장 횟수는 정수로 입력해주세요.'})
+    @Min(1, {message: '최대 연장 횟수는 1 ~ 10회 사이로 입력해주세요.'})
+    @Max(10, {message: '최대 연장 횟수는 1 ~ 10회 사이로 입력해주세요.'})
+    @IsNotEmpty({message: '최대 연장 횟수를 입력해주세요.'})
+    max_extensions: number;
 
     @ApiProperty({description: '이용 시간(시간, 1 ~ 24) — 시간 이용(HOURLY)이면 필수, 1박 · 연박은 받지 않는다', required: false})
     @IsOptional()

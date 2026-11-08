@@ -1,14 +1,16 @@
 import type {ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import type {ReservationAvailabilityGroupResultDto, ReservationAvailabilityRoomResultDto, ReservationAvailabilitySlotResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
+import type {ReservationExtensionResultDto} from '@app/contracts/reservation/dto/reservation-extension.dto.js';
 import type {ReservationListItemResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import type {ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
-import {PAYMENT_STATE, RESERVATION_CANCEL_REQUEST_STATE, RESERVATION_STATE, USAGE_ROOM_STATE} from '@app/contracts/reservation/reservation.constants.js';
+import {PAYMENT_STATE, RESERVATION_CANCEL_REQUEST_STATE, RESERVATION_DETAIL_TYPE, RESERVATION_STATE, USAGE_ROOM_STATE} from '@app/contracts/reservation/reservation.constants.js';
 import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import type {Dayjs} from '@app/common/utils/dayjs.js';
 import {generateId} from '@app/common/utils/id.js';
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import type {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
+import type {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import type {RoomGroupPlanEntity} from '@app/database/entities/room/room-group-plan.entity.js';
@@ -20,12 +22,21 @@ import type {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import type {BookableRoomRow, ReservationListRow, ReservationSegmentRow} from './interfaces/reservation.repository.interface.js';
 import {
     RESERVATION_DATE_FORMAT,
+    RESERVATION_EXTENSION_EXPIRED_MESSAGE,
+    RESERVATION_EXTENSION_NEXT_RESERVATION_MESSAGE,
+    RESERVATION_EXTENSION_NOT_EXTENDABLE_MESSAGE,
+    RESERVATION_EXTENSION_NOT_IN_USE_MESSAGE,
+    RESERVATION_EXTENSION_NOT_ON_SALE_MESSAGE,
+    RESERVATION_EXTENSION_PENDING_MESSAGE,
+    RESERVATION_EXTENSION_TIME_MESSAGE,
+    RESERVATION_EXTENSION_UNAVAILABLE_MESSAGE,
     RESERVATION_HOURLY_STEP_MINUTES,
     RESERVATION_IMMEDIATE_MINUTES,
     RESERVATION_ORDER_NAME_MAX_LENGTH,
     RESERVATION_PLAN_TYPE,
     RESERVATION_PLAN_TYPE_NAME,
     RESERVATION_ROOM_STATE,
+    RESERVATION_STORE_STATE_ACTIVE,
 } from './reservation.constants.js';
 
 /** 이용 구간 — 입실일(요일 · 요금 기준일, 한국 날짜 0시) · 시작 · 끝(한국 시각) · 지금 바로 여부 */
@@ -733,5 +744,184 @@ export function toCancelRequest(request: ReservationCancelRequestEntity, row: Re
         refund_amount: segments.filter((segment) => PAID_PAYMENT_STATES.includes(segment.payment_state_id)).reduce((sum, segment) => sum + Number(segment.price), 0),
         expires_at: dayjs(request.expires_at).toISOString(),
         created_at: dayjs(request.created_at).toISOString(),
+    };
+}
+
+/** 연장 구간 — 요금 상품(HOURLY · NIGHT) · 요금 기준일(연장 시작의 한국 날짜) · 시작(= 지금 끝) · 끝 */
+export interface ExtensionStay {
+    room_plan_type_id: string;
+    day: Dayjs;
+    start: Dayjs;
+    end: Dayjs;
+}
+
+/** 연장 판정 재료 — 예약 상품 행(연장 설정 · 연박 최대 박수) · 요금 상품 행(판매 여부) · 그룹 상품 · 연장 구간 · 영업시간 · 브레이크 · 일시 예약불가 · 그 호실의 다른 점유 예약 */
+export interface ExtensionContext {
+    now: Dayjs;
+    reservation: Pick<ReservationEntity, 'reservation_state_id' | 'start_at' | 'end_at' | 'maintenance_minutes'>;
+    details: Pick<ReservationDetailEntity, 'reservation_detail_type_id' | 'reservation_state_id'>[];
+    store: Pick<StoreEntity, 'store_state_id' | 'is_open' | 'is_always_open'> | null;
+    room_state_id: string | null;
+    base_plan: Pick<RoomPlanEntity, 'room_plan_type_id' | 'is_extendable' | 'max_extensions' | 'max_nights'> | null;
+    unit_plan: Pick<RoomPlanEntity, 'is_used'> | null;
+    group_plan: RoomGroupPlanEntity | null;
+    stay: ExtensionStay | null;
+    hours: StoreHourEntity[];
+    breaks: StoreBreakEntity[];
+    unavailable: StoreUnavailablePeriodEntity[];
+    occupied: OccupiedRange[];
+}
+
+/**
+ * 연장 요금 상품 — 연박은 1박, 시간 이용 · 1박은 시간 이용(사용자 결정 2026-11-09).
+ *
+ * @param room_plan_type_id 예약의 기본 상품
+ * @returns 요금 상품 종류
+ */
+export function toExtensionPlanType(room_plan_type_id: string): string {
+    return room_plan_type_id === RESERVATION_PLAN_TYPE.LONG ? RESERVATION_PLAN_TYPE.NIGHT : RESERVATION_PLAN_TYPE.HOURLY;
+}
+
+/**
+ * 연장 구간 — 지금 끝에서 한 단위: 시간 이용 요금이면 + 업체 이용 시간, 1박 요금(연박)이면 + 1일(퇴실 시각 그대로). 요금 기준일은 연장 시작의 한국 날짜.
+ * 예: 1박 21:00 ~ 09:00 → 09:00 ~ 13:00(이용 시간 4), 연박 ~ 11/12 11:00 → 11/12 11:00 ~ 11/13 11:00.
+ *
+ * @param reservation 예약 (끝)
+ * @param unit_plan 요금 상품의 업체 설정 (종류 · 이용 시간)
+ * @returns 연장 구간
+ */
+export function toExtensionStay(reservation: Pick<ReservationEntity, 'end_at'>, unit_plan: Pick<RoomPlanEntity, 'room_plan_type_id' | 'usage_hours'>): ExtensionStay {
+    const start = dayjs(reservation.end_at).tz(KST_TIMEZONE);
+    const end = unit_plan.room_plan_type_id === RESERVATION_PLAN_TYPE.NIGHT ? start.add(1, 'day') : start.add(unit_plan.usage_hours as number, 'hour');
+    return {room_plan_type_id: unit_plan.room_plan_type_id, day: toKstDay(start.format(RESERVATION_DATE_FORMAT)), start, end};
+}
+
+/**
+ * 예약의 박수 — 입실 날짜 ~ 퇴실 날짜(한국 날짜) 차이(연박 최대 박수 판정).
+ *
+ * @param reservation 예약 (시작 · 끝)
+ * @returns 박수
+ */
+export function toStayNights(reservation: Pick<ReservationEntity, 'start_at' | 'end_at'>): number {
+    const start = toKstDay(dayjs(reservation.start_at).tz(KST_TIMEZONE).format(RESERVATION_DATE_FORMAT));
+    return toKstDay(dayjs(reservation.end_at).tz(KST_TIMEZONE).format(RESERVATION_DATE_FORMAT)).diff(start, 'day');
+}
+
+/**
+ * 연장 금액 — 요금 기준일(연장 시작 날짜)의 기간 가격, 없으면 그룹 상품 기본 요금(예약 금액 계산과 같은 priceOn).
+ *
+ * @param stay 연장 구간
+ * @param base_price 그룹 상품 기본 요금
+ * @param periods 그 그룹 상품의 기간 가격
+ * @returns 금액(원)
+ */
+export function calculateExtensionPrice(stay: ExtensionStay, base_price: number, periods: RoomGroupPlanPriceEntity[]): number {
+    return priceOn(stay.day, base_price, periods);
+}
+
+/**
+ * 연장 구간의 영업시간 · 브레이크 — 시간 단위 연장(시간 이용 요금)은 구간 전체가 영업시간 안 · 브레이크와 안 겹침,
+ * 하루 연장(1박 요금 — 연박)은 새 퇴실 시각이 (여는, 닫는] 안 · 브레이크 밖. 24시간 업체는 영업시간을 보지 않는다(브레이크는 본다).
+ *
+ * @param stay 연장 구간
+ * @param is_always_open 24시간 업체인지
+ * @param hours 요일별 영업시간
+ * @param breaks 브레이크타임
+ * @returns 맞으면 true
+ */
+function isExtensionWithinStoreHours(stay: ExtensionStay, is_always_open: number, hours: StoreHourEntity[], breaks: StoreBreakEntity[]): boolean {
+    const firstDay = stay.day.subtract(1, 'day');
+    const lastDay = toKstDay(stay.end.format(RESERVATION_DATE_FORMAT));
+    const breakWindows = listBreakWindows(breaks, firstDay, lastDay);
+    const hourWindows = is_always_open === 1 ? null : listBusinessWindows(hours, firstDay, lastDay);
+    if (stay.room_plan_type_id === RESERVATION_PLAN_TYPE.HOURLY) {
+        const overlapsBreak = breakWindows.some((window) => window.start.isBefore(stay.end) && window.end.isAfter(stay.start));
+        const inHours = hourWindows === null || hourWindows.some((window) => !window.start.isAfter(stay.start) && !window.end.isBefore(stay.end));
+        return !overlapsBreak && inHours;
+    }
+    const checkOutBreak = breakWindows.some((window) => window.start.isBefore(stay.end) && !window.end.isBefore(stay.end));
+    const checkOutHours = hourWindows === null || hourWindows.some((window) => window.start.isBefore(stay.end) && !window.end.isBefore(stay.end));
+    return !checkOutBreak && checkOutHours;
+}
+
+/**
+ * 연장 가능 판정 — 위에서부터 첫 사유, 할 수 있으면 null(사용자 결정 2026-11-09). 조회의 사유 · 신청의 400 이 같은 문구다.
+ * 업체 연장 설정은 예약 상품 행(1박 예약은 시간 이용 요금으로 늘려도 1박 행)의 지금 값, 횟수는 확정된 연장 구간 수.
+ * 예약 가능 요일 · 예약 가능 기간 · 즉시 입실 조건은 보지 않는다(이미 이용 중인 호실).
+ *
+ * @param ctx 판정 재료
+ * @returns 못 하는 사유 또는 null
+ */
+export function judgeExtension(ctx: ExtensionContext): string | null {
+    const state = ctx.reservation.reservation_state_id;
+    const in_use = (state === RESERVATION_STATE.CONFIRMED || state === RESERVATION_STATE.CHECKED_IN) && !ctx.now.isBefore(ctx.reservation.start_at) && ctx.now.isBefore(ctx.reservation.end_at);
+    if (!in_use) {
+        return RESERVATION_EXTENSION_NOT_IN_USE_MESSAGE;
+    }
+    if (ctx.details.some((detail) => detail.reservation_detail_type_id === RESERVATION_DETAIL_TYPE.EXTENSION && detail.reservation_state_id === RESERVATION_STATE.EXPIRED)) {
+        return RESERVATION_EXTENSION_EXPIRED_MESSAGE;
+    }
+    if (ctx.details.some((detail) => detail.reservation_state_id === RESERVATION_STATE.PENDING)) {
+        return RESERVATION_EXTENSION_PENDING_MESSAGE;
+    }
+    if (!ctx.store || ctx.store.store_state_id !== RESERVATION_STORE_STATE_ACTIVE || ctx.store.is_open !== 1 || !ctx.room_state_id || ctx.room_state_id === RESERVATION_ROOM_STATE.DISABLED) {
+        return RESERVATION_EXTENSION_UNAVAILABLE_MESSAGE;
+    }
+    if (!ctx.base_plan || ctx.base_plan.is_extendable !== 1) {
+        return RESERVATION_EXTENSION_NOT_EXTENDABLE_MESSAGE;
+    }
+    const confirmed = ctx.details.filter((detail) => detail.reservation_detail_type_id === RESERVATION_DETAIL_TYPE.EXTENSION && detail.reservation_state_id === RESERVATION_STATE.CONFIRMED).length;
+    if (confirmed >= ctx.base_plan.max_extensions) {
+        return `연장은 최대 ${ctx.base_plan.max_extensions}회까지 할 수 있습니다.`;
+    }
+    if (!ctx.unit_plan || ctx.unit_plan.is_used !== 1 || !ctx.group_plan || !isGroupPlanOnSale(ctx.group_plan) || !ctx.stay) {
+        return RESERVATION_EXTENSION_NOT_ON_SALE_MESSAGE;
+    }
+    const stay = ctx.stay;
+    if (ctx.base_plan.room_plan_type_id === RESERVATION_PLAN_TYPE.LONG && toStayNights(ctx.reservation) + 1 > (ctx.base_plan.max_nights as number)) {
+        return `연박은 최대 ${ctx.base_plan.max_nights}박까지 연장할 수 있습니다.`;
+    }
+    const blockedByPeriod = ctx.unavailable.some((period) => dayjs(period.starts_at).isBefore(stay.end) && dayjs(period.ends_at).isAfter(stay.start));
+    if (!isExtensionWithinStoreHours(stay, ctx.store.is_always_open, ctx.hours, ctx.breaks) || blockedByPeriod) {
+        return RESERVATION_EXTENSION_TIME_MESSAGE;
+    }
+    const blocked_until = stay.end.add(ctx.reservation.maintenance_minutes, 'minute');
+    if (ctx.occupied.some((range) => dayjs(range.start_at).isBefore(blocked_until) && dayjs(range.blocked_until).isAfter(stay.start))) {
+        return RESERVATION_EXTENSION_NEXT_RESERVATION_MESSAGE;
+    }
+    return null;
+}
+
+/**
+ * 연장 주문명 — `<상호명> <호실명> 연장 <n>시간` · `… 연장 1일`, 100자로 자른다.
+ *
+ * @param store_name 상호명
+ * @param room_name 호실명
+ * @param stay 연장 구간
+ * @returns 주문명
+ */
+export function buildExtensionOrderName(store_name: string, room_name: string, stay: ExtensionStay): string {
+    const unit = stay.room_plan_type_id === RESERVATION_PLAN_TYPE.NIGHT ? '1일' : `${stay.end.diff(stay.start, 'hour')}시간`;
+    return `${store_name} ${room_name} 연장 ${unit}`.slice(0, RESERVATION_ORDER_NAME_MAX_LENGTH);
+}
+
+/**
+ * 연장 조회 응답 — 계산할 수 있는 값은 사유가 있어도 채운다.
+ *
+ * @param reservation_id 예약 ID
+ * @param reason 못 하는 사유 또는 null
+ * @param stay 연장 구간 또는 null
+ * @param amount 금액 또는 null
+ * @returns 조회 결과
+ */
+export function toExtensionResult(reservation_id: string, reason: string | null, stay: ExtensionStay | null, amount: number | null): ReservationExtensionResultDto {
+    return {
+        reservation_id,
+        is_extendable: reason === null ? 1 : 0,
+        reason,
+        room_plan_type_id: stay?.room_plan_type_id ?? null,
+        start_at: stay ? stay.start.toISOString() : null,
+        end_at: stay ? stay.end.toISOString() : null,
+        amount,
     };
 }

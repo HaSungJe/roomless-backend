@@ -54,3 +54,27 @@ export const RESERVATION_CANCEL_REQUEST_NOT_FOUND_MESSAGE = '취소 요청이 �
 
 /** 승인 · 거절할 수 없는 요청 — 만료 · 이미 처리됨 */
 export const RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE = '승인할 수 없는 취소 요청입니다(만료 · 처리됨).';
+
+/** 연장 — 이용 중이 아님(시작 전 · 끝남 · 취소 · 결제 대기) */
+export const RESERVATION_EXTENSION_NOT_IN_USE_MESSAGE = '이용 중인 예약만 연장할 수 있습니다.';
+
+/** 연장 — 결제하지 않아 만료된 연장이 있음(그 예약은 다시 연장할 수 없다 — 사용자 결정 2026-11-09) */
+export const RESERVATION_EXTENSION_EXPIRED_MESSAGE = '결제하지 않은 연장이 있어 더 연장할 수 없습니다.';
+
+/** 연장 — 결제 대기 중인 연장이 있음(판정 · 부분 유니크 UK_ReservationDetail_ReservationIdPending) */
+export const RESERVATION_EXTENSION_PENDING_MESSAGE = '결제 대기 중인 연장이 있습니다.';
+
+/** 연장 — 업체 영업중 아님 · 활성 아님 · 호실 사용중지 · 지운 업체 · 호실 */
+export const RESERVATION_EXTENSION_UNAVAILABLE_MESSAGE = '지금은 연장할 수 없습니다.';
+
+/** 연장 — 예약 상품이 연장 불가(업체 상품 설정 is_extendable 0) */
+export const RESERVATION_EXTENSION_NOT_EXTENDABLE_MESSAGE = '연장할 수 없는 상품입니다.';
+
+/** 연장 — 요금 상품(시간 이용 · 1박)을 팔지 않음 */
+export const RESERVATION_EXTENSION_NOT_ON_SALE_MESSAGE = '연장 상품을 팔지 않는 업체입니다.';
+
+/** 연장 — 영업시간 밖 · 브레이크 · 일시 예약불가 */
+export const RESERVATION_EXTENSION_TIME_MESSAGE = '연장할 수 없는 시간입니다.';
+
+/** 연장 — 다음 예약과 겹침(정비시간 포함 — 판정 · 배타 제약 EXC_Reservation_RoomIdBlockedRange) */
+export const RESERVATION_EXTENSION_NEXT_RESERVATION_MESSAGE = '다음 예약이 있어 연장할 수 없습니다.';

@@ -27,6 +27,7 @@ import {
     reservationEntity,
     ReservationRepositoryMock,
     ROOM_ID,
+    ROOM_QR_ID,
     roomQrEntity,
     runCommand,
     tossLookup,
@@ -275,6 +276,132 @@ describe('user.reservation.payment-confirm — 결제 확인 (큐 경로)', () =
                 message: '결제 ID가 올바르지 않습니다.',
                 validation_errors: [{property: 'payment_id', message: '결제 ID가 올바르지 않습니다.'}],
             });
+        });
+    });
+
+    describe('[연장 구간] 결제 확인 — 구간 종류(EXTENSION)로 가른다 (사용자 결정 2026-11-09)', () => {
+        /** 이용 중 예약 13:00 ~ 16:00(한국) · 정비 30분 · 합계 30,000 */
+        const IN_USE = {reservation_state_id: 'CHECKED_IN', start_at: new Date('2026-11-10T04:00:00Z'), end_at: new Date('2026-11-10T07:00:00Z'), total_price: 30000};
+        /** 연장 구간 16:00 ~ 20:00 · 30,000 · 결제 대기 */
+        const EXTENSION_ID = '8'.repeat(32);
+        const extension = (override: Record<string, unknown> = {}) =>
+            detailEntity({
+                reservation_detail_id: EXTENSION_ID,
+                reservation_detail_type_id: 'EXTENSION',
+                reservation_state_id: 'PENDING',
+                start_at: new Date('2026-11-10T07:00:00Z'),
+                end_at: new Date('2026-11-10T11:00:00Z'),
+                price: 30000,
+                ...override,
+            });
+
+        beforeEach(() => {
+            vi.setSystemTime(new Date('2026-11-10T06:58:00Z'));
+            repo.findReservationDetails.mockResolvedValue([extension()]);
+            repo.findReservation.mockResolvedValue(reservationEntity(IN_USE));
+            repo.findRoomQr.mockResolvedValue(roomQrEntity({ends_at: new Date('2026-11-10T07:00:00Z')}));
+        });
+
+        it('결제 DONE → 연장 구간 CONFIRMED(구간 · 결제 대기 조건) → 예약 끝 · 합계(상태 IN · 끝 = 연장 시작 조건) → QR 유효 끝 → Redis(마지막), 결과 상태 그대로', async () => {
+            const {decision, result} = await runConfirm();
+
+            expect(decision.action).toBe('ack');
+            expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CHECKED_IN'});
+            const [paymentWhere, done] = repo.updatePayment.mock.calls[0] as [unknown, PaymentEntity];
+            expect(paymentWhere).toEqual({payment_id: PAYMENT_ID, payment_state_id: 'READY'});
+            expect(done).toMatchObject({payment_state_id: 'DONE', payment_key: PAYMENT_KEY});
+            const [detailWhere, detail] = repo.updateReservationDetails.mock.calls[0] as [unknown, ReservationDetailEntity];
+            expect(detailWhere).toEqual({reservation_detail_id: EXTENSION_ID, reservation_state_id: 'PENDING'});
+            expect(detail.reservation_state_id).toBe('CONFIRMED');
+            const [reservationWhere, extended] = repo.updateReservation.mock.calls[0] as [unknown, ReservationEntity];
+            expect(reservationWhere).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: In(['CONFIRMED', 'CHECKED_IN']), end_at: new Date('2026-11-10T07:00:00Z')});
+            expect(extended).toBeInstanceOf(ReservationEntity);
+            expect(extended).toMatchObject({end_at: new Date('2026-11-10T11:00:00Z'), total_price: 60000});
+            expect(extended.blocked_until).toBeUndefined();
+            const [qrWhere, qr] = repo.updateRoomQr.mock.calls[0] as [unknown, RoomQrEntity];
+            expect(qrWhere).toEqual({room_qr_id: ROOM_QR_ID});
+            expect(qr.ends_at).toEqual(new Date('2026-11-10T11:00:00Z'));
+            expect(door.setQr).toHaveBeenCalledTimes(1);
+            expect(door.setQr).toHaveBeenCalledWith(ROOM_ID, QR, new Date('2026-11-10T11:00:00Z'));
+            expect(door.setQr.mock.invocationCallOrder[0]).toBeGreaterThan(repo.updateRoomQr.mock.invocationCallOrder[0]);
+            expect(repo.insertRoomQr).not.toHaveBeenCalled();
+        });
+
+        it('결제 대기 중 이전 끝이 지나 Redis 가 지운 QR 도 유효 끝이 연장 시작이면 늘린다', async () => {
+            vi.setSystemTime(new Date('2026-11-10T07:02:00Z'));
+
+            await runConfirm();
+
+            expect(repo.updateRoomQr).toHaveBeenCalledTimes(1);
+            expect(door.setQr).toHaveBeenCalledWith(ROOM_ID, QR, new Date('2026-11-10T11:00:00Z'));
+        });
+
+        it('QR 이 없거나(확정 상태 — 시작 때 발급) 유효 끝이 연장 시작이 아니면 QR 쓰기 · Redis 없음', async () => {
+            repo.findRoomQr.mockResolvedValueOnce(null);
+
+            const {result} = await runConfirm();
+
+            expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CHECKED_IN'});
+            expect(repo.updateRoomQr).not.toHaveBeenCalled();
+            expect(door.setQr).not.toHaveBeenCalled();
+        });
+
+        it('[FAIL:committed] 금액이 다르면 환불 신청 + 연장 구간 만료 + 잡아 둔 구간 되돌림(점유 끝 = 지금 끝 + 정비시간, 끝 = 연장 시작 조건), failed 400 · ack', async () => {
+            payment.getPayment.mockResolvedValueOnce(tossLookup({total_amount: 25000}));
+
+            const {decision, result} = await runConfirm();
+
+            expect(decision.action).toBe('ack');
+            expect(result?.error).toEqual({status_code: 400, body: {message: '결제 금액이 맞지 않아 결제를 취소했습니다.', validation_errors: null}});
+            const [, refund] = repo.updatePayment.mock.calls[0] as [unknown, PaymentEntity];
+            expect(refund).toMatchObject({payment_state_id: 'REFUND_REQUESTED', refund_amount: 25000, refund_reason: '결제 금액 불일치'});
+            expect(repo.updateReservationDetails).toHaveBeenCalledWith(
+                {reservation_detail_id: EXTENSION_ID, reservation_state_id: 'PENDING'},
+                expect.objectContaining({reservation_state_id: 'EXPIRED'}),
+            );
+            const [releaseWhere, released] = repo.updateReservation.mock.calls[0] as [unknown, ReservationEntity];
+            expect(releaseWhere).toEqual({reservation_id: RESERVATION_ID, end_at: new Date('2026-11-10T07:00:00Z')});
+            expect(released.blocked_until).toEqual(new Date('2026-11-10T07:30:00Z'));
+            expect(door.setQr).not.toHaveBeenCalled();
+        });
+
+        it('[FAIL:committed] 이미 만료된 연장에 늦게 온 결제면 환불 신청만(구간 · 예약 그대로), failed 400 · ack', async () => {
+            repo.findPayment.mockResolvedValueOnce(paymentEntity({payment_state_id: 'EXPIRED', payment_key: null, method: null, approved_at: null, receipt_url: null}));
+            repo.findReservationDetails.mockResolvedValueOnce([extension({reservation_state_id: 'EXPIRED'})]);
+
+            const {decision, result} = await runConfirm();
+
+            expect(decision.action).toBe('ack');
+            expect(result?.error).toEqual({status_code: 400, body: {message: '연장 결제 대기 시간이 지나 결제를 취소했습니다.', validation_errors: null}});
+            expect(repo.updatePayment).toHaveBeenCalledWith(
+                {payment_id: PAYMENT_ID, payment_state_id: 'EXPIRED'},
+                expect.objectContaining({payment_state_id: 'REFUND_REQUESTED', refund_reason: '결제 대기 시간 경과'}),
+            );
+            expect(repo.updateReservationDetails).not.toHaveBeenCalled();
+            expect(repo.updateReservation).not.toHaveBeenCalled();
+        });
+
+        it('[FAIL:committed] 예약이 취소됐는데 연장 구간이 아직 결제 대기면 환불 신청 + 구간 만료 + 되돌림, failed 400', async () => {
+            repo.findReservation.mockResolvedValueOnce(reservationEntity({...IN_USE, reservation_state_id: 'CANCELED'}));
+
+            const {result} = await runConfirm();
+
+            expect(result?.error?.status_code).toBe(400);
+            expect(repo.updateReservationDetails).toHaveBeenCalledWith(
+                {reservation_detail_id: EXTENSION_ID, reservation_state_id: 'PENDING'},
+                expect.objectContaining({reservation_state_id: 'EXPIRED'}),
+            );
+            expect(repo.updateReservation).toHaveBeenCalledTimes(1);
+        });
+
+        it('[FAIL:service] 예약 끝이 그 사이 바뀌었으면(예약 조건 0행) 400 롤백, QR · Redis 없음', async () => {
+            repo.updateReservation.mockResolvedValueOnce(false);
+
+            const {result} = await runConfirm();
+
+            expect(result?.error).toEqual({status_code: 400, body: {message: '예약 상태가 바뀌었습니다. 다시 확인해주세요.', validation_errors: null}});
+            expect(repo.updateRoomQr).not.toHaveBeenCalled();
+            expect(door.setQr).not.toHaveBeenCalled();
         });
     });
 

@@ -4,7 +4,7 @@ import {RoomPlanTypeEntity} from './room-plan-type.entity.js';
 
 /**
  * 업체 상품 설정 — 업체 × 상품 종류(t_room_plan_type)마다 반드시 1행(입점 승인 때 3행). 업체의 모든 객실 공통이고, 행은 지우지 않는다.
- * 사용 여부(is_used — 판매 여부) · 예약 가능 요일(입실일 기준 비트 — 일 1 · 월 2 · 화 4 · 수 8 · 목 16 · 금 32 · 토 64, 매일 127)은 모든 종류에,
+ * 사용 여부(is_used — 판매 여부) · 예약 가능 요일(입실일 기준 비트 — 일 1 · 월 2 · 화 4 · 수 8 · 목 16 · 금 32 · 토 64, 매일 127) · 연장 가능 여부 · 최대 연장 횟수(1 ~ 10 — 사용자 결정 2026-11-09)는 모든 종류에,
  * 이용 시간은 시간 이용(HOURLY)만, 입실 · 퇴실 시각(한국 시각, 분 단위)은 1박(NIGHT) · 연박(LONG)만, 최소 · 최대 박수는 연박만 둔다.
  * 1박은 항상 다음 날 퇴실이고(퇴실 시각이 입실보다 늦어도 — 사용자 결정 2026-11-03), 연박은 첫날 입실 · 마지막 날 퇴실이다. 가격 · 그룹별 사용 여부는 그룹 상품(t_room_group_plan).
  */
@@ -18,6 +18,7 @@ import {RoomPlanTypeEntity} from './room-plan-type.entity.js';
     'CHK_RoomPlan_LongNights',
     `("room_plan_type_id" = 'LONG' AND "min_nights" IS NOT NULL AND "max_nights" IS NOT NULL AND "min_nights" >= 1 AND "min_nights" <= "max_nights") OR ("room_plan_type_id" <> 'LONG' AND "min_nights" IS NULL AND "max_nights" IS NULL)`,
 )
+@Check('CHK_RoomPlan_MaxExtensions', '"max_extensions" BETWEEN 1 AND 10')
 export class RoomPlanEntity {
     @PrimaryColumn({name: 'room_plan_id', length: 32, comment: '업체 상품 설정 ID', primaryKeyConstraintName: 'PK_RoomPlan'})
     room_plan_id: string;
@@ -50,6 +51,12 @@ export class RoomPlanEntity {
 
     @Column({name: 'max_nights', type: 'smallint', nullable: true, comment: '최대 박수 — 연박(LONG)만(1 ~ 180). 시간 이용 · 1박은 NULL'})
     max_nights: number | null;
+
+    @Column({name: 'is_extendable', type: 'smallint', nullable: false, default: 1, comment: '연장 가능 여부(0: 이 상품 예약은 연장할 수 없다, 1: 연장 가능 — 최대 연장 횟수까지)'})
+    is_extendable: number;
+
+    @Column({name: 'max_extensions', type: 'smallint', nullable: false, default: 3, comment: '최대 연장 횟수(1 ~ 10 — 예약 1건의 확정된 연장 구간 수, 연장 불가여도 값은 남는다)'})
+    max_extensions: number;
 
     @Column({name: 'created_at', type: 'timestamptz', nullable: false, comment: '등록일'})
     created_at: Date;

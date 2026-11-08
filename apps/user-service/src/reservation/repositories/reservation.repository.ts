@@ -22,15 +22,18 @@ import {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js
 import {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
-import {isExclusionViolation} from '@app/database/typeorm-error.js';
+import {isExclusionViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {BookableRoomRow, ReservationListRow, ReservationRepositoryInterface, ReservationSegmentRow} from '../interfaces/reservation.repository.interface.js';
-import {RESERVATION_TIME_TAKEN_MESSAGE} from '../reservation.constants.js';
+import {RESERVATION_EXTENSION_NEXT_RESERVATION_MESSAGE, RESERVATION_EXTENSION_PENDING_MESSAGE, RESERVATION_TIME_TAKEN_MESSAGE} from '../reservation.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
 
 /** 점유 겹침 배타 제약 */
 const RESERVATION_EXCLUSION = 'EXC_Reservation_RoomIdBlockedRange';
+
+/** 결제 대기 구간 예약당 1개 부분 유니크 */
+const DETAIL_PENDING_UNIQUE = 'UK_ReservationDetail_ReservationIdPending';
 
 /**
  * reservation repository (아웃바운드 어댑터) — t_reservation · t_reservation_detail · t_payment 를 쓰고,
@@ -398,15 +401,39 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * 예약 구간 등록
+     * 예약 구간 등록 — 결제 대기 구간이 이미 있으면(겹친 연장 신청 — UK_ReservationDetail_ReservationIdPending) 400
      *
      * @param entity 구간
      */
     async insertReservationDetail(entity: ReservationDetailEntity): Promise<void> {
         try {
             await this.reservationDetails.insert(entity);
-        } catch {
-            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        } catch (error) {
+            if (isUniqueViolation(error, DETAIL_PENDING_UNIQUE)) {
+                throw new BadRequestException({message: RESERVATION_EXTENSION_PENDING_MESSAGE});
+            } else {
+                throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+            }
+        }
+    }
+
+    /**
+     * 연장 잡아 두기 — 예약의 점유 끝을 늘린다(상태 · 끝 조건 — 그 사이 바뀌었는지 판별). 다음 예약과 겹치면 400
+     *
+     * @param where 수정 조건(예약 · 상태 · 끝)
+     * @param entity 점유 끝만 할당한 엔티티
+     * @returns 1행이면 true
+     */
+    async updateReservationHold(where: FindOptionsWhere<ReservationEntity>, entity: ReservationEntity): Promise<boolean> {
+        try {
+            const result = await this.reservations.update(where, entity);
+            return result.affected === 1;
+        } catch (error) {
+            if (isExclusionViolation(error, RESERVATION_EXCLUSION)) {
+                throw new BadRequestException({message: RESERVATION_EXTENSION_NEXT_RESERVATION_MESSAGE});
+            } else {
+                throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+            }
         }
     }
 

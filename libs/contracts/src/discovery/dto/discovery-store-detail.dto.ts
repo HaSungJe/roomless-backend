@@ -77,6 +77,12 @@ export class DiscoveryStorePlanResultDto {
 
     @ApiProperty({description: '최대 박수 — 연박만, 그 밖은 null', nullable: true, type: Number})
     max_nights: number | null;
+
+    @ApiProperty({description: '이용 중에 연장할 수 있는지 (0 · 1)'})
+    is_extendable: number;
+
+    @ApiProperty({description: '최대 연장 횟수 (1 ~ 10)'})
+    max_extensions: number;
 }
 
 /**

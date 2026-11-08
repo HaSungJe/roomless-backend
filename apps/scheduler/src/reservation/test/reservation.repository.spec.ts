@@ -10,9 +10,47 @@ import {ReservationDetailEntity} from '@app/database/entities/reservation/reserv
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import {ReservationRepository} from '../repositories/reservation.repository.js';
-import {buildConfirmTransition, buildExpireTransition, buildQrLinkSent, buildRoomQr, buildUsageEndTransition, buildUsageStartTransition} from '../reservation.util.js';
+import {
+    buildConfirmTransition,
+    buildExpireTransition,
+    buildExtensionConfirmTransition,
+    buildExtensionExpireTransition,
+    buildExtensionRefundTransition,
+    buildQrLinkSent,
+    buildRoomQr,
+    buildUsageEndTransition,
+    buildUsageStartTransition,
+} from '../reservation.util.js';
 
-const ROW = {reservation_id: 'r1', payment_id: 'p1', amount: 30000};
+/** 결제 대기가 끝난 기본 구간 — 2026-11-10 13:00 ~ 16:00(한국 시각) · 30,000 · 정비 30분 */
+const ROW = {
+    reservation_id: 'r1',
+    reservation_detail_id: 'd1',
+    reservation_detail_type_id: 'BASE',
+    payment_id: 'p1',
+    amount: 30000,
+    price: 30000,
+    detail_start_at: new Date('2026-11-10T04:00:00Z'),
+    detail_end_at: new Date('2026-11-10T07:00:00Z'),
+    reservation_state_id: 'PENDING',
+    reservation_end_at: new Date('2026-11-10T07:00:00Z'),
+    total_price: 30000,
+    maintenance_minutes: 30,
+};
+
+/** 결제 대기가 끝난 연장 구간 — 이용 중 13:00 ~ 16:00(한국 시각) 을 16:00 ~ 20:00 으로 · 30,000 */
+const EXTENSION_ROW = {
+    ...ROW,
+    reservation_detail_id: 'd2',
+    reservation_detail_type_id: 'EXTENSION',
+    payment_id: 'p2',
+    detail_start_at: new Date('2026-11-10T07:00:00Z'),
+    detail_end_at: new Date('2026-11-10T11:00:00Z'),
+    reservation_state_id: 'CHECKED_IN',
+};
+
+/** 토스 조회 결과 — 승인된 연장 결제 */
+const EXTENSION_LOOKUP = {payment_key: 'k2', order_id: 'p2', status: 'DONE', total_amount: 30000, method: '카드', approved_at: new Date('2026-11-10T06:58:00Z'), receipt_url: null};
 
 /** 이용 전환 대상 — 2026-11-10 13:00 ~ 16:00(한국 시각) */
 const USAGE_ROW = {reservation_id: 'r1', room_id: 'm1', start_at: new Date('2026-11-10T04:00:00Z'), end_at: new Date('2026-11-10T07:00:00Z')};
@@ -39,7 +77,7 @@ function makeRepository() {
     const payments = {update: vi.fn().mockResolvedValue({affected: 1}), find: vi.fn().mockResolvedValue([])};
     const details = {update: vi.fn().mockResolvedValue({affected: 1})};
     const reservations = {update: vi.fn().mockResolvedValue({affected: 1})};
-    const roomQrs = {findOne: vi.fn().mockResolvedValue(null)};
+    const roomQrs = {findOne: vi.fn().mockResolvedValue(null), update: vi.fn().mockResolvedValue({affected: 1})};
     const rooms = {update: vi.fn().mockResolvedValue({affected: 1})};
     const repositories = new Map<unknown, unknown>([
         [PaymentEntity, payments],
@@ -85,6 +123,70 @@ describe('ReservationRepository(scheduler) — 결제 대기 전환 · 상태 �
         reservations.update.mockResolvedValueOnce({affected: 0});
 
         await expect(repository.transitionPending(ROW, buildExpireTransition())).rejects.toBeInstanceOf(InternalServerErrorException);
+    });
+
+    it('[SUCCESS] transitionExtension(확정) — 결제(READY) → 그 연장 구간(PENDING) → 예약(확정 · 이용 중 · 끝 = 연장 시작) 끝 · 합계 → QR(유효 끝 = 연장 시작) 을 한 트랜잭션으로', async () => {
+        const {repository, txHost, payments, details, reservations, roomQrs} = makeRepository();
+        const transition = buildExtensionConfirmTransition(EXTENSION_LOOKUP, EXTENSION_ROW, new Date());
+
+        await expect(repository.transitionExtension(EXTENSION_ROW, transition)).resolves.toBe(true);
+
+        expect(txHost.withTransaction).toHaveBeenCalledTimes(1);
+        expect(payments.update).toHaveBeenCalledWith({payment_id: 'p2', payment_state_id: 'READY'}, transition.payment);
+        expect(transition.payment).toMatchObject({payment_state_id: 'DONE', payment_key: 'k2'});
+        expect(details.update).toHaveBeenCalledWith({reservation_detail_id: 'd2', reservation_state_id: 'PENDING'}, transition.detail);
+        expect(transition.detail.reservation_state_id).toBe('CONFIRMED');
+        expect(reservations.update).toHaveBeenCalledWith(
+            {reservation_id: 'r1', reservation_state_id: In(['CONFIRMED', 'CHECKED_IN']), end_at: new Date('2026-11-10T07:00:00Z')},
+            transition.reservation,
+        );
+        expect(transition.reservation).toBeInstanceOf(ReservationEntity);
+        expect(transition.reservation).toMatchObject({end_at: new Date('2026-11-10T11:00:00Z'), total_price: 60000});
+        expect(transition.reservation.blocked_until).toBeUndefined();
+        expect(roomQrs.update).toHaveBeenCalledWith({reservation_id: 'r1', ends_at: new Date('2026-11-10T07:00:00Z')}, transition.room_qr);
+        expect(transition.room_qr?.ends_at).toEqual(new Date('2026-11-10T11:00:00Z'));
+    });
+
+    it.each([
+        ['만료(미결제)', () => buildExtensionExpireTransition(EXTENSION_ROW), {payment_state_id: 'EXPIRED'}],
+        [
+            '환불 신청(금액 다름 · 예약이 끝났는데 결제됨)',
+            () => buildExtensionRefundTransition(EXTENSION_LOOKUP, '결제 금액 불일치', EXTENSION_ROW, new Date('2026-11-10T07:06:00Z')),
+            {payment_state_id: 'REFUND_REQUESTED', refund_amount: 30000, refund_reason: '결제 금액 불일치', payment_key: 'k2'},
+        ],
+    ])('[SUCCESS] transitionExtension(%s) — 구간 만료 · 점유 끝 되돌림(지금 끝 + 정비시간, 끝 = 연장 시작 조건), QR 그대로', async (_label, build, payment) => {
+        const {repository, payments, details, reservations, roomQrs} = makeRepository();
+        const transition = build();
+
+        await expect(repository.transitionExtension(EXTENSION_ROW, transition)).resolves.toBe(true);
+
+        expect(payments.update).toHaveBeenCalledWith({payment_id: 'p2', payment_state_id: 'READY'}, transition.payment);
+        expect(transition.payment).toMatchObject(payment);
+        expect(details.update).toHaveBeenCalledWith({reservation_detail_id: 'd2', reservation_state_id: 'PENDING'}, transition.detail);
+        expect(transition.detail.reservation_state_id).toBe('EXPIRED');
+        expect(reservations.update).toHaveBeenCalledWith({reservation_id: 'r1', end_at: new Date('2026-11-10T07:00:00Z')}, transition.reservation);
+        expect(transition.reservation.blocked_until).toEqual(new Date('2026-11-10T07:30:00Z'));
+        expect(transition.reservation.end_at).toBeUndefined();
+        expect(transition.room_qr).toBeNull();
+        expect(roomQrs.update).not.toHaveBeenCalled();
+    });
+
+    it('[SKIP] transitionExtension — 결제가 이미 바뀌었으면(결제 확인 · 취소가 먼저) 구간 · 예약 · QR 은 건드리지 않고 false', async () => {
+        const {repository, payments, details, reservations, roomQrs} = makeRepository();
+        payments.update.mockResolvedValueOnce({affected: 0});
+
+        await expect(repository.transitionExtension(EXTENSION_ROW, buildExtensionExpireTransition(EXTENSION_ROW))).resolves.toBe(false);
+        expect(details.update).not.toHaveBeenCalled();
+        expect(reservations.update).not.toHaveBeenCalled();
+        expect(roomQrs.update).not.toHaveBeenCalled();
+    });
+
+    it('[FAIL:repository] transitionExtension(확정) — 예약이 어긋나면(0행 — 취소 · 끝이 바뀜) QR 은 건드리지 않고 롤백, 통일 500', async () => {
+        const {repository, reservations, roomQrs} = makeRepository();
+        reservations.update.mockResolvedValueOnce({affected: 0});
+
+        await expect(repository.transitionExtension(EXTENSION_ROW, buildExtensionConfirmTransition(EXTENSION_LOOKUP, EXTENSION_ROW, new Date()))).rejects.toBeInstanceOf(InternalServerErrorException);
+        expect(roomQrs.update).not.toHaveBeenCalled();
     });
 
     it('[SUCCESS] updatePayment 는 상태 조건(from_state)을 건다 — 1행이면 true', async () => {
@@ -239,16 +341,17 @@ describe('[SMOKE:data-access] 이용 전환 · QR 링크 SMS 대상 — DB 연�
         );
     });
 
-    it('이용 종료 대상 — 확정 · 이용 중 · end_at ≤ 지금(끝 정각 포함 — 시작을 놓친 확정도), 끝 순, 별칭 = UsageRow 키', () => {
+    it('이용 종료 대상 — 확정 · 이용 중 · end_at ≤ 지금(끝 정각 포함 — 시작을 놓친 확정도) · 결제 대기 중인 연장 없음(NOT EXISTS), 끝 순, 별칭 = UsageRow 키', () => {
         const now = new Date('2026-11-10T07:00:00Z');
 
         const [sql, parameters] = repository.buildUsageEndRowsQuery(now).getQueryAndParameters();
         const flat = sql.replace(/\s+/g, ' ');
 
-        expect(parameters).toEqual(['CONFIRMED', 'CHECKED_IN', now]);
+        expect(parameters).toEqual(['CONFIRMED', 'CHECKED_IN', now, 'PENDING']);
+        expect(flat).toContain('NOT EXISTS (SELECT 1 FROM "t_reservation_detail" "pd" WHERE "pd"."reservation_id" = "r"."reservation_id" AND "pd"."reservation_state_id" = $4)');
         expect([...flat.matchAll(/ AS "([a-z_]+)"/g)].map((match) => match[1]).sort()).toEqual(['end_at', 'reservation_id', 'room_id', 'start_at']);
         expect(flat).toBe(
-            'SELECT "r"."reservation_id" AS "reservation_id", "r"."room_id" AS "room_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at" FROM "t_reservation" "r" WHERE "r"."reservation_state_id" IN ($1, $2) AND "r"."end_at" <= $3 ORDER BY "r"."end_at" ASC',
+            'SELECT "r"."reservation_id" AS "reservation_id", "r"."room_id" AS "room_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at" FROM "t_reservation" "r" WHERE "r"."reservation_state_id" IN ($1, $2) AND "r"."end_at" <= $3 AND NOT EXISTS (SELECT 1 FROM "t_reservation_detail" "pd" WHERE "pd"."reservation_id" = "r"."reservation_id" AND "pd"."reservation_state_id" = $4) ORDER BY "r"."end_at" ASC',
         );
     });
 
@@ -310,6 +413,36 @@ describe('[SMOKE:data-access] 이용 전환 쓰기 조건(관계 컬럼 상태 I
         expect(roomSql).toBe('UPDATE "t_room" SET "room_state_id" = $1 WHERE ("room_id" = $2 AND "room_state_id" = $3 AND "is_deleted" = $4)');
     });
 
+    it('연장 확정 — 구간(그 연장 · 결제 대기) → 확정, 예약(관계 컬럼 상태 IN · 끝 = 연장 시작) → 끝 · 합계, QR(예약 · 유효 끝 = 연장 시작) → 유효 끝', async () => {
+        const update = vi.spyOn(dataSource.manager, 'update').mockResolvedValue({affected: 1, raw: [], generatedMaps: []});
+
+        await repository.transitionExtension(EXTENSION_ROW, buildExtensionConfirmTransition(EXTENSION_LOOKUP, EXTENSION_ROW, new Date()));
+        const [detailSql, detailParameters] = buildUpdateQuery(dataSource, update.mock.calls[1]);
+        const [reservationSql, reservationParameters] = buildUpdateQuery(dataSource, update.mock.calls[2]);
+        const [qrSql, qrParameters] = buildUpdateQuery(dataSource, update.mock.calls[3]);
+        update.mockRestore();
+
+        expect(detailParameters).toEqual(['CONFIRMED', 'd2', 'PENDING']);
+        expect(detailSql).toBe('UPDATE "t_reservation_detail" SET "reservation_state_id" = $1 WHERE ("reservation_detail_id" = $2 AND "reservation_state_id" = $3)');
+        expect(reservationParameters).toEqual([new Date('2026-11-10T11:00:00Z'), 60000, 'r1', 'CONFIRMED', 'CHECKED_IN', new Date('2026-11-10T07:00:00Z')]);
+        expect(reservationSql).toBe('UPDATE "t_reservation" SET "end_at" = $1, "total_price" = $2 WHERE ("reservation_id" = $3 AND "reservation_state_id" IN ($4, $5) AND "end_at" = $6)');
+        expect(qrParameters).toEqual([new Date('2026-11-10T11:00:00Z'), 'r1', new Date('2026-11-10T07:00:00Z')]);
+        expect(qrSql).toBe('UPDATE "t_room_qr" SET "ends_at" = $1 WHERE ("reservation_id" = $2 AND "ends_at" = $3)');
+    });
+
+    it('연장 되돌림 — 예약(끝 = 연장 시작) → 점유 끝 = 지금 끝 + 정비시간', async () => {
+        const update = vi.spyOn(dataSource.manager, 'update').mockResolvedValue({affected: 1, raw: [], generatedMaps: []});
+
+        await repository.transitionExtension(EXTENSION_ROW, buildExtensionExpireTransition(EXTENSION_ROW));
+        const writes = update.mock.calls.length;
+        const [sql, parameters] = buildUpdateQuery(dataSource, update.mock.calls[2]);
+        update.mockRestore();
+
+        expect(writes).toBe(3);
+        expect(parameters).toEqual([new Date('2026-11-10T07:30:00Z'), 'r1', new Date('2026-11-10T07:00:00Z')]);
+        expect(sql).toBe('UPDATE "t_reservation" SET "blocked_until" = $1 WHERE ("reservation_id" = $2 AND "end_at" = $3)');
+    });
+
     it('QR 링크 보냄 표시 — 비어 있을 때만(IS NULL)', async () => {
         const update = vi.spyOn(dataSource.manager, 'update').mockResolvedValue({affected: 1, raw: [], generatedMaps: []});
         const sent_at = new Date('2026-11-10T03:55:00Z');
@@ -324,7 +457,11 @@ describe('[SMOKE:data-access] 이용 전환 쓰기 조건(관계 컬럼 상태 I
 });
 
 describe('[SMOKE:data-access] 결제 대기 만료 — DB 연결 없이 SQL 빌드', () => {
-    it('기본 구간 PENDING · expires_at ≤ now · 결제 READY, 별칭 = ExpiredPendingRow 키', async () => {
+    /** 빌드된 SQL(빌드 때 실행 출력으로 고정) */
+    const EXPIRED_PENDING_SQL =
+        'SELECT "d"."reservation_id" AS "reservation_id", "d"."reservation_detail_id" AS "reservation_detail_id", "d"."reservation_detail_type_id" AS "reservation_detail_type_id", "d"."payment_id" AS "payment_id", "d"."price" AS "price", "d"."start_at" AS "detail_start_at", "d"."end_at" AS "detail_end_at", "p"."amount" AS "amount", "r"."reservation_state_id" AS "reservation_state_id", "r"."end_at" AS "reservation_end_at", "r"."total_price" AS "total_price", "r"."maintenance_minutes" AS "maintenance_minutes" FROM "t_reservation_detail" "d" INNER JOIN "t_payment" "p" ON "p"."payment_id" = "d"."payment_id" INNER JOIN "t_reservation" "r" ON "r"."reservation_id" = "d"."reservation_id" WHERE "d"."reservation_state_id" = $1 AND "d"."expires_at" <= $2 AND "p"."payment_state_id" = $3 ORDER BY "d"."expires_at" ASC';
+
+    it('구간(기본 · 연장) PENDING · expires_at ≤ now · 결제 READY, 예약 조인(상태 · 끝 · 합계 · 정비시간), 별칭 = ExpiredPendingRow 키', async () => {
         const dataSource = new DataSource({type: 'postgres', database: 'smoke', entities: ENTITIES});
         await (dataSource as unknown as {buildMetadatas: () => Promise<void>}).buildMetadatas();
         const repository = new ReservationRepository({tx: dataSource.manager} as unknown as TransactionHost<TransactionalAdapterTypeOrm>);
@@ -333,10 +470,26 @@ describe('[SMOKE:data-access] 결제 대기 만료 — DB 연결 없이 SQL 빌�
         const [sql, parameters] = repository.buildExpiredPendingQuery(now).getQueryAndParameters();
         const flat = sql.replace(/\s+/g, ' ');
 
-        expect(parameters).toEqual(['BASE', 'PENDING', now, 'READY']);
+        expect(parameters).toEqual(['PENDING', now, 'READY']);
         expect(flat).toContain('INNER JOIN "t_payment" "p"');
-        expect(flat).toContain('"d"."expires_at" <= $3');
-        expect([...flat.matchAll(/ AS "([a-z_]+)"/g)].map((match) => match[1]).sort()).toEqual(['amount', 'payment_id', 'reservation_id']);
+        expect(flat).toContain('INNER JOIN "t_reservation" "r" ON "r"."reservation_id" = "d"."reservation_id"');
+        expect(flat).toContain('"d"."expires_at" <= $2');
+        expect(flat).not.toContain('reservation_detail_type_id" = ');
+        expect([...flat.matchAll(/ AS "([a-z_]+)"/g)].map((match) => match[1]).sort()).toEqual([
+            'amount',
+            'detail_end_at',
+            'detail_start_at',
+            'maintenance_minutes',
+            'payment_id',
+            'price',
+            'reservation_detail_id',
+            'reservation_detail_type_id',
+            'reservation_end_at',
+            'reservation_id',
+            'reservation_state_id',
+            'total_price',
+        ]);
+        expect(flat).toBe(EXPIRED_PENDING_SQL);
     });
 });
 

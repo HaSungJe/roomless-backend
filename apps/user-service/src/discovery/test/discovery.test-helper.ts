@@ -182,7 +182,7 @@ export function storePlanRow(room_plan_type_id: string, override: Record<string,
         NIGHT: {room_plan_type_name: '1박', usage_hours: null, check_in_time: '22:00:00', check_out_time: '09:00:00', min_nights: null, max_nights: null},
         LONG: {room_plan_type_name: '연박', usage_hours: null, check_in_time: '15:00:00', check_out_time: '11:00:00', min_nights: 2, max_nights: 7},
     };
-    return {room_plan_type_id, is_used: 1, days_of_week: 127, ...byType[room_plan_type_id], ...override};
+    return {room_plan_type_id, is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, ...byType[room_plan_type_id], ...override};
 }
 
 /**

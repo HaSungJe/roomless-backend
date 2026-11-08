@@ -29,6 +29,8 @@ const ROOM_PLAN_ROW_KEYS: (keyof RoomPlanRow)[] = [
     'check_out_time',
     'min_nights',
     'max_nights',
+    'is_extendable',
+    'max_extensions',
 ];
 
 /** RoomGroupRow 키 */
@@ -337,7 +339,7 @@ describe('[SMOKE:data-access] 소속 업체 · 상품 설정 · 그룹 목록 ·
         'SELECT "s"."store_id" AS "s_store_id", "s"."store_code" AS "s_store_code", "s"."store_name" AS "s_store_name", "s"."business_number" AS "s_business_number", "s"."owner_name" AS "s_owner_name", "s"."phone" AS "s_phone", "s"."address" AS "s_address", "s"."address_detail" AS "s_address_detail", "s"."latitude" AS "s_latitude", "s"."longitude" AS "s_longitude", "s"."introduction" AS "s_introduction", "s"."is_always_open" AS "s_is_always_open", "s"."is_open" AS "s_is_open", "s"."maintenance_minutes" AS "s_maintenance_minutes", "s"."booking_open_hours" AS "s_booking_open_hours", "s"."refund_deadline_minutes" AS "s_refund_deadline_minutes", "s"."late_refund_percent" AS "s_late_refund_percent", "s"."door_secret" AS "s_door_secret", "s"."suspend_comment" AS "s_suspend_comment", "s"."is_deleted" AS "s_is_deleted", "s"."delete_backup" AS "s_delete_backup", "s"."created_at" AS "s_created_at", "s"."updated_at" AS "s_updated_at", "s"."store_state_id" AS "s_store_state_id" FROM "t_store" "s" INNER JOIN "t_user" "u" ON "u"."store_id" = "s"."store_id" WHERE "u"."user_id" = $1 AND "u"."login_scope" = $2 AND "s"."store_state_id" <> $3 AND "s"."is_deleted" = 0';
     /** 업체 상품 설정 행 */
     const ROOM_PLAN_ROWS_SQL =
-        'SELECT "p"."room_plan_id" AS "room_plan_id", "p"."store_id" AS "store_id", "p"."room_plan_type_id" AS "room_plan_type_id", "p"."is_used" AS "is_used", "p"."days_of_week" AS "days_of_week", "p"."usage_hours" AS "usage_hours", "p"."check_in_time" AS "check_in_time", "p"."check_out_time" AS "check_out_time", "p"."min_nights" AS "min_nights", "p"."max_nights" AS "max_nights", "t"."room_plan_type_name" AS "room_plan_type_name" FROM "t_room_plan" "p" INNER JOIN "t_room_plan_type" "t" ON "t"."room_plan_type_id" = "p"."room_plan_type_id" WHERE "p"."store_id" = $1';
+        'SELECT "p"."room_plan_id" AS "room_plan_id", "p"."store_id" AS "store_id", "p"."room_plan_type_id" AS "room_plan_type_id", "p"."is_used" AS "is_used", "p"."days_of_week" AS "days_of_week", "p"."usage_hours" AS "usage_hours", "p"."check_in_time" AS "check_in_time", "p"."check_out_time" AS "check_out_time", "p"."min_nights" AS "min_nights", "p"."max_nights" AS "max_nights", "p"."is_extendable" AS "is_extendable", "p"."max_extensions" AS "max_extensions", "t"."room_plan_type_name" AS "room_plan_type_name" FROM "t_room_plan" "p" INNER JOIN "t_room_plan_type" "t" ON "t"."room_plan_type_id" = "p"."room_plan_type_id" WHERE "p"."store_id" = $1';
     /** 객실 그룹 목록 — 검색어 없음 */
     const ROOM_GROUP_ROWS_SQL =
         'SELECT "g"."room_group_id" AS "room_group_id", "g"."room_group_name" AS "room_group_name", "g"."created_at" AS "created_at", (SELECT CAST(COUNT(*) AS integer) FROM "t_room" "r" WHERE "r"."room_group_id" = "g"."room_group_id" AND "r"."is_deleted" = 0) AS "room_count", (SELECT "i"."file_key" FROM "t_room_group_image" "i" WHERE "i"."room_group_id" = "g"."room_group_id" AND "i"."is_deleted" = 0 ORDER BY "i"."sort_order" ASC, "i"."created_at" ASC LIMIT 1) AS "cover_file_key" FROM "t_room_group" "g" WHERE (("g"."store_id" = $1) AND ("g"."is_deleted" = $2)) ORDER BY "g"."created_at" DESC LIMIT 10 OFFSET 20';

@@ -67,7 +67,7 @@ export type PaymentGatewayMock = {environment: Mock; getPayment: Mock; findByPay
 export type DoorStoreMock = {setQr: Mock; revokeQr: Mock};
 
 /**
- * 예약 repository mock — 포트 메서드마다 vi.fn(), 목록은 빈 배열 · 쓰기는 성공 기본값
+ * 예약 repository mock — 포트 메서드마다 vi.fn(), 목록은 빈 배열 · 쓰기는 성공 기본값, 구간은 확정 기본 구간 1개(결제 대기 구간 조회는 빈 배열)
  *
  * @returns mock
  */
@@ -86,11 +86,12 @@ export function createReservationRepositoryMock(): ReservationRepositoryMock {
         findReservations: vi.fn().mockResolvedValue([]),
         countRecentExpired: vi.fn().mockResolvedValue(0),
         findReservation: vi.fn().mockResolvedValue(reservationEntity()),
-        findReservationDetails: vi.fn().mockResolvedValue([detailEntity()]),
+        findReservationDetails: vi.fn((where: {reservation_state_id?: unknown}) => Promise.resolve(where?.reservation_state_id === 'PENDING' ? [] : [detailEntity()])),
         findPayment: vi.fn().mockResolvedValue(paymentEntity()),
         insertPayment: vi.fn(),
         insertReservation: vi.fn(),
         insertReservationDetail: vi.fn(),
+        updateReservationHold: vi.fn().mockResolvedValue(true),
         updateReservation: vi.fn().mockResolvedValue(true),
         updateReservationDetails: vi.fn(),
         updatePayment: vi.fn().mockResolvedValue(true),
@@ -272,7 +273,7 @@ export function bookableRoom(override: Record<string, unknown> = {}): Record<str
 }
 
 /**
- * 업체 상품 설정 — 종류별 기본(시간 이용 3시간 · 1박 22:00 → 09:00 · 연박 15:00 → 11:00 · 1 ~ 30박), 매일
+ * 업체 상품 설정 — 종류별 기본(시간 이용 3시간 · 1박 22:00 → 09:00 · 연박 15:00 → 11:00 · 1 ~ 30박), 매일, 연장 가능 · 3회
  *
  * @param room_plan_type_id 상품 종류
  * @param override 바꿀 필드
@@ -284,7 +285,7 @@ export function planEntity(room_plan_type_id: string, override: Record<string, u
         NIGHT: {usage_hours: null, check_in_time: '22:00:00', check_out_time: '09:00:00', min_nights: null, max_nights: null},
         LONG: {usage_hours: null, check_in_time: '15:00:00', check_out_time: '11:00:00', min_nights: 1, max_nights: 30},
     };
-    return {room_plan_id: '9'.repeat(32), store_id: STORE_ID, room_plan_type_id, is_used: 1, days_of_week: 127, ...byType[room_plan_type_id], ...override};
+    return {room_plan_id: '9'.repeat(32), store_id: STORE_ID, room_plan_type_id, is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, ...byType[room_plan_type_id], ...override};
 }
 
 /**

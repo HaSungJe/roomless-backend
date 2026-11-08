@@ -5,7 +5,7 @@ import {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
 import {bootCommandPath, createRoomRepositoryMock, MANAGER_ACTOR, planRow, ROOM_PLAN_ID, RoomRepositoryMock, runCommand, STORE_ID, storeRow, validateBody} from './room.test-helper.js';
 
-const HOURLY_PAYLOAD = {room_plan_type_id: 'HOURLY', is_used: 1, days_of_week: 62, usage_hours: 4};
+const HOURLY_PAYLOAD = {room_plan_type_id: 'HOURLY', is_used: 1, days_of_week: 62, is_extendable: 1, max_extensions: 3, usage_hours: 4};
 
 describe('admin.room.plan-update — 업체 상품 설정 수정 (큐 경로)', () => {
     let repo: RoomRepositoryMock;
@@ -43,14 +43,25 @@ describe('admin.room.plan-update — 업체 상품 설정 수정 (큐 경로)', 
             const [where, entity] = repo.updateRoomPlan.mock.calls[0] as [unknown, RoomPlanEntity];
             expect(where).toEqual({room_plan_id: ROOM_PLAN_ID});
             expect(entity).toBeInstanceOf(RoomPlanEntity);
-            expect(entity).toMatchObject({is_used: 1, days_of_week: 62, usage_hours: 4, check_in_time: null, check_out_time: null});
+            expect(entity).toMatchObject({is_used: 1, days_of_week: 62, is_extendable: 1, max_extensions: 3, usage_hours: 4, check_in_time: null, check_out_time: null});
             expect(entity.store_id).toBeUndefined();
         });
 
-        it('1박(NIGHT) — 입실 · 퇴실 시각만 저장한다(보낸 이용 시간 · 박수는 NULL, 퇴실은 항상 다음 날)', async () => {
+        it('1박(NIGHT) — 입실 · 퇴실 시각만 저장한다(보낸 이용 시간 · 박수는 NULL, 퇴실은 항상 다음 날), 연장 설정은 종류와 무관하게 보낸 값(연장 불가 · 10회)', async () => {
             const {result} = await runCommand(dispatcher, {
                 type: ROOM_COMMAND.PLAN_UPDATE,
-                payload: {room_plan_type_id: 'NIGHT', is_used: 0, days_of_week: 127, usage_hours: 5, check_in_time: '15:00', check_out_time: '11:00', min_nights: 2, max_nights: 5},
+                payload: {
+                    room_plan_type_id: 'NIGHT',
+                    is_used: 0,
+                    days_of_week: 127,
+                    is_extendable: 0,
+                    max_extensions: 10,
+                    usage_hours: 5,
+                    check_in_time: '15:00',
+                    check_out_time: '11:00',
+                    min_nights: 2,
+                    max_nights: 5,
+                },
                 actor: MANAGER_ACTOR,
             });
 
@@ -59,7 +70,17 @@ describe('admin.room.plan-update — 업체 상품 설정 수정 (큐 경로)', 
             const [where, entity] = repo.updateRoomPlan.mock.calls[0] as [unknown, RoomPlanEntity];
             expect(where).toEqual({room_plan_id: ROOM_PLAN_ID});
             expect(entity).toBeInstanceOf(RoomPlanEntity);
-            expect(entity).toMatchObject({is_used: 0, days_of_week: 127, usage_hours: null, check_in_time: '15:00', check_out_time: '11:00', min_nights: null, max_nights: null});
+            expect(entity).toMatchObject({
+                is_used: 0,
+                days_of_week: 127,
+                is_extendable: 0,
+                max_extensions: 10,
+                usage_hours: null,
+                check_in_time: '15:00',
+                check_out_time: '11:00',
+                min_nights: null,
+                max_nights: null,
+            });
         });
 
         it('연박(LONG) — 입실 · 퇴실 시각 + 최소 · 최대 박수를 저장한다', async () => {
@@ -67,41 +88,71 @@ describe('admin.room.plan-update — 업체 상품 설정 수정 (큐 경로)', 
 
             const {result} = await runCommand(dispatcher, {
                 type: ROOM_COMMAND.PLAN_UPDATE,
-                payload: {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, check_in_time: '15:00', check_out_time: '11:00', min_nights: 2, max_nights: 14},
+                payload: {
+                    room_plan_type_id: 'LONG',
+                    is_used: 1,
+                    days_of_week: 127,
+                    is_extendable: 1,
+                    max_extensions: 3,
+                    check_in_time: '15:00',
+                    check_out_time: '11:00',
+                    min_nights: 2,
+                    max_nights: 14,
+                },
                 actor: MANAGER_ACTOR,
             });
 
             expect(result).toEqual({result: null, error: null});
             const [, entity] = repo.updateRoomPlan.mock.calls[0] as [unknown, RoomPlanEntity];
-            expect(entity).toMatchObject({usage_hours: null, check_in_time: '15:00', check_out_time: '11:00', min_nights: 2, max_nights: 14});
+            expect(entity).toMatchObject({usage_hours: null, check_in_time: '15:00', check_out_time: '11:00', min_nights: 2, max_nights: 14, is_extendable: 1, max_extensions: 3});
         });
     });
 
     describe('[FAIL:service]', () => {
         it.each([
-            ['시간 이용인데 이용 시간 없음', {room_plan_type_id: 'HOURLY', is_used: 1, days_of_week: 127}, 'usage_hours', '시간 이용은 이용 시간을 입력해주세요.'],
-            ['1박인데 입실 시각 없음', {room_plan_type_id: 'NIGHT', is_used: 1, days_of_week: 127, check_out_time: '11:00'}, 'check_in_time', '입실 시각을 입력해주세요.'],
-            ['연박인데 퇴실 시각 없음', {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, check_in_time: '15:00'}, 'check_out_time', '퇴실 시각을 입력해주세요.'],
+            ['시간 이용인데 이용 시간 없음', {room_plan_type_id: 'HOURLY', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3}, 'usage_hours', '시간 이용은 이용 시간을 입력해주세요.'],
+            [
+                '1박인데 입실 시각 없음',
+                {room_plan_type_id: 'NIGHT', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, check_out_time: '11:00'},
+                'check_in_time',
+                '입실 시각을 입력해주세요.',
+            ],
+            [
+                '연박인데 퇴실 시각 없음',
+                {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, check_in_time: '15:00'},
+                'check_out_time',
+                '퇴실 시각을 입력해주세요.',
+            ],
             [
                 '연박인데 최소 박수 없음',
-                {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, check_in_time: '15:00', check_out_time: '11:00', max_nights: 14},
+                {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, check_in_time: '15:00', check_out_time: '11:00', max_nights: 14},
                 'min_nights',
                 '연박은 최소 박수를 입력해주세요.',
             ],
             [
                 '연박인데 최대 박수 없음',
-                {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, check_in_time: '15:00', check_out_time: '11:00', min_nights: 2},
+                {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, check_in_time: '15:00', check_out_time: '11:00', min_nights: 2},
                 'max_nights',
                 '연박은 최대 박수를 입력해주세요.',
             ],
             [
                 '연박 최소 > 최대',
-                {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, check_in_time: '15:00', check_out_time: '11:00', min_nights: 5, max_nights: 3},
+                {room_plan_type_id: 'LONG', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, check_in_time: '15:00', check_out_time: '11:00', min_nights: 5, max_nights: 3},
                 'min_nights',
                 '최소 박수는 최대 박수보다 클 수 없습니다.',
             ],
-            ['1박인데 이용 시간만(시각 둘 다 없음) → 입실부터', {room_plan_type_id: 'NIGHT', is_used: 1, days_of_week: 127, usage_hours: 3}, 'check_in_time', '입실 시각을 입력해주세요.'],
-            ['입실 = 퇴실', {room_plan_type_id: 'NIGHT', is_used: 1, days_of_week: 127, check_in_time: '12:00', check_out_time: '12:00'}, 'check_out_time', '입실과 퇴실 시각이 같을 수 없습니다.'],
+            [
+                '1박인데 이용 시간만(시각 둘 다 없음) → 입실부터',
+                {room_plan_type_id: 'NIGHT', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, usage_hours: 3},
+                'check_in_time',
+                '입실 시각을 입력해주세요.',
+            ],
+            [
+                '입실 = 퇴실',
+                {room_plan_type_id: 'NIGHT', is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, check_in_time: '12:00', check_out_time: '12:00'},
+                'check_out_time',
+                '입실과 퇴실 시각이 같을 수 없습니다.',
+            ],
         ])('%s → failed 400 validation_errors.%s, 수정 없음', async (_label, payload, property, message) => {
             const {decision, result} = await runCommand(dispatcher, {type: ROOM_COMMAND.PLAN_UPDATE, payload, actor: MANAGER_ACTOR});
 
@@ -133,19 +184,26 @@ describe('admin.room.plan-update — 업체 상품 설정 수정 (큐 경로)', 
 
     describe('[FAIL:validation] 게이트웨이 ValidationPipe', () => {
         it.each([
-            ['예약 가능 요일 0(팔지 않으려면 사용 여부 0)', {is_used: 1, days_of_week: 0}, 'days_of_week', '예약 가능 요일은 1 ~ 127 사이로 입력해주세요.'],
-            ['예약 가능 요일 128', {is_used: 1, days_of_week: 128}, 'days_of_week', '예약 가능 요일은 1 ~ 127 사이로 입력해주세요.'],
-            ['이용 시간 25', {is_used: 1, days_of_week: 127, usage_hours: 25}, 'usage_hours', '이용 시간은 1 ~ 24시간 사이로 입력해주세요.'],
-            ['입실 시각 24:00', {is_used: 1, days_of_week: 127, check_in_time: '24:00'}, 'check_in_time', '입실 시각을 HH:mm 으로 입력해주세요.'],
-            ['사용 여부 2', {is_used: 2, days_of_week: 127}, 'is_used', '사용 여부가 올바르지 않습니다.'],
-            ['최대 박수 181', {is_used: 1, days_of_week: 127, max_nights: 181}, 'max_nights', '최대 박수는 1 ~ 180박 사이로 입력해주세요.'],
-            ['최소 박수 0', {is_used: 1, days_of_week: 127, min_nights: 0}, 'min_nights', '최소 박수는 1 ~ 180박 사이로 입력해주세요.'],
+            ['예약 가능 요일 0(팔지 않으려면 사용 여부 0)', {is_used: 1, days_of_week: 0, is_extendable: 1, max_extensions: 3}, 'days_of_week', '예약 가능 요일은 1 ~ 127 사이로 입력해주세요.'],
+            ['예약 가능 요일 128', {is_used: 1, days_of_week: 128, is_extendable: 1, max_extensions: 3}, 'days_of_week', '예약 가능 요일은 1 ~ 127 사이로 입력해주세요.'],
+            ['이용 시간 25', {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, usage_hours: 25}, 'usage_hours', '이용 시간은 1 ~ 24시간 사이로 입력해주세요.'],
+            ['입실 시각 24:00', {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, check_in_time: '24:00'}, 'check_in_time', '입실 시각을 HH:mm 으로 입력해주세요.'],
+            ['사용 여부 2', {is_used: 2, days_of_week: 127, is_extendable: 1, max_extensions: 3}, 'is_used', '사용 여부가 올바르지 않습니다.'],
+            ['최대 박수 181', {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, max_nights: 181}, 'max_nights', '최대 박수는 1 ~ 180박 사이로 입력해주세요.'],
+            ['최소 박수 0', {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3, min_nights: 0}, 'min_nights', '최소 박수는 1 ~ 180박 사이로 입력해주세요.'],
+            ['연장 가능 여부 없음', {is_used: 1, days_of_week: 127, max_extensions: 3}, 'is_extendable', '연장 가능 여부를 입력해주세요.'],
+            ['연장 가능 여부 2', {is_used: 1, days_of_week: 127, is_extendable: 2, max_extensions: 3}, 'is_extendable', '연장 가능 여부가 올바르지 않습니다.'],
+            ['최대 연장 횟수 없음', {is_used: 1, days_of_week: 127, is_extendable: 1}, 'max_extensions', '최대 연장 횟수를 입력해주세요.'],
+            ['최대 연장 횟수 0', {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 0}, 'max_extensions', '최대 연장 횟수는 1 ~ 10회 사이로 입력해주세요.'],
+            ['최대 연장 횟수 11', {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 11}, 'max_extensions', '최대 연장 횟수는 1 ~ 10회 사이로 입력해주세요.'],
+            ['최대 연장 횟수 2.5', {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 2.5}, 'max_extensions', '최대 연장 횟수는 정수로 입력해주세요.'],
         ])('%s → %s', async (_label, body, property, message) => {
             await expect(validateBody(RoomPlanUpdateDto, body)).resolves.toEqual({message, validation_errors: [{property, message}]});
         });
 
-        it('이용 시간 · 시각은 선택 필드 — 종류 조합은 service 가 가른다', async () => {
-            await expect(validateBody(RoomPlanUpdateDto, {is_used: 1, days_of_week: 127})).resolves.toBeNull();
+        it('이용 시간 · 시각은 선택 필드 — 종류 조합은 service 가 가른다(연장 설정 1 · 10 도 통과)', async () => {
+            await expect(validateBody(RoomPlanUpdateDto, {is_used: 1, days_of_week: 127, is_extendable: 1, max_extensions: 3})).resolves.toBeNull();
+            await expect(validateBody(RoomPlanUpdateDto, {is_used: 1, days_of_week: 127, is_extendable: 0, max_extensions: 10})).resolves.toBeNull();
         });
 
         it('종류 경로가 HOURLY · NIGHT · LONG 이 아니면 → room_plan_type_id', async () => {

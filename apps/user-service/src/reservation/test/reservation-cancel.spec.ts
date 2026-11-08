@@ -175,6 +175,25 @@ describe('user.reservation.cancel — 이용자 취소 (큐 경로)', () => {
             expect(repo.updateReservationRoom).not.toHaveBeenCalled();
         });
 
+        it('사용중지 호실의 이용 중 예약에 결제 대기 중인 연장이 있으면 — 연장 구간 취소 · 그 결제 만료(환불 없음), 확정 구간만 환불', async () => {
+            vi.setSystemTime(new Date('2026-11-10T05:00:00Z'));
+            repo.findReservation.mockResolvedValueOnce(reservationEntity({reservation_state_id: 'CHECKED_IN'}));
+            repo.findReservationRoom.mockResolvedValueOnce(roomEntity({room_state_id: 'DISABLED'}));
+            const extension = detailEntity({reservation_detail_id: '8'.repeat(32), reservation_detail_type_id: 'EXTENSION', reservation_state_id: 'PENDING', payment_id: '9'.repeat(32)});
+            repo.findReservationDetails.mockImplementation((where: {reservation_state_id?: string}) => Promise.resolve(where.reservation_state_id === 'PENDING' ? [extension] : [detailEntity()]));
+
+            const {result} = await runCancel();
+
+            expect(result?.result).toEqual({refund_amount: 30000});
+            expect(repo.findReservationDetails).toHaveBeenCalledWith({reservation_id: RESERVATION_ID, reservation_state_id: 'PENDING'});
+            expect(repo.updateReservationDetails).toHaveBeenCalledWith(
+                {reservation_detail_id: '8'.repeat(32), reservation_state_id: 'PENDING'},
+                expect.objectContaining({reservation_state_id: 'CANCELED'}),
+            );
+            expect(repo.updatePayment).toHaveBeenCalledWith({payment_id: '9'.repeat(32), payment_state_id: 'READY'}, expect.objectContaining({payment_state_id: 'EXPIRED'}));
+            expect(repo.updatePayment).toHaveBeenCalledWith({payment_id: PAYMENT_ID, payment_state_id: 'DONE'}, expect.objectContaining({payment_state_id: 'REFUND_REQUESTED', refund_amount: 30000}));
+        });
+
         it('결제 대기 예약 — 취소 + 결제 EXPIRED(환불 없음), refund_amount null, 호실 · 결제 조회 없음', async () => {
             repo.findReservation.mockResolvedValueOnce(reservationEntity({reservation_state_id: 'PENDING'}));
             repo.findReservationDetails.mockResolvedValueOnce([detailEntity({reservation_state_id: 'PENDING'})]);

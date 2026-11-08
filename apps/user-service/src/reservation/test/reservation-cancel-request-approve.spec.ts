@@ -16,6 +16,7 @@ import {
     createDoorStoreMock,
     createPaymentGatewayMock,
     createReservationRepositoryMock,
+    detailEntity,
     DoorStoreMock,
     PAYMENT_ID,
     QR,
@@ -162,6 +163,21 @@ describe('user.reservation.cancel-request-approve — 이용 중 취소 요청 �
             expect(door.revokeQr).toHaveBeenCalledTimes(1);
             expect(door.revokeQr).toHaveBeenCalledWith(ROOM_ID, QR);
             expect(door.revokeQr.mock.invocationCallOrder[0]).toBeGreaterThan(repo.updateCancelRequest.mock.invocationCallOrder[0]);
+        });
+
+        it('결제 대기 중인 연장이 있으면 — 연장 구간 취소 · 그 결제 만료(환불 없음), 환불 금액은 확정 구간만', async () => {
+            const extension = detailEntity({reservation_detail_id: '8'.repeat(32), reservation_detail_type_id: 'EXTENSION', reservation_state_id: 'PENDING', payment_id: '9'.repeat(32)});
+            repo.findReservationDetails.mockImplementation((where: {reservation_state_id?: string}) => Promise.resolve(where.reservation_state_id === 'PENDING' ? [extension] : [detailEntity()]));
+
+            const {result} = await runApprove();
+
+            expect(result?.result).toEqual({refund_amount: 30000});
+            expect(repo.findReservationDetails).toHaveBeenCalledWith({reservation_id: RESERVATION_ID, reservation_state_id: 'PENDING'});
+            expect(repo.updateReservationDetails).toHaveBeenCalledWith(
+                {reservation_detail_id: '8'.repeat(32), reservation_state_id: 'PENDING'},
+                expect.objectContaining({reservation_state_id: 'CANCELED'}),
+            );
+            expect(repo.updatePayment).toHaveBeenCalledWith({payment_id: '9'.repeat(32), payment_state_id: 'READY'}, expect.objectContaining({payment_state_id: 'EXPIRED'}));
         });
 
         it('확정 예약(scheduler 가 이용 중으로 바꾸기 전)도 승인된다 — 상태 조건 CONFIRMED, QR 이 없으면 QR 쓰기 · Redis 없음', async () => {

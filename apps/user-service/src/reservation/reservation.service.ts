@@ -1,6 +1,7 @@
 import {BadRequestException, Inject, Injectable, InternalServerErrorException, NotFoundException} from '@nestjs/common';
 import {Transactional} from '@nestjs-cls/transactional';
 import {In, LessThan, MoreThan, Not} from 'typeorm';
+import {dayjs} from '@app/common/utils/dayjs.js';
 import {Pagination} from '@app/common/utils/pagination.js';
 import {generateId} from '@app/common/utils/id.js';
 import {createValidationError} from '@app/common/utils/validation.js';
@@ -9,6 +10,8 @@ import type {ReservationCancelRequestApproveResultDto} from '@app/contracts/rese
 import type {ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import type {ReservationCancelDto, ReservationCancelResultDto} from '@app/contracts/reservation/dto/reservation-cancel.dto.js';
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
+import type {ReservationExtendResultDto} from '@app/contracts/reservation/dto/reservation-extend.dto.js';
+import type {ReservationExtensionResultDto} from '@app/contracts/reservation/dto/reservation-extension.dto.js';
 import type {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import type {ReservationPaymentConfirmDto, ReservationPaymentConfirmResultDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
 import type {ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
@@ -40,6 +43,7 @@ import {
     RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE,
     RESERVATION_DATE_FORMAT,
     RESERVATION_DATE_INVALID_MESSAGE,
+    RESERVATION_EXTENSION_UNAVAILABLE_MESSAGE,
     RESERVATION_NOT_CANCELABLE_MESSAGE,
     RESERVATION_NOT_FOUND_MESSAGE,
     RESERVATION_PAYMENT_NOT_FOUND_MESSAGE,
@@ -54,9 +58,11 @@ import {
 import {RESERVATION_REPOSITORY} from './reservation.symbols.js';
 import {
     buildBookingContext,
+    buildExtensionOrderName,
     buildOrderName,
     buildRoomQr,
     calculateCancelRefund,
+    calculateExtensionPrice,
     calculateStayPrice,
     cancelRequestState,
     isGroupPlanOnSale,
@@ -64,12 +70,16 @@ import {
     isRoomQrActive,
     isStayBookable,
     isValidDate,
+    judgeExtension,
     judgeReservationQr,
     judgeUsageTransition,
     listStays,
     nowKst,
     toAvailabilityGroups,
     toCancelRequest,
+    toExtensionPlanType,
+    toExtensionResult,
+    toExtensionStay,
     toEndedUsageRoomState,
     toKstDay,
     toNowStay,
@@ -81,7 +91,7 @@ import {
 } from './reservation.util.js';
 
 /**
- * 예약 service (이용자) — 재고 판정 · 예약 · 결제 확인 · 취소 · 조회 · 내 예약 QR · 이용 중 취소 요청 조회 · 승인 · 거절. 체크인 · 체크아웃은 없다 — 시작 시각에 이용 중(사용자 결정 2026-11-07). 매니저의 업체 예약 현황 · 업체 취소 · 호실 이동은 admin-service reservation 이다(기능은 행위자로 서버를 고른다 — 사용자 결정 2026-11-07).
+ * 예약 service (이용자) — 재고 판정 · 예약 · 결제 확인(기본 · 연장 구간) · 취소 · 조회 · 내 예약 QR · 이용 중 취소 요청 조회 · 승인 · 거절 · 연장 조회 · 신청. 체크인 · 체크아웃은 없다 — 시작 시각에 이용 중(사용자 결정 2026-11-07). 매니저의 업체 예약 현황 · 업체 취소 · 호실 이동은 admin-service reservation 이다(기능은 행위자로 서버를 고른다 — 사용자 결정 2026-11-07).
  * 업체 · 객실 · 상품 · 영업시간은 공유 DB 에서 같은 엔티티로 읽는다(사용자 결정 2026-11-03). 결제는 토스(프론트 승인 · 여기 조회 대조), 환불은 scheduler crontab 이 백그라운드로 한다.
  */
 @Injectable()
@@ -317,6 +327,7 @@ export class ReservationService {
      * - 금액 불일치 · 이미 결제 대기가 끝난 예약 → 결제 환불 신청(+ 예약 만료)을 커밋하고 실패를 **반환**한다(재시도 없음)
      * - 같은 결제 키로 이미 확정 → 그대로 결과(중복 요청)
      * - 확정한 예약이 이미 시작했으면(지금 바로 · 시작 뒤 결제) 바로 이용 중 — 호실 사용중 · QR 발급, Redis 현재 QR 은 마지막 단계(사용자 결정 2026-11-07)
+     * - 연장 구간(EXTENSION)이면 결제 DONE · 구간 CONFIRMED · 예약 끝 · 합계 + QR 유효 끝을 늘린다. 결제 대기가 끝났거나 예약이 이용 중이 아니면 환불 신청 + 구간 만료 · 잡아 둔 구간 되돌림 후 실패를 반환한다(사용자 결정 2026-11-09)
      *
      * @param user_id 이용자 ID
      * @param dto 결제 ID · 결제 키
@@ -354,6 +365,71 @@ export class ReservationService {
         }
         const paid = lookup as PaymentLookupResult;
         const now = nowKst().toDate();
+
+        // 4'. 연장 구간 — 결제 대기 연장 + 예약 확정 · 이용 중이면 확정, 아니면(금액 불일치 · 만료 · 취소 · 끝난 예약) 환불 신청 + (결제 대기면) 구간 만료 · 잡아 둔 구간 되돌림 후 실패 반환
+        if (detail.reservation_detail_type_id === RESERVATION_DETAIL_TYPE.EXTENSION) {
+            const active =
+                detail.reservation_state_id === RESERVATION_STATE.PENDING &&
+                (reservation.reservation_state_id === RESERVATION_STATE.CONFIRMED || reservation.reservation_state_id === RESERVATION_STATE.CHECKED_IN);
+            if (verdict === 'MISMATCH' || !active) {
+                const refund = new PaymentEntity();
+                refund.payment_state_id = PAYMENT_STATE.REFUND_REQUESTED;
+                refund.payment_key = paid.payment_key;
+                refund.method = paid.method;
+                refund.approved_at = paid.approved_at ?? now;
+                refund.receipt_url = paid.receipt_url;
+                refund.refund_amount = paid.total_amount;
+                refund.refund_reason = verdict === 'MISMATCH' ? RESERVATION_REFUND_REASON.AMOUNT_MISMATCH : RESERVATION_REFUND_REASON.LATE_PAYMENT;
+                refund.refund_requested_at = now;
+                if (!(await this.reservationRepository.updatePayment({payment_id: payment.payment_id, payment_state_id: payment.payment_state_id}, refund))) {
+                    throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+                }
+                if (detail.reservation_state_id === RESERVATION_STATE.PENDING) {
+                    const expiredExtension = new ReservationDetailEntity();
+                    expiredExtension.reservation_state_id = RESERVATION_STATE.EXPIRED;
+                    await this.reservationRepository.updateReservationDetails({reservation_detail_id: detail.reservation_detail_id, reservation_state_id: RESERVATION_STATE.PENDING}, expiredExtension);
+                    const released = new ReservationEntity();
+                    released.blocked_until = dayjs(reservation.end_at).add(reservation.maintenance_minutes, 'minute').toDate();
+                    await this.reservationRepository.updateReservation({reservation_id: reservation.reservation_id, end_at: detail.start_at}, released);
+                }
+                return new BadRequestException({message: verdict === 'MISMATCH' ? '결제 금액이 맞지 않아 결제를 취소했습니다.' : '연장 결제 대기 시간이 지나 결제를 취소했습니다.'});
+            }
+
+            // 확정 — 결제 DONE → 구간 CONFIRMED → 예약 끝 · 합계(상태 · 끝 조건 — 어긋나면 400 롤백)
+            const extensionDone = new PaymentEntity();
+            extensionDone.payment_state_id = PAYMENT_STATE.DONE;
+            extensionDone.payment_key = paid.payment_key;
+            extensionDone.method = paid.method;
+            extensionDone.approved_at = paid.approved_at ?? now;
+            extensionDone.receipt_url = paid.receipt_url;
+            if (!(await this.reservationRepository.updatePayment({payment_id: payment.payment_id, payment_state_id: PAYMENT_STATE.READY}, extensionDone))) {
+                throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+            }
+            const confirmedExtension = new ReservationDetailEntity();
+            confirmedExtension.reservation_state_id = RESERVATION_STATE.CONFIRMED;
+            await this.reservationRepository.updateReservationDetails({reservation_detail_id: detail.reservation_detail_id, reservation_state_id: RESERVATION_STATE.PENDING}, confirmedExtension);
+            const extended = new ReservationEntity();
+            extended.end_at = detail.end_at;
+            extended.total_price = reservation.total_price + detail.price;
+            if (
+                !(await this.reservationRepository.updateReservation(
+                    {reservation_id: reservation.reservation_id, reservation_state_id: In([RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN]), end_at: detail.start_at},
+                    extended,
+                ))
+            ) {
+                throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+            }
+
+            // QR — 유효 끝이 연장 시작(= 이전 끝)인 QR 이면 새 끝으로(결제 대기 중 끝이 지나 Redis 가 지웠어도), Redis 현재 QR 다시 쓰기는 외부 단계라 마지막
+            const roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
+            if (roomQr && dayjs(roomQr.ends_at).isSame(detail.start_at)) {
+                const extendedQr = new RoomQrEntity();
+                extendedQr.ends_at = detail.end_at;
+                await this.reservationRepository.updateRoomQr({room_qr_id: roomQr.room_qr_id}, extendedQr);
+                await this.doorStore.setQr(roomQr.room_id, roomQr.qr, detail.end_at);
+            }
+            return {reservation_id: reservation.reservation_id, reservation_state_id: reservation.reservation_state_id};
+        }
 
         // 4. 금액 불일치 · 결제 대기가 끝난 예약 — 토스가 받은 금액 전액 환불 신청(+ 아직 결제 대기면 만료), 커밋 뒤 실패를 반환
         const pending = reservation.reservation_state_id === RESERVATION_STATE.PENDING && detail.reservation_state_id === RESERVATION_STATE.PENDING;
@@ -424,7 +500,7 @@ export class ReservationService {
     /**
      * 이용자 취소 — 사유 필수. 확정 예약은 환불 마감 전 100% · 마감 뒤 ~ 이용 시작 전 예약 때 비율(원 단위 내림) 환불 신청, 시작 뒤에는 400.
      * 예약한 호실이 사용중지면 확정 · 이용 중 예약을 끝 전까지 언제든 100% 환불(사유 '사용중지 호실 취소' — 사용자 결정 2026-11-07), 이용 중이었으면 QR 을 끝낸다(Redis 는 마지막). 호실 상태는 그대로.
-     * 결제 대기 예약은 결제를 만료한다(환불 없음 — 늦은 승인은 recheck crontab 이 환불한다). 호실은 바로 풀린다. (RabbitMQ: user.reservation.cancel)
+     * 결제 대기 예약은 결제를 만료한다(환불 없음 — 늦은 승인은 recheck crontab 이 환불한다). 결제 대기 중인 연장 구간도 취소 · 결제 만료한다. 호실은 바로 풀린다. (RabbitMQ: user.reservation.cancel)
      *
      * @param user_id 이용자 ID
      * @param reservation_id 예약 ID
@@ -446,6 +522,8 @@ export class ReservationService {
         // 구간은 결제 대기 · 확정만 쓴다(이용 중 예약의 구간은 확정 그대로)
         const detail_state = pending ? RESERVATION_STATE.PENDING : RESERVATION_STATE.CONFIRMED;
         const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: detail_state});
+        // 결제 대기 중인 연장 구간(이용 중 예약만) — 취소와 함께 정리한다
+        const pendingExtensions = pending ? [] : await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.PENDING});
 
         // 2. 확정 · 이용 중 — 결제마다 환불액(사용중지 호실이면 끝 전까지 100%, 아니면 시작 뒤 400)
         const refunds: {payment_id: string; amount: number}[] = [];
@@ -475,6 +553,14 @@ export class ReservationService {
         const canceledDetail = new ReservationDetailEntity();
         canceledDetail.reservation_state_id = RESERVATION_STATE.CANCELED;
         await this.reservationRepository.updateReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: detail_state}, canceledDetail);
+        for (const extension of pendingExtensions) {
+            const canceledExtension = new ReservationDetailEntity();
+            canceledExtension.reservation_state_id = RESERVATION_STATE.CANCELED;
+            await this.reservationRepository.updateReservationDetails({reservation_detail_id: extension.reservation_detail_id, reservation_state_id: RESERVATION_STATE.PENDING}, canceledExtension);
+            const expiredPayment = new PaymentEntity();
+            expiredPayment.payment_state_id = PAYMENT_STATE.EXPIRED;
+            await this.reservationRepository.updatePayment({payment_id: extension.payment_id, payment_state_id: PAYMENT_STATE.READY}, expiredPayment);
+        }
 
         // 4. 결제 대기 — 결제 만료(환불 없음)
         if (pending) {
@@ -649,6 +735,7 @@ export class ReservationService {
 
         // 3. 예약 · 구간 취소(상태 조건) — 주체 업체 · 사유 = 요청 사유
         const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED});
+        const pendingExtensions = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.PENDING});
         const canceled = new ReservationEntity();
         canceled.reservation_state_id = RESERVATION_STATE.CANCELED;
         canceled.canceled_at = now;
@@ -660,6 +747,15 @@ export class ReservationService {
         const canceledDetail = new ReservationDetailEntity();
         canceledDetail.reservation_state_id = RESERVATION_STATE.CANCELED;
         await this.reservationRepository.updateReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED}, canceledDetail);
+        // 결제 대기 중인 연장 구간 — 취소 · 결제 만료(환불 없음 — 늦은 승인은 재확인 crontab 이 환불한다)
+        for (const extension of pendingExtensions) {
+            const canceledExtension = new ReservationDetailEntity();
+            canceledExtension.reservation_state_id = RESERVATION_STATE.CANCELED;
+            await this.reservationRepository.updateReservationDetails({reservation_detail_id: extension.reservation_detail_id, reservation_state_id: RESERVATION_STATE.PENDING}, canceledExtension);
+            const expiredPayment = new PaymentEntity();
+            expiredPayment.payment_state_id = PAYMENT_STATE.EXPIRED;
+            await this.reservationRepository.updatePayment({payment_id: extension.payment_id, payment_state_id: PAYMENT_STATE.READY}, expiredPayment);
+        }
 
         // 4. 결제마다 전액 환불 신청(업체 취소 사유) — 백그라운드 crontab 이 토스로
         for (const detail of details) {
@@ -745,5 +841,193 @@ export class ReservationService {
         ) {
             throw new BadRequestException({message: RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE});
         }
+    }
+
+    /**
+     * 연장 조회 (이용자) — 지금 끝에서 한 단위(시간 이용 · 1박: 업체 이용 시간, 연박: 1일) 늘리면 몇 시까지 · 얼마인지, 못 하면 사유(잡아 두지 않는다 — 사용자 결정 2026-11-09).
+     * (내부 HTTP: GET /internal/v1/user-service/reservation/:reservation_id/extension)
+     *
+     * @param user_id 이용자 ID
+     * @param reservation_id 예약 ID
+     * @returns 연장 가능 여부 · 사유 · 요금 상품 · 시작 · 끝 · 금액
+     * @throws NotFoundException 내 예약이 아닐 때(결제 대기 만료 포함)
+     */
+    async getExtension(user_id: string, reservation_id: string): Promise<ReservationExtensionResultDto> {
+        // 1. 내 예약 — 결제 대기 만료는 404
+        const reservation = await this.reservationRepository.findReservation({reservation_id, user_id});
+        if (!reservation || reservation.reservation_state_id === RESERVATION_STATE.EXPIRED) {
+            throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 재료 — 구간 · 업체 · 호실 · 예약 상품 설정(연장 설정 · 연박 최대 박수) · 요금 상품(업체 설정 · 그룹 상품 · 기간 가격)
+        const now = nowKst();
+        const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id});
+        const store = await this.reservationRepository.findReservationStore({store_id: reservation.store_id});
+        const room = await this.reservationRepository.findReservationRoom({room_id: reservation.room_id});
+        const base_plan = await this.reservationRepository.findStorePlan({store_id: reservation.store_id, room_plan_type_id: reservation.room_plan_type_id});
+        const unit_type = toExtensionPlanType(reservation.room_plan_type_id);
+        const unit_plan = unit_type === reservation.room_plan_type_id ? base_plan : await this.reservationRepository.findStorePlan({store_id: reservation.store_id, room_plan_type_id: unit_type});
+        const [group_plan] = room ? await this.reservationRepository.findGroupPlans({room_group_id: room.room_group_id, room_plan_type_id: unit_type}) : [];
+        const periods = group_plan ? await this.reservationRepository.findGroupPlanPrices({room_group_plan_id: group_plan.room_group_plan_id}) : [];
+        const stay = unit_plan ? toExtensionStay(reservation, unit_plan) : null;
+
+        // 3. 연장 구간과 겹치는 영업시간 · 브레이크 · 일시 예약불가 · 그 호실의 다른 점유 예약(정비시간까지)
+        const hours = await this.reservationRepository.findStoreHours(reservation.store_id);
+        const breaks = await this.reservationRepository.findStoreBreaks(reservation.store_id);
+        const unavailable = stay
+            ? await this.reservationRepository.findUnavailablePeriods({store_id: reservation.store_id, starts_at: LessThan(stay.end.toDate()), ends_at: MoreThan(stay.start.toDate())})
+            : [];
+        const occupied = stay
+            ? await this.reservationRepository.findReservations({
+                  room_id: reservation.room_id,
+                  reservation_id: Not(reservation.reservation_id),
+                  reservation_state_id: In(RESERVATION_OCCUPYING_STATES),
+                  start_at: LessThan(stay.end.add(reservation.maintenance_minutes, 'minute').toDate()),
+                  blocked_until: MoreThan(stay.start.toDate()),
+              })
+            : [];
+
+        // 4. 판정 · 금액
+        const reason = judgeExtension({
+            now,
+            reservation,
+            details,
+            store,
+            room_state_id: room?.room_state_id ?? null,
+            base_plan,
+            unit_plan,
+            group_plan: group_plan ?? null,
+            stay,
+            hours,
+            breaks,
+            unavailable,
+            occupied,
+        });
+        const amount = stay && group_plan ? calculateExtensionPrice(stay, group_plan.price, periods) : null;
+        return toExtensionResult(reservation.reservation_id, reason, stay, amount);
+    }
+
+    /**
+     * 연장 신청 (이용자) — 조회와 같은 판정(못 하면 400 그 사유) 뒤 결제(READY) → 연장 구간(EXTENSION · PENDING · 5분) → 예약 점유 끝 = 새 끝 + 정비시간(잡아 두기).
+     * 다음 예약과 겹치면 배타 제약이 400, 겹친 신청은 부분 유니크가 400. 확정은 기존 결제 확인 · 결제 대기 만료가 구간 종류로 가른다(사용자 결정 2026-11-09).
+     * (RabbitMQ: user.reservation.extend)
+     *
+     * @param user_id 이용자 ID
+     * @param reservation_id 예약 ID
+     * @returns 연장 구간 · 결제 정보(토스 orderId · 금액 · 주문명) · 결제 대기 만료 · 시작 · 끝
+     */
+    @Transactional()
+    async requestExtension(user_id: string, reservation_id: string): Promise<ReservationExtendResultDto> {
+        // 1. 내 예약 — 결제 대기 만료는 404
+        const reservation = await this.reservationRepository.findReservation({reservation_id, user_id});
+        if (!reservation || reservation.reservation_state_id === RESERVATION_STATE.EXPIRED) {
+            throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
+        }
+
+        // 2. 재료 — 구간 · 업체 · 호실 · 예약 상품 설정(연장 설정 · 연박 최대 박수) · 요금 상품(업체 설정 · 그룹 상품 · 기간 가격)
+        const now = nowKst();
+        const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id});
+        const store = await this.reservationRepository.findReservationStore({store_id: reservation.store_id});
+        const room = await this.reservationRepository.findReservationRoom({room_id: reservation.room_id});
+        const base_plan = await this.reservationRepository.findStorePlan({store_id: reservation.store_id, room_plan_type_id: reservation.room_plan_type_id});
+        const unit_type = toExtensionPlanType(reservation.room_plan_type_id);
+        const unit_plan = unit_type === reservation.room_plan_type_id ? base_plan : await this.reservationRepository.findStorePlan({store_id: reservation.store_id, room_plan_type_id: unit_type});
+        const [group_plan] = room ? await this.reservationRepository.findGroupPlans({room_group_id: room.room_group_id, room_plan_type_id: unit_type}) : [];
+        const periods = group_plan ? await this.reservationRepository.findGroupPlanPrices({room_group_plan_id: group_plan.room_group_plan_id}) : [];
+        const stay = unit_plan ? toExtensionStay(reservation, unit_plan) : null;
+
+        // 3. 연장 구간과 겹치는 영업시간 · 브레이크 · 일시 예약불가 · 그 호실의 다른 점유 예약(정비시간까지)
+        const hours = await this.reservationRepository.findStoreHours(reservation.store_id);
+        const breaks = await this.reservationRepository.findStoreBreaks(reservation.store_id);
+        const unavailable = stay
+            ? await this.reservationRepository.findUnavailablePeriods({store_id: reservation.store_id, starts_at: LessThan(stay.end.toDate()), ends_at: MoreThan(stay.start.toDate())})
+            : [];
+        const occupied = stay
+            ? await this.reservationRepository.findReservations({
+                  room_id: reservation.room_id,
+                  reservation_id: Not(reservation.reservation_id),
+                  reservation_state_id: In(RESERVATION_OCCUPYING_STATES),
+                  start_at: LessThan(stay.end.add(reservation.maintenance_minutes, 'minute').toDate()),
+                  blocked_until: MoreThan(stay.start.toDate()),
+              })
+            : [];
+
+        // 4. 판정 · 금액
+        const reason = judgeExtension({
+            now,
+            reservation,
+            details,
+            store,
+            room_state_id: room?.room_state_id ?? null,
+            base_plan,
+            unit_plan,
+            group_plan: group_plan ?? null,
+            stay,
+            hours,
+            breaks,
+            unavailable,
+            occupied,
+        });
+        const amount = stay && group_plan ? calculateExtensionPrice(stay, group_plan.price, periods) : null;
+        if (reason !== null || !stay || !group_plan || amount === null || !store || !room) {
+            throw new BadRequestException({message: reason ?? RESERVATION_EXTENSION_UNAVAILABLE_MESSAGE});
+        }
+        const expires_at = now.add(RESERVATION_PAYMENT_PENDING_MINUTES, 'minute').toDate();
+
+        // 5. 결제(READY) — 결제 환경은 키 접두사로(키가 없으면 503)
+        const payment = new PaymentEntity();
+        payment.payment_id = generateId();
+        payment.user_id = user_id;
+        payment.payment_state_id = PAYMENT_STATE.READY;
+        payment.environment = this.paymentGateway.environment();
+        payment.order_name = buildExtensionOrderName(store.store_name, room.room_name, stay);
+        payment.amount = amount;
+        payment.payment_key = null;
+        payment.method = null;
+        payment.approved_at = null;
+        payment.receipt_url = null;
+        payment.refund_amount = null;
+        payment.refund_reason = null;
+        payment.refund_requested_at = null;
+        payment.refunded_at = null;
+        payment.failure_code = null;
+        payment.failure_message = null;
+        await this.reservationRepository.insertPayment(payment);
+
+        // 6. 연장 구간(EXTENSION · PENDING · 결제 대기 만료) — 결제 대기 구간이 이미 있으면 부분 유니크가 400
+        const detail = new ReservationDetailEntity();
+        detail.reservation_detail_id = generateId();
+        detail.reservation_id = reservation.reservation_id;
+        detail.reservation_detail_type_id = RESERVATION_DETAIL_TYPE.EXTENSION;
+        detail.room_plan_type_id = stay.room_plan_type_id;
+        detail.reservation_state_id = RESERVATION_STATE.PENDING;
+        detail.payment_id = payment.payment_id;
+        detail.start_at = stay.start.toDate();
+        detail.end_at = stay.end.toDate();
+        detail.price = amount;
+        detail.expires_at = expires_at;
+        await this.reservationRepository.insertReservationDetail(detail);
+
+        // 7. 잡아 두기 — 점유 끝 = 새 끝 + 정비시간(상태 · 끝 조건 — 그 사이 바뀌었으면 400, 다음 예약과 겹치면 배타 제약 400)
+        const held = new ReservationEntity();
+        held.blocked_until = stay.end.add(reservation.maintenance_minutes, 'minute').toDate();
+        if (
+            !(await this.reservationRepository.updateReservationHold(
+                {reservation_id: reservation.reservation_id, reservation_state_id: reservation.reservation_state_id, end_at: reservation.end_at},
+                held,
+            ))
+        ) {
+            throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+        }
+        return {
+            reservation_id: reservation.reservation_id,
+            reservation_detail_id: detail.reservation_detail_id,
+            payment_id: payment.payment_id,
+            order_name: payment.order_name,
+            amount,
+            expires_at: expires_at.toISOString(),
+            start_at: detail.start_at.toISOString(),
+            end_at: detail.end_at.toISOString(),
+        };
     }
 }

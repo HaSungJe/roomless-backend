@@ -191,6 +191,8 @@ export function toDiscoveryStorePlan(row: DiscoveryStorePlanRow): DiscoveryStore
         check_out_time: row.check_out_time ? toHourMinute(row.check_out_time) : null,
         min_nights: row.min_nights === null ? null : Number(row.min_nights),
         max_nights: row.max_nights === null ? null : Number(row.max_nights),
+        is_extendable: Number(row.is_extendable),
+        max_extensions: Number(row.max_extensions),
     };
 }
 

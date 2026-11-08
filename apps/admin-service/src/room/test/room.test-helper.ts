@@ -310,6 +310,8 @@ export function planRow(override: Partial<RoomPlanRow> = {}): RoomPlanRow {
         check_out_time: '11:00:00',
         min_nights: null,
         max_nights: null,
+        is_extendable: 1,
+        max_extensions: 3,
         ...override,
     };
 }

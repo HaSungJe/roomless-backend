@@ -18,6 +18,7 @@ import type {Actor} from '@app/contracts/actor.js';
 import {ReservationCancelRequestApproveParamDto, ReservationCancelRequestApproveResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request-approve.dto.js';
 import {ReservationCancelRequestRejectParamDto} from '@app/contracts/reservation/dto/reservation-cancel-request-reject.dto.js';
 import {ReservationCancelDto, ReservationCancelParamDto, ReservationCancelResultDto} from '@app/contracts/reservation/dto/reservation-cancel.dto.js';
+import {ReservationExtendParamDto, ReservationExtendResultDto} from '@app/contracts/reservation/dto/reservation-extend.dto.js';
 import {ReservationPaymentConfirmDto, ReservationPaymentConfirmResultDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
 import {ReservationDto, ReservationResultDto} from '@app/contracts/reservation/dto/reservation.dto.js';
 import {RESERVATION_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
@@ -27,7 +28,7 @@ import {CommandStreamService} from '../../../../../modules/transport/command-str
 
 /**
  * 예약 공개 API — 큐 경로(RabbitMQ `user.reservation.*` → user-service + 요청 단위 SSE).
- * 예약 생성 · 결제 확인 · 취소 · 이용 중 취소 요청 승인 · 거절 — 이용자 가드. path param 은 payload 에 합쳐 보낸다. 매니저의 업체 취소 · 호실 이동은 /api/v1/admin-service/reservation 이다.
+ * 예약 생성 · 결제 확인 · 취소 · 이용 중 취소 요청 승인 · 거절 · 연장 신청 — 이용자 가드. path param 은 payload 에 합쳐 보낸다. 매니저의 업체 취소 · 호실 이동은 /api/v1/admin-service/reservation 이다.
  */
 @ApiTags('예약')
 @Controller('/api/v1/user-service/reservation')
@@ -127,5 +128,24 @@ export class ReservationQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async rejectCancelRequest(@PassportActor() actor: Actor, @Param() param: ReservationCancelRequestRejectParamDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: RESERVATION_COMMAND.CANCEL_REQUEST_REJECT, actor, payload: param, client_ip: ip});
+    }
+
+    /**
+     * 연장 신청 (이용자) — 이용 중에만, 연장 구간을 잡아 두고(다음 예약이 못 들어온다) 결제 정보를 돌려준다. 5분 안에 결제하지 않으면 연장이 만료되고 그 예약은 다시 연장할 수 없다.
+     * done 의 data 로 토스 결제창(orderId = payment_id) → 결제 확인(/payment-confirm)
+     */
+    @Post('/:reservation_id/extension')
+    @UseGuards(PassportJwtAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '연장 신청'})
+    @ApiProduces('text/event-stream')
+    @ApiOkResponse({type: ReservationExtendResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async requestExtension(@PassportActor() actor: Actor, @Param() param: ReservationExtendParamDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: RESERVATION_COMMAND.EXTEND, actor, payload: param, client_ip: ip});
     }
 }

@@ -5,7 +5,7 @@ const RESERVATION_INTERNAL_BASE = '/internal/v1/user-service/reservation';
 const RESERVATION_MANAGER_INTERNAL_BASE = '/internal/v1/admin-service/reservation';
 
 /**
- * reservation 도메인 이용자 명령 종류 (= 라우팅 키, user-service 의 q.user.cmd 가 `user.#` 로 받는다) — 예약 생성 · 결제 확인 · 취소 · 이용 중 취소 요청 승인 · 거절. 조회는 내부 HTTP 동기 경로다.
+ * reservation 도메인 이용자 명령 종류 (= 라우팅 키, user-service 의 q.user.cmd 가 `user.#` 로 받는다) — 예약 생성 · 결제 확인 · 취소 · 이용 중 취소 요청 승인 · 거절 · 연장 신청. 조회는 내부 HTTP 동기 경로다.
  * 매니저의 업체 취소 · 호실 이동은 admin-service 의 RESERVATION_MANAGER_COMMAND 다(기능은 행위자로 서버를 고른다 — 사용자 결정 2026-11-07).
  */
 export const RESERVATION_COMMAND = {
@@ -19,6 +19,8 @@ export const RESERVATION_COMMAND = {
     CANCEL_REQUEST_APPROVE: 'user.reservation.cancel-request-approve',
     /** 이용 중 취소 요청 거절 — 예약은 그대로 (이용자) */
     CANCEL_REQUEST_REJECT: 'user.reservation.cancel-request-reject',
+    /** 연장 신청 — 이용 중에만, 잡아 두기 + 결제 대기 5분 (이용자) */
+    EXTEND: 'user.reservation.extend',
 } as const;
 
 /**
@@ -47,6 +49,8 @@ export const RESERVATION_INTERNAL_PATH = {
     qr: (reservation_id: string) => `${RESERVATION_INTERNAL_BASE}/${encodeURIComponent(reservation_id)}/qr`,
     /** 내 예약의 이용 중 취소 요청 (GET, 이용자 — 마지막 요청) */
     cancelRequest: (reservation_id: string) => `${RESERVATION_INTERNAL_BASE}/${encodeURIComponent(reservation_id)}/cancel-request`,
+    /** 내 예약 연장 조회 (GET, 이용자 — 잡아 두지 않는다) */
+    extension: (reservation_id: string) => `${RESERVATION_INTERNAL_BASE}/${encodeURIComponent(reservation_id)}/extension`,
 } as const;
 
 /**

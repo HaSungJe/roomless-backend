@@ -119,14 +119,14 @@ export class RoomService {
     }
 
     /**
-     * 업체 상품 설정 수정 — 종류별. 사용 여부 · 예약 가능 요일은 모든 종류, 종류에 필요한 값은 service 가 가른다(CHK_RoomPlan_* 와 같은 조합). (RabbitMQ: admin.room.plan-update)
+     * 업체 상품 설정 수정 — 종류별. 사용 여부 · 예약 가능 요일 · 연장 가능 여부 · 최대 연장 횟수는 모든 종류, 종류에 필요한 값은 service 가 가른다(CHK_RoomPlan_* 와 같은 조합). (RabbitMQ: admin.room.plan-update)
      * - 시간 이용(HOURLY): 이용 시간 필수(없으면 400 validation_errors.usage_hours), 입실 · 퇴실 시각 · 박수는 보내도 NULL
      * - 1박 · 연박: 입실 · 퇴실 시각 필수(없는 필드로 400), 둘이 같으면 400(validation_errors.check_out_time), 이용 시간은 NULL
      * - 연박: 최소 · 최대 박수 필수(없는 필드로 400), 최소 > 최대면 400(validation_errors.min_nights). 1박 · 시간 이용의 박수는 NULL
      *
      * @param user_id 로그인 매니저 ID
      * @param room_plan_type_id 상품 종류 (HOURLY · NIGHT · LONG)
-     * @param dto 사용 여부 · 예약 가능 요일 · 이용 시간 · 입실 · 퇴실 시각 · 최소 · 최대 박수
+     * @param dto 사용 여부 · 예약 가능 요일 · 연장 가능 여부 · 최대 연장 횟수 · 이용 시간 · 입실 · 퇴실 시각 · 최소 · 최대 박수
      */
     @Transactional()
     async updateMyRoomPlan(user_id: string, room_plan_type_id: string, dto: RoomPlanUpdateDto): Promise<void> {
@@ -142,10 +142,12 @@ export class RoomService {
             throw new NotFoundException({message: ROOM_PLAN_NOT_FOUND_MESSAGE});
         }
 
-        // 3. 모든 종류 공통
+        // 3. 모든 종류 공통 — 연장 설정은 연장할 때의 지금 값으로 쓰인다(이용 중인 예약도 따른다 — 사용자 결정 2026-11-09)
         const entity = new RoomPlanEntity();
         entity.is_used = dto.is_used;
         entity.days_of_week = dto.days_of_week;
+        entity.is_extendable = dto.is_extendable;
+        entity.max_extensions = dto.max_extensions;
 
         // 4. 종류별 값 — 시간 이용은 이용 시간만, 1박 · 연박은 입실 · 퇴실 시각, 연박은 박수도
         if (room_plan_type_id === ROOM_PLAN_TYPE.HOURLY) {

@@ -41,7 +41,7 @@ flowchart LR
   P15 --> P19
   P17 --> P19
   P5 --> P19
-  P19 --> P26["Phase 26 · 연장 (1)"]:::todo
+  P19 --> P26["Phase 26 · 연장 (2)"]:::inprog
   P17 --> P26
   P6 --> P20["Phase 20 · 관리자 계정 관리 (2)"]:::todo
   P10 --> P20
@@ -82,7 +82,7 @@ flowchart LR
 - Phase 18 — discovery · 유닛 5개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/user-service/src/{discovery,reservation}, apps/gateway/src/api/v1/user-service/discovery, libs/contracts/src/{discovery,reservation} · done
 - Phase 25 — 서버 위치 정리 · 유닛 3개 · 의존: Phase 9, Phase 15, Phase 17 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/{door,store}(새) · reservation(매니저 기능 빼기), apps/admin-service/src/reservation(새) · {room,store}(이용자 · 문 소켓 처리 빼기), apps/gateway/src/api/v1/{user-service/store(새), admin-service/reservation(새), admin-service/store, user-service/reservation}, apps/gateway/src/modules/door-socket, libs/contracts/src/{door,room,store,reservation}, README.md, AGENTS.md, docs/ · done
 - Phase 19 — 이용 · 유닛 6개 · 의존: Phase 5, Phase 15, Phase 17, Phase 25 · 푼다: Phase 21, 26 · 파일 집합: apps/scheduler/src/reservation(crontabs · repository · 모듈 SmsModule), apps/user-service/src/{reservation,door}, apps/admin-service/src/reservation, apps/gateway/src/api/v1/{user-service,admin-service}/reservation, libs/contracts/src/reservation, libs/database(entities · migrations · seeder), compose.scheduler.yml, .env.example, README.md, AGENTS.md, docs/ · done
-- Phase 26 — 연장 · 유닛 1개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
+- Phase 26 — 연장 · 유닛 2개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/{reservation,discovery}, apps/scheduler/src/reservation, apps/admin-service/src/{room,store}, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/{reservation,room,discovery}, libs/database(entities · migrations), README.md, AGENTS.md, docs/ · in-progress
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/admin(이용자 · 업체 관리자 관리 — 공유 DB 의 t_user 를 관리자 도메인 repository 가 다룬다), apps/gateway/src/api/v1/admin-service/admin, libs/contracts/src/admin · todo
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats, apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats · todo
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
@@ -91,11 +91,12 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 26
+지금: Phase 26 진행 중 · Next up: Phase 26
 
 ## 지금 할 일
 Phase 26 연장 시작하기
 - #81 연장
+- #124 업체 상품별 연장 설정
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) · `USER_WEB_URL`(이용자 프론트 주소 — scheduler QR 확인 링크 SMS · admin-service 이용 중 취소 요청 승인 링크, 비면 링크 SMS 안 보냄 · 취소 요청 503) · AWS 키는 scheduler 에도 넘어간다(QR 링크 SMS — SNS 권한) · `BCRYPT_CODE` 는 user-service · admin-service 가 같은 값(문 시크릿 확인 · 업체 총관리자 비밀번호 해시를 Phase 25 부터 user-service 도 한다) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
@@ -462,9 +463,12 @@ ship 완료 (2026-11-08, 커밋 e47ce33) — report: `.beaver/output/report/rese
 ### Phase 26 — 연장 · depends: Phase 19
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 81 | 연장 | 같은 호실에서 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(단위 기본안: 시간 이용 단위), 정비시간은 마지막 연장 뒤로, 추가 결제 | 1박 · 연박 연장 단위 · 요금 | 69, 79 | todo |
+| 81 | 연장 | 이용 중 예약의 끝에 이어 붙인다 — 시간 이용 · 1박은 업체 이용 시간(시간 이용 요금), 연박은 1일(1박 요금 · 최대 박수까지), 신청 즉시 잡아 두고 5분 결제, 결제하지 않으면 그 예약은 다시 연장 불가, 조회 API | 단위 · 요금 · 잡아 두기(사용자 결정 2026-11-09) | 69, 79 | in-progress |
+| 124 | 업체 상품별 연장 설정 | 업체 상품 설정(시간 이용 · 1박 · 연박)에 연장 가능 여부 · 최대 연장 횟수(1 ~ 10) — 기본 가능 · 3회, 연장할 때의 지금 설정을 본다, 업체 둘러보기 상세에도 보인다 | 기본값 · 적용 시점(사용자 결정 2026-11-09) | 102, 103, 81 | in-progress |
 
-**Expected APIs** (가칭, 이용자 가드): `POST /api/v1/user-service/reservation/:reservation_id/extend`(SSE). Phase 19 에서 나눴다 — 체크인 · 퇴실이 먼저 있어야 이어 붙일 끝을 정할 수 있다(사용자 결정 2026-11-07).
+**Expected APIs** (spec `.beaver/output/spec/reservation/reservation-extension-spec.md`): 이용자 `GET /api/v1/user-service/reservation/:reservation_id/extension`(연장 조회 — 몇 시까지 · 얼마 · 못 하면 사유) · `POST …/:reservation_id/extension`(큐 `user.reservation.extend` — 잡아 두기 + 결제 5분). 확정은 기존 결제 확인 · 결제 대기 만료 crontab 이 구간 종류(연장)로 가른다. 시간 이용 · 1박은 이용 시간 단위(시간 이용 요금), 연박은 1일(1박 요금 · 최대 박수까지), 이용 중에만, 결제하지 않으면 그 예약은 다시 연장 불가(사용자 결정 2026-11-09).
+
+build 완료 — report: `.beaver/output/report/reservation/reservation-extension-report.md`(전체 110파일 1223건 통과, 마이그레이션 `ReservationExtension`).
 
 ### Phase 20 — 관리자 계정 관리 (총관리자) · depends: Phase 6, Phase 10
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -516,7 +520,7 @@ ship 완료 (2026-11-08, 커밋 e47ce33) — report: `.beaver/output/report/rese
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 104/114 units done (20/26 phases)
+**Progress**: 104/115 units done (20/26 phases)
 **Next up**: Phase 26 연장 — 의존(Phase 19) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.

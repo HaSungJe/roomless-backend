@@ -8,7 +8,7 @@ import {ReservationDetailEntity} from '@app/database/entities/reservation/reserv
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import type {PaymentLookupResult} from '@app/integration/interfaces/integration.interface.js';
-import type {UsageRow} from './interfaces/reservation.repository.interface.js';
+import type {ExpiredPendingRow, UsageRow} from './interfaces/reservation.repository.interface.js';
 
 /** 결제 대기 전환 — 결제 · 구간 · 예약에 쓸 엔티티 */
 export interface PendingTransition {
@@ -55,6 +55,73 @@ export function buildExpireTransition(): PendingTransition {
  */
 export function buildRefundTransition(lookup: PaymentLookupResult, reason: string, now: Date): PendingTransition {
     return {payment: buildRefundRequest(lookup, reason, now), ...buildStateEntities(RESERVATION_STATE.EXPIRED)};
+}
+
+/** 연장 결제 대기 전환 — 결제 · 구간 · 예약(확정: 끝 · 합계, 그 밖: 점유 끝 되돌림) · QR(확정만 — 유효 끝 = 연장 끝) */
+export interface ExtensionTransition {
+    payment: PaymentEntity;
+    detail: ReservationDetailEntity;
+    reservation: ReservationEntity;
+    room_qr: RoomQrEntity | null;
+}
+
+/**
+ * 연장 결제 대기 → 확정 — 토스에서 승인된 결제 · 예약이 확정 · 이용 중. 문 쪽 Redis QR 은 QR 동기화가 1분 안에 새 유효 끝으로 맞춘다.
+ *
+ * @param lookup 토스 조회 결과
+ * @param row 연장 구간 행
+ * @param now 지금(승인 시각이 없을 때)
+ * @returns 결제 DONE · 구간 CONFIRMED · 예약 끝 = 연장 끝 · 합계 + 연장 금액 · QR 유효 끝 = 연장 끝
+ */
+export function buildExtensionConfirmTransition(lookup: PaymentLookupResult, row: ExpiredPendingRow, now: Date): ExtensionTransition {
+    const {payment} = buildConfirmTransition(lookup, now);
+    const detail = new ReservationDetailEntity();
+    detail.reservation_state_id = RESERVATION_STATE.CONFIRMED;
+    const reservation = new ReservationEntity();
+    reservation.end_at = row.detail_end_at;
+    reservation.total_price = Number(row.total_price) + Number(row.price);
+    const room_qr = new RoomQrEntity();
+    room_qr.ends_at = row.detail_end_at;
+    return {payment, detail, reservation, room_qr};
+}
+
+/**
+ * 연장 결제 대기 → 환불 신청 + 만료 — 승인됐지만 금액이 다르거나, 예약이 더는 확정 · 이용 중이 아니다.
+ *
+ * @param lookup 토스 조회 결과
+ * @param reason 환불 사유
+ * @param row 연장 구간 행
+ * @param now 지금
+ * @returns 결제 REFUND_REQUESTED · 구간 EXPIRED · 점유 끝 되돌림
+ */
+export function buildExtensionRefundTransition(lookup: PaymentLookupResult, reason: string, row: ExpiredPendingRow, now: Date): ExtensionTransition {
+    return {payment: buildRefundRequest(lookup, reason, now), ...buildExtensionRelease(row)};
+}
+
+/**
+ * 연장 결제 대기 → 만료 — 승인된 결제가 없다(그 예약은 다시 연장할 수 없다).
+ *
+ * @param row 연장 구간 행
+ * @returns 결제 EXPIRED · 구간 EXPIRED · 점유 끝 되돌림
+ */
+export function buildExtensionExpireTransition(row: ExpiredPendingRow): ExtensionTransition {
+    const payment = new PaymentEntity();
+    payment.payment_state_id = PAYMENT_STATE.EXPIRED;
+    return {payment, ...buildExtensionRelease(row)};
+}
+
+/**
+ * 연장을 놓은 구간 · 예약 — 구간 만료 · 점유 끝 = 지금 끝 + 정비시간(잡아 둔 연장 구간을 푼다).
+ *
+ * @param row 연장 구간 행
+ * @returns 구간 EXPIRED · 예약 점유 끝 · QR 없음
+ */
+function buildExtensionRelease(row: ExpiredPendingRow): {detail: ReservationDetailEntity; reservation: ReservationEntity; room_qr: null} {
+    const detail = new ReservationDetailEntity();
+    detail.reservation_state_id = RESERVATION_STATE.EXPIRED;
+    const reservation = new ReservationEntity();
+    reservation.blocked_until = dayjs(row.reservation_end_at).add(Number(row.maintenance_minutes), 'minute').toDate();
+    return {detail, reservation, room_qr: null};
 }
 
 /**

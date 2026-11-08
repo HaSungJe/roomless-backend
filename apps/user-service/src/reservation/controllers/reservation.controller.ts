@@ -3,6 +3,7 @@ import {InternalActor} from '@app/common/internal/internal-request.decorator.js'
 import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import {ReservationCancelRequestParamDto, ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
+import {ReservationExtensionParamDto, ReservationExtensionResultDto} from '@app/contracts/reservation/dto/reservation-extension.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
 import {ReservationService} from '../reservation.service.js';
@@ -63,5 +64,14 @@ export class ReservationController {
     @HttpCode(200)
     async getMyCancelRequest(@InternalActor('user_id') user_id: string, @Param() param: ReservationCancelRequestParamDto): Promise<ReservationCancelRequestResultDto> {
         return this.reservationService.getMyCancelRequest(user_id, param.reservation_id);
+    }
+
+    /**
+     * 내 예약 연장 조회 (이용자 — 잡아 두지 않는다)
+     */
+    @Get('/:reservation_id/extension')
+    @HttpCode(200)
+    async getExtension(@InternalActor('user_id') user_id: string, @Param() param: ReservationExtensionParamDto): Promise<ReservationExtensionResultDto> {
+        return this.reservationService.getExtension(user_id, param.reservation_id);
     }
 }

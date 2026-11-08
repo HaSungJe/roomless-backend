@@ -66,6 +66,9 @@ export const STORE_LATE_REFUND_PERCENT_DEFAULT = 50;
 /** 업체 상품 설정 예약 가능 요일 기본값 — 매일(비트 — 일 1 · 월 2 · 화 4 · 수 8 · 목 16 · 금 32 · 토 64) */
 export const STORE_PLAN_DAYS_OF_WEEK_ALL = 127;
 
+/** 업체 상품 설정 최대 연장 횟수 기본값 — 입점 승인 때 · 기존 업체(DB 기본값), 연장 가능이 기본(사용자 결정 2026-11-09) */
+export const STORE_PLAN_MAX_EXTENSIONS_DEFAULT = 3;
+
 /** 업체 상품 설정 기본값 — 입점 승인 때 상품 종류(t_room_plan_type)마다 1행, 판매 · 매일. 연박은 최소 1박 · 최대 30박(기존 업체는 마이그레이션 RoomSchema · ReservationBooking 이 같은 값을 넣는다) */
 export const STORE_PLAN_DEFAULTS: Pick<RoomPlanEntity, 'room_plan_type_id' | 'usage_hours' | 'check_in_time' | 'check_out_time' | 'min_nights' | 'max_nights'>[] = [
     {room_plan_type_id: 'HOURLY', usage_hours: 3, check_in_time: null, check_out_time: null, min_nights: null, max_nights: null},

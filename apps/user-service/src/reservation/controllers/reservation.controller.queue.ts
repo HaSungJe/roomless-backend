@@ -4,6 +4,7 @@ import type {MessageEnvelope} from '@app/contracts/message-envelope.js';
 import type {ReservationCancelRequestApproveParamDto, ReservationCancelRequestApproveResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request-approve.dto.js';
 import type {ReservationCancelRequestRejectParamDto} from '@app/contracts/reservation/dto/reservation-cancel-request-reject.dto.js';
 import type {ReservationCancelDto, ReservationCancelParamDto, ReservationCancelResultDto} from '@app/contracts/reservation/dto/reservation-cancel.dto.js';
+import type {ReservationExtendParamDto, ReservationExtendResultDto} from '@app/contracts/reservation/dto/reservation-extend.dto.js';
 import type {ReservationPaymentConfirmDto, ReservationPaymentConfirmResultDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
 import type {ReservationDto, ReservationResultDto} from '@app/contracts/reservation/dto/reservation.dto.js';
 import {RESERVATION_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
@@ -70,5 +71,15 @@ export class ReservationQueueController {
     @OnCommand(RESERVATION_COMMAND.CANCEL_REQUEST_REJECT)
     async rejectCancelRequest(command: MessageEnvelope<ReservationCancelRequestRejectParamDto>): Promise<void> {
         return this.reservationService.rejectCancelRequest(requireActor(command).user_id, command.payload.reservation_id);
+    }
+
+    /**
+     * 연장 신청 — 이용자
+     *
+     * @param command 명령 봉투 (actor 필수, payload = path param)
+     */
+    @OnCommand(RESERVATION_COMMAND.EXTEND)
+    async requestExtension(command: MessageEnvelope<ReservationExtendParamDto>): Promise<ReservationExtendResultDto> {
+        return this.reservationService.requestExtension(requireActor(command).user_id, command.payload.reservation_id);
     }
 }

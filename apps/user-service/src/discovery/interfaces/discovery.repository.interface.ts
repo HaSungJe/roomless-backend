@@ -45,6 +45,8 @@ export interface DiscoveryStorePlanRow {
     check_out_time: string | null;
     min_nights: number | null;
     max_nights: number | null;
+    is_extendable: number;
+    max_extensions: number;
 }
 
 /** 그룹별 예약 받을 호실 수 (QueryBuilder raw) */

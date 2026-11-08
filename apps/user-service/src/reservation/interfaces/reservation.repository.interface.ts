@@ -108,8 +108,10 @@ export interface ReservationRepositoryInterface {
     insertPayment(entity: PaymentEntity): Promise<void>;
     /** 예약 등록 — 같은 호실 점유 겹침(EXC_Reservation_RoomIdBlockedRange) → 400 */
     insertReservation(entity: ReservationEntity): Promise<void>;
-    /** 예약 구간 등록 */
+    /** 예약 구간 등록 — 결제 대기 구간이 이미 있으면(겹친 연장 신청 — UK_ReservationDetail_ReservationIdPending) 400 */
     insertReservationDetail(entity: ReservationDetailEntity): Promise<void>;
+    /** 연장 잡아 두기 — 예약의 점유 끝을 늘린다(상태 · 끝 조건, 1행이면 true), 다음 예약과 겹치면(EXC_Reservation_RoomIdBlockedRange) 400 */
+    updateReservationHold(where: FindOptionsWhere<ReservationEntity>, entity: ReservationEntity): Promise<boolean>;
     /** 예약 수정 — 상태 조건을 건 쓰기, 1행이면 true */
     updateReservation(where: FindOptionsWhere<ReservationEntity>, entity: ReservationEntity): Promise<boolean>;
     /** 예약 구간 수정(여러 행) */

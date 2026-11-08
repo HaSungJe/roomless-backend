@@ -180,6 +180,8 @@ export function toRoomPlanItem(row: RoomPlanRow): RoomPlanItemResultDto {
         check_out_time: toTimeOfDay(row.check_out_time),
         min_nights: row.min_nights === null ? null : Number(row.min_nights),
         max_nights: row.max_nights === null ? null : Number(row.max_nights),
+        is_extendable: Number(row.is_extendable),
+        max_extensions: Number(row.max_extensions),
     };
 }
 
