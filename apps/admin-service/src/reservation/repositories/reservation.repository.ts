@@ -3,8 +3,8 @@ import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
 import type {FindOptionsWhere, Repository, SelectQueryBuilder} from 'typeorm';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
-import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
+import {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationStateEntity} from '@app/database/entities/reservation/reservation-state.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
@@ -15,9 +15,9 @@ import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
-import {isExclusionViolation} from '@app/database/typeorm-error.js';
+import {isExclusionViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {ReservationRepositoryInterface, StoreReservationRow, StoreRoomRow} from '../interfaces/reservation.repository.interface.js';
-import {RESERVATION_ROOM_TAKEN_MESSAGE, RESERVATION_STORE_STATE_LEAVE, RESERVATION_STORE_VISIBLE_STATES} from '../reservation.constants.js';
+import {RESERVATION_CANCEL_REQUEST_DUPLICATE_MESSAGE, RESERVATION_ROOM_TAKEN_MESSAGE, RESERVATION_STORE_STATE_LEAVE, RESERVATION_STORE_VISIBLE_STATES} from '../reservation.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
@@ -25,8 +25,11 @@ const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리�
 /** 점유 겹침 배타 제약 */
 const RESERVATION_EXCLUSION = 'EXC_Reservation_RoomIdBlockedRange';
 
+/** 진행 중 이용 중 취소 요청 부분 유니크 */
+const CANCEL_REQUEST_REQUESTED_UNIQUE = 'UK_ReservationCancelRequest_ReservationIdRequested';
+
 /**
- * reservation repository (매니저 예약) — 공유 DB 의 t_reservation · t_reservation_detail · t_payment · t_room_qr 를 쓰고,
+ * reservation repository (매니저 예약) — 공유 DB 의 t_reservation · t_reservation_detail · t_payment · t_reservation_cancel_request 를 쓰고,
  * 업체 · 호실 · 회원(room · store · user 표)을 예약 어휘로 읽는다(user-service 이용자 예약과 같은 표 — 매니저 기능이라 admin-service 에 둔다, 사용자 결정 2026-11-07).
  * is_deleted 가 있는 표의 조회에는 항상 is_deleted = 0 을 붙인다(notDeleted · QueryBuilder 는 조인 표까지).
  */
@@ -67,9 +70,9 @@ export class ReservationRepository implements ReservationRepositoryInterface {
         return this.txHost.tx.getRepository(UserEntity);
     }
 
-    /** t_room_qr */
-    private get roomQrs(): Repository<RoomQrEntity> {
-        return this.txHost.tx.getRepository(RoomQrEntity);
+    /** t_reservation_cancel_request */
+    private get cancelRequests(): Repository<ReservationCancelRequestEntity> {
+        return this.txHost.tx.getRepository(ReservationCancelRequestEntity);
     }
 
     /**
@@ -298,8 +301,8 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * 업체 현황 예약 쿼리 — [from, to) 와 겹치는 결제 대기 · 확정 · 이용 중 · 이용 완료, 상태 · 상품 종류 · 이용자 조인.
-     * 매핑 민감(조인 · raw select — 별칭이 StoreReservationRow 키와 같다 · IN · 시각 조건)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 업체 현황 예약 쿼리 — [from, to) 와 겹치는 결제 대기 · 확정 · 이용 중 · 이용 완료, 상태 · 상품 종류 · 이용자 조인 + 마지막 이용 중 취소 요청(상관 서브쿼리 3개 — 등록 최근 1건의 상태 · 만료 · 등록, 없으면 NULL).
+     * 매핑 민감(조인 · raw select — 별칭이 StoreReservationRow 키와 같다 · IN · 시각 조건 · 서브쿼리)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param store_id 업체 ID
      * @param from 날짜 0시
@@ -321,6 +324,9 @@ export class ReservationRepository implements ReservationRepositoryInterface {
             .addSelect('r.total_price', 'total_price')
             .addSelect('u.name', 'user_name')
             .addSelect('u.phone', 'user_phone')
+            .addSelect((sub) => this.buildLatestCancelRequestColumn(sub, 'c1', 'reservation_cancel_request_state_id'), 'cancel_request_state_id')
+            .addSelect((sub) => this.buildLatestCancelRequestColumn(sub, 'c2', 'expires_at'), 'cancel_request_expires_at')
+            .addSelect((sub) => this.buildLatestCancelRequestColumn(sub, 'c3', 'created_at'), 'cancel_request_created_at')
             .innerJoin(ReservationStateEntity, 'st', 'st.reservation_state_id = r.reservation_state_id')
             .innerJoin(RoomPlanTypeEntity, 'pt', 'pt.room_plan_type_id = r.room_plan_type_id')
             .innerJoin(UserEntity, 'u', 'u.user_id = r.user_id')
@@ -332,29 +338,43 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * 예약의 QR
+     * 업체 현황 예약의 마지막 이용 중 취소 요청 한 컬럼 — 그 예약의 등록 최근 1건(상관 서브쿼리, 별칭은 서브쿼리마다 따로).
      *
-     * @param where 조회 조건
-     * @returns QR 행 또는 null
+     * @param sub 서브쿼리 빌더
+     * @param alias 이 서브쿼리의 요청 표 별칭
+     * @param column 고를 컬럼
+     * @returns 서브쿼리 빌더
      */
-    async findRoomQr(where: FindOptionsWhere<RoomQrEntity>): Promise<RoomQrEntity | null> {
+    buildLatestCancelRequestColumn(sub: SelectQueryBuilder<ReservationEntity>, alias: string, column: string): SelectQueryBuilder<ReservationCancelRequestEntity> {
+        return sub.select(`${alias}.${column}`).from(ReservationCancelRequestEntity, alias).where(`${alias}.reservation_id = r.reservation_id`).orderBy(`${alias}.created_at`, 'DESC').limit(1);
+    }
+
+    /**
+     * 진행 중인 이용 중 취소 요청을 만료로 — 새 요청 전에(상태 조건 · 여러 행, 지우지 않는 표)
+     *
+     * @param where 수정 조건(예약 · 요청 중)
+     * @param entity 바꿀 필드만 할당한 엔티티
+     */
+    async expireCancelRequests(where: FindOptionsWhere<ReservationCancelRequestEntity>, entity: ReservationCancelRequestEntity): Promise<void> {
         try {
-            return await this.roomQrs.findOne({where, loadRelationIds: true});
+            await this.cancelRequests.update(where, entity);
         } catch {
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
     }
 
     /**
-     * QR 수정 (업체 취소 — 유효 종료)
+     * 이용 중 취소 요청 등록 — 같은 예약에 요청 중이 이미 있으면(겹친 요청) 400
      *
-     * @param where 수정 조건
-     * @param entity 바꿀 필드만 할당한 엔티티
+     * @param entity new ReservationCancelRequestEntity() + 할당 (@BeforeInsert 가 돈다)
      */
-    async updateRoomQr(where: FindOptionsWhere<RoomQrEntity>, entity: RoomQrEntity): Promise<void> {
+    async insertCancelRequest(entity: ReservationCancelRequestEntity): Promise<void> {
         try {
-            await this.roomQrs.update(where, entity);
-        } catch {
+            await this.cancelRequests.insert(entity);
+        } catch (error) {
+            if (isUniqueViolation(error, CANCEL_REQUEST_REQUESTED_UNIQUE)) {
+                throw new BadRequestException({message: RESERVATION_CANCEL_REQUEST_DUPLICATE_MESSAGE});
+            }
             throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
         }
     }

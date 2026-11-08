@@ -1,12 +1,10 @@
-import {RESERVATION_STATE} from '@app/contracts/reservation/reservation.constants.js';
-
 /** 상품 종류 — 룩업 t_room_plan_type 과 같은 값(room 도메인 상수와 같지만 도메인끼리 import 하지 않는다) */
 export const RESERVATION_PLAN_TYPE = {HOURLY: 'HOURLY', NIGHT: 'NIGHT', LONG: 'LONG'} as const;
 
 /** 상품 종류명 — 주문명 · SMS 에 쓴다(룩업 이름과 같다) */
 export const RESERVATION_PLAN_TYPE_NAME: Record<string, string> = {HOURLY: '시간 이용', NIGHT: '1박', LONG: '연박'};
 
-/** 호실 상태 — 예약가능(즉시 입실 조건) · 사용중지(예약 불가) */
+/** 호실 상태 — 예약가능(즉시 입실 조건) · 사용중지(예약 불가 · 이용자 전액 환불 취소) */
 export const RESERVATION_ROOM_STATE = {AVAILABLE: 'AVAILABLE', DISABLED: 'DISABLED'} as const;
 
 /** 예약을 받는 업체 상태 — 활성 */
@@ -51,5 +49,8 @@ export const RESERVATION_PAYMENT_NOT_FOUND_MESSAGE = '결제를 찾을 수 없�
 /** QR 발급 뒤 다시 읽어도 없음 — 500 (내 예약 QR · 결제 확인) */
 export const RESERVATION_QR_ISSUE_FAILED_MESSAGE = 'QR 정보를 발급하지 못했습니다. 관리자에게 문의해주세요.';
 
-/** QR 을 내주는 예약 상태 — 확정 · 이용 중 */
-export const RESERVATION_QR_STATES: string[] = [RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN];
+/** 이용 중 취소 요청이 없음 — 요청 조회 · 승인 · 거절 */
+export const RESERVATION_CANCEL_REQUEST_NOT_FOUND_MESSAGE = '취소 요청이 없습니다.';
+
+/** 승인 · 거절할 수 없는 요청 — 만료 · 이미 처리됨 */
+export const RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE = '승인할 수 없는 취소 요청입니다(만료 · 처리됨).';

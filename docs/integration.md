@@ -1,6 +1,6 @@
 # 외부 연동 (`libs/integration`)
 
-> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 문 소켓 QR 확인 · 잠금 · 내 예약 QR · 결제 확인 QR(문 정보 — Redis) · 입점 신청 업체 정보 파일(업로드 주소 · 존재 확인 · 삭제 · 열람 주소) · 업체 둘러보기 사진(공개 주소 — `StorageModule`), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 · 업체 취소 · 호실 이동 SMS · 업체 정보 파일 · 객실 그룹 사진 · 호실 문 상태 · 바로 열기 · 이용 중 업체 취소 QR 지우기(문 정보 — Redis), gateway 의 문 소켓 명령 구독, scheduler 의 QR 동기화(루트 모듈이 `SmsModule` · `DoorStoreModule` 중 쓰는 것을 import 한다). 결제(`PaymentModule`)는 user-service 예약(결제 환경 · 결제 확인 `getPayment`)과 scheduler(결제 대기 만료 · 늦은 승인 재확인 `findByPaymentId` · 환불 `cancel`)가 쓴다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md), 토스는 [guides/toss-setup.md](guides/toss-setup.md).
+> 사용처: user-service 의 휴대폰 SMS 인증 · 아이디 찾기 · 문 소켓 QR 확인 · 잠금 · 내 예약 QR · 결제 확인 QR · 취소 때 QR 지우기(문 정보 — Redis) · 입점 신청 업체 정보 파일(업로드 주소 · 존재 확인 · 삭제 · 열람 주소) · 업체 둘러보기 사진(공개 주소 — `StorageModule`), admin-service 의 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 · 업체 취소 · 호실 이동 · 이용 중 취소 요청(승인 링크) SMS · 업체 정보 파일 · 객실 그룹 사진 · 호실 문 상태 · 바로 열기(문 정보 — Redis), gateway 의 문 소켓 명령 구독, scheduler 의 이용 시작 · QR 동기화(문 정보 — Redis) · QR 확인 링크 SMS(루트 모듈이 `SmsModule` · `DoorStoreModule` 중 쓰는 것을 import 한다). 결제(`PaymentModule`)는 user-service 예약(결제 환경 · 결제 확인 `getPayment`)과 scheduler(결제 대기 만료 · 늦은 승인 재확인 `findByPaymentId` · 환불 `cancel`)가 쓴다. AWS 세팅은 [guides/aws-setup.md](guides/aws-setup.md), Redis 는 [guides/redis-setup.md](guides/redis-setup.md), 토스는 [guides/toss-setup.md](guides/toss-setup.md).
 
 ## 원칙
 
@@ -9,8 +9,9 @@
   - 휴대폰 인증
   - 아이디 찾기 · 비밀번호 초기화
   - 업체 계정 안내
-  - 예약 변경 안내
-  - 입장 QR 링크
+  - 예약 변경 안내(업체 취소 · 호실 이동)
+  - QR 확인 링크(scheduler — 이용 시작 5분 전, `USER_WEB_URL/reservation/<예약 ID>`, 예약당 1번)
+  - 이용 중 취소 요청 승인 링크(admin-service — `USER_WEB_URL/reservation/<예약 ID>/cancel-request`)
 - **파일은 `STORAGE_GATEWAY`(Amazon S3), 업로드는 presigned URL** — 파일 본문은 게이트웨이 · 브로커를 거치지 않는다. 흐름은 네 단계다.
   1. 업로드 주소 요청(동기)
   2. 클라이언트가 `upload_url` 로 PUT — 요청 때 보낸 `content_type` 과 같은 `Content-Type` 헤더로(서명에 들어간다)
@@ -51,7 +52,7 @@
 ## 문 정보 (`DOOR_STORE` · Redis)
 
 - **저장 모양** — `door:<room_id>` = `상태:시각`(상태 `open` | `close`, 시각은 한국 시각 yyyyMMddHHmmss — 만드는 쪽은 service 가 `toDoorTime` 으로), `door-qr:<room_id>` = 그 호실의 현재 QR(만료 PXAT = QR 유효 끝 → 이용 끝에 저절로 사라진다). 기록이 없는 문은 키가 없고 `getMany` 가 `{state: 'close', changed_at: '00000000000000'}` 으로 읽는다(Phase 14 의 `QR:상태:시각` 값도 뒤의 두 칸만 읽는다).
-- **QR 이력 · 유효 시간의 원본은 DB `t_room_qr`** — 예약당 1행(시작 · 끝), 업체가 이용 중 예약을 취소하면 끝을 지금으로 당긴다. Redis 는 문이 비교할 현재 값만 든다 — 발급 · 조회 때마다 `setQr` 로 다시 쓰고(scheduler `reservation-qr-sync` 가 매분 맞춘다), 취소는 `revokeQr`(값이 같을 때만 지운다).
+- **QR 이력 · 유효 시간의 원본은 DB `t_room_qr`** — 예약당 1행(시작 · 끝), 이용 시작 때 발급하고 이용 중 예약이 취소되면(사용중지 호실 이용자 취소 · 이용 중 취소 승인) 끝을 지금으로 당긴다. QR 로 문을 연 기록은 `t_door_open_log`(문 소켓 QR 확인이 맞을 때 — 이력에 없는 QR 이면 Redis 를 보지 않는다). Redis 는 문이 비교할 현재 값만 든다 — 발급 · 조회 때마다 `setQr` 로 다시 쓰고(scheduler `reservation-qr-sync` 가 매분 맞춘다), 취소는 `revokeQr`(값이 같을 때만 지운다).
 - **원자적 3동작** — QR 확인(`verify` — 현재 QR 이 같을 때만 open + 시각, 아니면 아무것도 바꾸지 않는다) · 바로 열기(`open` — open + 시각을 쓰고 같은 스크립트에서 `door-commands` 채널에 `{store_id, room_id, command: 'open'}` PUBLISH) · QR 지우기(`revokeQr`)는 Lua 스크립트 1개씩이다. 잠금(`close`)은 SET 하나다.
 - **서버 명령은 Redis 채널** — gateway 인스턴스마다 `subscribe` 로 `door-commands` 를 구독해 그 업체의 자기 소켓 연결에 적용한다([realtime.md](realtime.md)) — 바로 열기 `{store_id, room_id, command: 'open'}` → `door.open`, 연결 끊기 `{store_id, command: 'disconnect'}`(`disconnect` — 업체 문 시크릿 변경 뒤 store service 가 마지막 단계에서 보낸다) → 그 업체 연결을 모두 1008 로 끊는다. 구독은 구독 전용 연결이라 명령 연결과 섞이지 않는다.
 - **단일 노드 전제** — 스크립트가 여러 키를 함께 쓰므로 클러스터 모드가 아닌 Redis(ElastiCache 는 클러스터 모드 끔)여야 한다.

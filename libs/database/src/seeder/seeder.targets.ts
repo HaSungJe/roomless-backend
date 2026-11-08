@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import type {DataSource, EntityTarget, ObjectLiteral} from 'typeorm';
 import {getBcrypt} from '@app/common/utils/bcrypt.js';
 import {PaymentStateEntity} from '../entities/payment/payment-state.entity.js';
+import {ReservationCancelRequestStateEntity} from '../entities/reservation/reservation-cancel-request-state.entity.js';
 import {ReservationDetailTypeEntity} from '../entities/reservation/reservation-detail-type.entity.js';
 import {ReservationStateEntity} from '../entities/reservation/reservation-state.entity.js';
 import {RoomPlanTypeEntity} from '../entities/room/room-plan-type.entity.js';
@@ -100,7 +101,7 @@ export const ROOM_PLAN_TYPE_SEED_DATA: RoomPlanTypeEntity[] = [
 
 /**
  * 예약 상태(t_reservation_state) 기본 데이터 — 점유(배타 제약)는 PENDING · CONFIRMED · CHECKED_IN.
- * 이용 완료는 체크아웃 · 이용 시간 경과(Phase 19), 결제 대기 만료는 DB 에만 남고 이용자 이력에서 숨긴다(Phase 17).
+ * 체크인 · 체크아웃 없이 시작 시각에 이용 중, 끝 시각에 이용 완료(scheduler — Phase 19), 결제 대기 만료는 DB 에만 남고 이용자 이력에서 숨긴다(Phase 17).
  */
 export const RESERVATION_STATE_SEED_DATA: ReservationStateEntity[] = [
     {reservation_state_id: 'PENDING', reservation_state_name: '결제 대기'},
@@ -115,6 +116,14 @@ export const RESERVATION_STATE_SEED_DATA: ReservationStateEntity[] = [
 export const RESERVATION_DETAIL_TYPE_SEED_DATA: ReservationDetailTypeEntity[] = [
     {reservation_detail_type_id: 'BASE', reservation_detail_type_name: '기본'},
     {reservation_detail_type_id: 'EXTENSION', reservation_detail_type_name: '연장'},
+];
+
+/** 이용 중 취소 요청 상태(t_reservation_cancel_request_state) 기본 데이터 — 만료는 읽을 때도 계산한다(요청 중 + 만료 시각 지남) */
+export const RESERVATION_CANCEL_REQUEST_STATE_SEED_DATA: ReservationCancelRequestStateEntity[] = [
+    {reservation_cancel_request_state_id: 'REQUESTED', reservation_cancel_request_state_name: '요청 중'},
+    {reservation_cancel_request_state_id: 'APPROVED', reservation_cancel_request_state_name: '승인'},
+    {reservation_cancel_request_state_id: 'REJECTED', reservation_cancel_request_state_name: '거절'},
+    {reservation_cancel_request_state_id: 'EXPIRED', reservation_cancel_request_state_name: '만료'},
 ];
 
 /** 결제 상태(t_payment_state) 기본 데이터 — 환불 금액은 전액 또는 일부라 부분 환불 상태를 따로 두지 않는다 */
@@ -198,6 +207,7 @@ export const SEED_TARGETS: SeedTarget[] = [
     {entity: RoomPlanTypeEntity, data: ROOM_PLAN_TYPE_SEED_DATA},
     {entity: ReservationStateEntity, data: RESERVATION_STATE_SEED_DATA},
     {entity: ReservationDetailTypeEntity, data: RESERVATION_DETAIL_TYPE_SEED_DATA},
+    {entity: ReservationCancelRequestStateEntity, data: RESERVATION_CANCEL_REQUEST_STATE_SEED_DATA},
     {entity: PaymentStateEntity, data: PAYMENT_STATE_SEED_DATA},
     {entity: UserEntity, data: buildSuperAdminSeed, key: 'login_id'},
     {entity: UserSettingEntity, data: buildSuperAdminSettingSeed, key: 'user_id'},

@@ -1,9 +1,12 @@
 import {Inject, Injectable, NotFoundException, UnauthorizedException} from '@nestjs/common';
+import {Transactional} from '@nestjs-cls/transactional';
 import {Not} from 'typeorm';
 import {matchBcrypt} from '@app/common/utils/bcrypt.js';
+import {generateId} from '@app/common/utils/id.js';
 import type {DoorCloseDto, DoorCloseResultDto} from '@app/contracts/door/dto/door-close.dto.js';
 import type {DoorSnapshotDto, DoorSnapshotResultDto} from '@app/contracts/door/dto/door-snapshot.dto.js';
 import type {DoorVerifyDto, DoorVerifyResultDto} from '@app/contracts/door/dto/door-verify.dto.js';
+import {DoorOpenLogEntity} from '@app/database/entities/door/door-open-log.entity.js';
 import {DOOR_STATE} from '@app/integration/integration.constants.js';
 import {DOOR_STORE} from '@app/integration/integration.symbols.js';
 import {toDoorTime} from '@app/integration/integration.util.js';
@@ -14,7 +17,7 @@ import {toDoorSnapshotItem} from './door.util.js';
 import type {DoorRepositoryInterface} from './interfaces/door.repository.interface.js';
 
 /**
- * door 비즈니스 로직 — gateway 문 소켓(문 쪽 타 업체 프로그램)의 접속 확인 · QR 확인 · 잠금 알림. 이용자 흐름이라 user-service 에 둔다(사용자 결정 2026-11-07).
+ * door 비즈니스 로직 — gateway 문 소켓(문 쪽 타 업체 프로그램)의 접속 확인 · QR 확인(+ QR 로 연 기록) · 잠금 알림. 이용자 흐름이라 user-service 에 둔다(사용자 결정 2026-11-07).
  * 업체 관리자의 문 상태 · 바로 열기 · 문 시크릿은 admin-service 다.
  */
 @Injectable()
@@ -50,13 +53,15 @@ export class DoorService {
     }
 
     /**
-     * 문 소켓 QR 확인 (gateway 문 소켓) — 문이 읽은 QR 을 그 호실의 Redis 현재 QR 과 비교한다. 같으면 open + 지금 시각으로 쓰고 ok, 다르거나 없으면 그대로 두고 ok false.
+     * 문 소켓 QR 확인 (gateway 문 소켓) — 그 호실 · 그 QR 의 이력(t_room_qr)이 없으면 Redis 를 보지 않고 ok false(현재 QR 은 이력에서만 온다).
+     * 있으면 Redis 현재 QR 과 비교해 같으면 open + 지금 시각으로 쓰고 ok, 그리고 QR 로 연 기록을 한 줄 쌓는다(사용자 결정 2026-11-07 — 체크인 대신 문 열림 로그). 다르면 그대로 두고 ok false.
      * QR 값은 서버 밖으로 나가지 않는다(사용자 결정 2026-11-04). (내부 HTTP: POST /internal/v1/user-service/door/verify)
      *
      * @param dto 업체 ID(소켓이 확인한 값) · 호실 ID · 읽은 QR
      * @returns 호실 ID · 일치 여부
      * @throws NotFoundException 그 업체의 호실이 아닐 때
      */
+    @Transactional()
     async verifyStoreDoor(dto: DoorVerifyDto): Promise<DoorVerifyResultDto> {
         // 1. 그 업체의 호실
         const room = await this.doorRepository.findDoorRoom({room_id: dto.room_id, store_id: dto.store_id});
@@ -64,8 +69,26 @@ export class DoorService {
             throw new NotFoundException({message: DOOR_ROOM_NOT_FOUND_MESSAGE});
         }
 
-        // 2. 현재 QR 과 비교 + 같으면 열림 기록 (포트가 스크립트 1개로)
-        const ok = await this.doorStore.verify(room.room_id, dto.qr, toDoorTime(new Date()));
+        // 2. 그 호실의 그 QR 이력 — 없으면 Redis 를 보지 않고 ok false
+        const roomQr = await this.doorRepository.findDoorRoomQr({room_id: room.room_id, qr: dto.qr});
+        if (!roomQr) {
+            return {room_id: room.room_id, ok: false};
+        }
+
+        // 3. Redis 현재 QR 과 비교 + 같으면 열림 기록 (포트가 스크립트 1개로)
+        const opened_at = new Date();
+        const ok = await this.doorStore.verify(room.room_id, dto.qr, toDoorTime(opened_at));
+
+        // 4. 맞으면 QR 로 연 기록 한 줄 — 호실 · 예약 · QR · 시각(틀린 QR · 업체 관리자 바로 열기는 남기지 않는다)
+        if (ok) {
+            const log = new DoorOpenLogEntity();
+            log.door_open_log_id = generateId();
+            log.room_id = room.room_id;
+            log.reservation_id = roomQr.reservation_id;
+            log.room_qr_id = roomQr.room_qr_id;
+            log.opened_at = opened_at;
+            await this.doorRepository.insertDoorOpenLog(log);
+        }
         return {room_id: room.room_id, ok};
     }
 

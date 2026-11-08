@@ -109,10 +109,10 @@ export class ReservationDetailResultDto {
     @ApiProperty({description: '예약 상태명'})
     reservation_state_name: string;
 
-    @ApiProperty({description: '입실 일시 (ISO 8601)'})
+    @ApiProperty({description: '이용 시작 일시 (ISO 8601 — 이 시각에 이용 중)'})
     start_at: string;
 
-    @ApiProperty({description: '퇴실 일시 (ISO 8601)'})
+    @ApiProperty({description: '이용 끝 일시 (ISO 8601 — 이 시각에 이용 완료)'})
     end_at: string;
 
     @ApiProperty({description: '합계 금액(원)'})
@@ -120,6 +120,9 @@ export class ReservationDetailResultDto {
 
     @ApiProperty({description: '100% 환불 마감 일시 (ISO 8601)'})
     refund_deadline_at: string;
+
+    @ApiProperty({description: '예약한 호실이 사용중지인지 (0 · 1) — 1 이면 확정 · 이용 중 예약을 끝 전까지 전액 환불로 취소할 수 있다'})
+    is_room_disabled: number;
 
     @ApiProperty({description: '마감 뒤 환불 비율(%)'})
     late_refund_percent: number;

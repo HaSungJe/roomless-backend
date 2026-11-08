@@ -25,7 +25,7 @@ import {UserModule} from './user/user.module.js';
  * - MessagingModule.forService: q.user.cmd 소비 → `@OnCommand` 핸들러 디스패치 (user_id 가 gateway 인 명령만 처리)
  * - SmsModule: SMS 발송 포트(SMS_SENDER, Amazon SNS) — 휴대폰 인증 · 아이디 찾기 · 비밀번호 초기화
  * - StorageModule: 파일 저장소 포트(STORAGE_GATEWAY, Amazon S3 · CloudFront) — 입점 신청 업체 정보 파일(업로드 주소 · 존재 확인 · 삭제 · 서명 열람 주소) · 업체 둘러보기의 업체 · 객실 그룹 사진 공개 주소
- * - DoorStoreModule: 문 정보 포트(DOOR_STORE, Redis — RedisModule 연결 포함) — 문 소켓 접속 확인 · QR 확인 · 잠금, 내 예약 QR 발급 · 결제 확인 때 호실의 현재 QR 쓰기
+ * - DoorStoreModule: 문 정보 포트(DOOR_STORE, Redis — RedisModule 연결 포함) — 문 소켓 접속 확인 · QR 확인 · 잠금, 내 예약 QR 발급 · 결제 확인 때 호실의 현재 QR 쓰기, 사용중지 호실 취소 · 이용 중 취소 승인 때 QR 지우기
  * - PaymentModule: 결제 포트(PAYMENT_GATEWAY, 토스페이먼츠) — 예약 결제 환경 · 결제 확인
  * - SeederService: DB 를 소유하는 이 서비스가 룩업 기본 데이터 · 첫 총관리자를 보장한다
  * 도메인(이용자 기능 — 사용자 결정 2026-11-07): UserModule(회원) · ReservationModule(예약) · DiscoveryModule(업체 둘러보기) · StoreModule(입점 신청) · DoorModule(문 소켓 처리). crontab 은 scheduler 앱이 돌린다(이 서비스에는 ScheduleModule 이 없다).

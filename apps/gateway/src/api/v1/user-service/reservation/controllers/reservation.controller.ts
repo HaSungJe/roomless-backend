@@ -13,6 +13,7 @@ import {
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
 import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
+import {ReservationCancelRequestParamDto, ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
@@ -86,7 +87,7 @@ export class ReservationController {
     }
 
     /**
-     * 내 예약 QR — 확정 · 이용 중 예약의 이용 시간에만. 아직 발급 전이면 그 자리에서 발급한다. 이용 끝이 지나거나 업체가 취소하면 그 QR 로는 열리지 않는다
+     * 내 예약 QR — 이용 중 예약에만, 정확히 시작 시각부터(링크 SMS 가 5분 전에 가도 그 전에는 400). 시작했는데 아직 확정이면 그 자리에서 이용 중으로 바꾸고 발급한다. 이용 끝이 지나거나 취소되면 그 QR 로는 열리지 않는다
      */
     @Get('/:reservation_id/qr')
     @UseGuards(PassportJwtAuthGuard)
@@ -101,5 +102,23 @@ export class ReservationController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async getMyReservationQr(@PassportActor() actor: Actor, @Param() param: ReservationQrParamDto): Promise<ReservationQrResultDto> {
         return this.internalHttp.request<ReservationQrResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.qr(param.reservation_id), {actor});
+    }
+
+    /**
+     * 내 예약의 이용 중 취소 요청 — 업체가 보낸 SMS 링크 화면(마지막 요청 · 사유 · 환불 예정액 · 만료). 요청 중이고 만료 전이면 승인 · 거절할 수 있다
+     */
+    @Get('/:reservation_id/cancel-request')
+    @UseGuards(PassportJwtAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '이용 중 취소 요청 조회'})
+    @ApiOkResponse({type: ReservationCancelRequestResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getMyCancelRequest(@PassportActor() actor: Actor, @Param() param: ReservationCancelRequestParamDto): Promise<ReservationCancelRequestResultDto> {
+        return this.internalHttp.request<ReservationCancelRequestResultDto>('user', 'GET', RESERVATION_INTERNAL_PATH.cancelRequest(param.reservation_id), {actor});
     }
 }

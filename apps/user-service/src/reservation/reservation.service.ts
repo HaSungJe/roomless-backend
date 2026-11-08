@@ -5,6 +5,8 @@ import {Pagination} from '@app/common/utils/pagination.js';
 import {generateId} from '@app/common/utils/id.js';
 import {createValidationError} from '@app/common/utils/validation.js';
 import type {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
+import type {ReservationCancelRequestApproveResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request-approve.dto.js';
+import type {ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import type {ReservationCancelDto, ReservationCancelResultDto} from '@app/contracts/reservation/dto/reservation-cancel.dto.js';
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import type {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
@@ -14,21 +16,28 @@ import type {ReservationDto, ReservationResultDto} from '@app/contracts/reservat
 import {
     PAYMENT_STATE,
     RESERVATION_CANCEL_ACTOR,
+    RESERVATION_CANCEL_REQUEST_STATE,
     RESERVATION_DETAIL_TYPE,
     RESERVATION_OCCUPYING_STATES,
     RESERVATION_PAYMENT_PENDING_MINUTES,
     RESERVATION_REBOOK_BLOCK_MINUTES,
     RESERVATION_REFUND_REASON,
     RESERVATION_STATE,
+    USAGE_ROOM_STATE,
 } from '@app/contracts/reservation/reservation.constants.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
+import {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
+import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import {DOOR_STORE, PAYMENT_GATEWAY} from '@app/integration/integration.symbols.js';
 import {verifyPaymentLookup} from '@app/integration/integration.util.js';
 import type {DoorStoreInterface, PaymentGatewayInterface, PaymentLookupResult} from '@app/integration/interfaces/integration.interface.js';
 import type {ReservationRepositoryInterface} from './interfaces/reservation.repository.interface.js';
 import {
+    RESERVATION_CANCEL_REQUEST_NOT_FOUND_MESSAGE,
+    RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE,
     RESERVATION_DATE_FORMAT,
     RESERVATION_DATE_INVALID_MESSAGE,
     RESERVATION_NOT_CANCELABLE_MESSAGE,
@@ -37,6 +46,7 @@ import {
     RESERVATION_PLAN_TYPE,
     RESERVATION_QR_ISSUE_FAILED_MESSAGE,
     RESERVATION_ROOM_NOT_FOUND_MESSAGE,
+    RESERVATION_ROOM_STATE,
     RESERVATION_STATE_CHANGED_MESSAGE,
     RESERVATION_STORE_NOT_FOUND_MESSAGE,
     RESERVATION_STORE_STATE_ACTIVE,
@@ -46,17 +56,21 @@ import {
     buildBookingContext,
     buildOrderName,
     buildRoomQr,
-    calculateRefundAmount,
+    calculateCancelRefund,
     calculateStayPrice,
+    cancelRequestState,
     isGroupPlanOnSale,
     isNightsAllowed,
-    isReservationStarted,
+    isRoomQrActive,
     isStayBookable,
     isValidDate,
     judgeReservationQr,
+    judgeUsageTransition,
     listStays,
     nowKst,
     toAvailabilityGroups,
+    toCancelRequest,
+    toEndedUsageRoomState,
     toKstDay,
     toNowStay,
     toReservationDetail,
@@ -67,7 +81,7 @@ import {
 } from './reservation.util.js';
 
 /**
- * 예약 service (이용자) — 재고 판정 · 예약 · 결제 확인 · 취소 · 조회 · 내 예약 QR. 매니저의 업체 예약 현황 · 업체 취소 · 호실 이동은 admin-service reservation 이다(기능은 행위자로 서버를 고른다 — 사용자 결정 2026-11-07).
+ * 예약 service (이용자) — 재고 판정 · 예약 · 결제 확인 · 취소 · 조회 · 내 예약 QR · 이용 중 취소 요청 조회 · 승인 · 거절. 체크인 · 체크아웃은 없다 — 시작 시각에 이용 중(사용자 결정 2026-11-07). 매니저의 업체 예약 현황 · 업체 취소 · 호실 이동은 admin-service reservation 이다(기능은 행위자로 서버를 고른다 — 사용자 결정 2026-11-07).
  * 업체 · 객실 · 상품 · 영업시간은 공유 DB 에서 같은 엔티티로 읽는다(사용자 결정 2026-11-03). 결제는 토스(프론트 승인 · 여기 조회 대조), 환불은 scheduler crontab 이 백그라운드로 한다.
  */
 @Injectable()
@@ -266,8 +280,7 @@ export class ReservationService {
         reservation.total_price = amount;
         reservation.refund_deadline_at = stay.start.subtract(store.refund_deadline_minutes, 'minute').toDate();
         reservation.late_refund_percent = store.late_refund_percent;
-        reservation.checked_in_at = null;
-        reservation.completed_at = null;
+        reservation.qr_link_sent_at = null;
         reservation.canceled_at = null;
         reservation.cancel_actor = null;
         reservation.cancel_reason = null;
@@ -303,11 +316,11 @@ export class ReservationService {
      * - 결제됨 → 결제 DONE · 구간 · 예약 CONFIRMED / 미결제 · 다른 주문 → 400(쓰기 없음)
      * - 금액 불일치 · 이미 결제 대기가 끝난 예약 → 결제 환불 신청(+ 예약 만료)을 커밋하고 실패를 **반환**한다(재시도 없음)
      * - 같은 결제 키로 이미 확정 → 그대로 결과(중복 요청)
-     * - 확정한 예약이 이미 이용 시간 안(지금 바로 · 시작 뒤 결제)이면 QR 을 바로 발급하고 Redis 현재 QR 로 쓴다(마지막 단계 — 사용자 요청 2026-11-06)
+     * - 확정한 예약이 이미 시작했으면(지금 바로 · 시작 뒤 결제) 바로 이용 중 — 호실 사용중 · QR 발급, Redis 현재 QR 은 마지막 단계(사용자 결정 2026-11-07)
      *
      * @param user_id 이용자 ID
      * @param dto 결제 ID · 결제 키
-     * @returns 예약 ID · 상태 — 환불 신청한 실패는 BadRequestException 을 돌려준다
+     * @returns 예약 ID · 상태(확정 또는 이용 중) — 환불 신청한 실패는 BadRequestException 을 돌려준다
      */
     @Transactional()
     async confirmPayment(user_id: string, dto: ReservationPaymentConfirmDto): Promise<ReservationPaymentConfirmResultDto | BadRequestException> {
@@ -387,8 +400,17 @@ export class ReservationService {
             throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
         }
 
-        // 6. 이용이 이미 시작된 예약(지금 바로 · 시작 뒤 결제)은 QR 을 바로 발급하고 Redis 현재 QR 로 쓴다 — 외부 단계라 마지막(사용자 요청 2026-11-06)
-        if (isReservationStarted(reservation, now)) {
+        // 6. 이미 시작한 예약(지금 바로 · 시작 뒤 결제)은 확정 직후 이용 중 — 예약 · 호실(상태 조건) · QR 발급, Redis 현재 QR 은 외부 단계라 마지막(사용자 결정 2026-11-07)
+        const started = judgeUsageTransition({...reservation, reservation_state_id: RESERVATION_STATE.CONFIRMED}, now) === 'START';
+        if (started) {
+            const inUse = new ReservationEntity();
+            inUse.reservation_state_id = RESERVATION_STATE.CHECKED_IN;
+            if (!(await this.reservationRepository.updateReservation({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED}, inUse))) {
+                throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+            }
+            const inUseRoom = new RoomEntity();
+            inUseRoom.room_state_id = USAGE_ROOM_STATE.IN_USE;
+            await this.reservationRepository.updateReservationRoom({room_id: reservation.room_id, room_state_id: In([...USAGE_ROOM_STATE.START_FROM])}, inUseRoom);
             await this.reservationRepository.insertRoomQr(buildRoomQr(reservation));
             const roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
             if (!roomQr) {
@@ -396,11 +418,12 @@ export class ReservationService {
             }
             await this.doorStore.setQr(roomQr.room_id, roomQr.qr, roomQr.ends_at);
         }
-        return {reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED};
+        return {reservation_id: reservation.reservation_id, reservation_state_id: started ? RESERVATION_STATE.CHECKED_IN : RESERVATION_STATE.CONFIRMED};
     }
 
     /**
      * 이용자 취소 — 사유 필수. 확정 예약은 환불 마감 전 100% · 마감 뒤 ~ 이용 시작 전 예약 때 비율(원 단위 내림) 환불 신청, 시작 뒤에는 400.
+     * 예약한 호실이 사용중지면 확정 · 이용 중 예약을 끝 전까지 언제든 100% 환불(사유 '사용중지 호실 취소' — 사용자 결정 2026-11-07), 이용 중이었으면 QR 을 끝낸다(Redis 는 마지막). 호실 상태는 그대로.
      * 결제 대기 예약은 결제를 만료한다(환불 없음 — 늦은 승인은 recheck crontab 이 환불한다). 호실은 바로 풀린다. (RabbitMQ: user.reservation.cancel)
      *
      * @param user_id 이용자 ID
@@ -415,18 +438,24 @@ export class ReservationService {
         if (!reservation || reservation.reservation_state_id === RESERVATION_STATE.EXPIRED) {
             throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
         }
-        if (reservation.reservation_state_id !== RESERVATION_STATE.PENDING && reservation.reservation_state_id !== RESERVATION_STATE.CONFIRMED) {
+        const pending = reservation.reservation_state_id === RESERVATION_STATE.PENDING;
+        if (!pending && reservation.reservation_state_id !== RESERVATION_STATE.CONFIRMED && reservation.reservation_state_id !== RESERVATION_STATE.CHECKED_IN) {
             throw new BadRequestException({message: RESERVATION_NOT_CANCELABLE_MESSAGE});
         }
         const now = nowKst();
-        const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: reservation.reservation_state_id});
+        // 구간은 결제 대기 · 확정만 쓴다(이용 중 예약의 구간은 확정 그대로)
+        const detail_state = pending ? RESERVATION_STATE.PENDING : RESERVATION_STATE.CONFIRMED;
+        const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: detail_state});
 
-        // 2. 확정 예약 — 결제마다 환불액(시작 뒤면 400)
+        // 2. 확정 · 이용 중 — 결제마다 환불액(사용중지 호실이면 끝 전까지 100%, 아니면 시작 뒤 400)
         const refunds: {payment_id: string; amount: number}[] = [];
-        if (reservation.reservation_state_id === RESERVATION_STATE.CONFIRMED) {
+        let is_room_disabled = false;
+        if (!pending) {
+            const room = await this.reservationRepository.findReservationRoom({room_id: reservation.room_id});
+            is_room_disabled = room?.room_state_id === RESERVATION_ROOM_STATE.DISABLED;
             for (const detail of details) {
                 const payment = await this.reservationRepository.findPayment({payment_id: detail.payment_id});
-                const amount = payment ? calculateRefundAmount(payment.amount, now, reservation.refund_deadline_at, reservation.start_at, reservation.late_refund_percent) : null;
+                const amount = payment ? calculateCancelRefund(reservation, is_room_disabled, payment.amount, now) : null;
                 if (amount === null) {
                     throw new BadRequestException({message: '이용 시작 후에는 취소할 수 없습니다.'});
                 }
@@ -445,10 +474,10 @@ export class ReservationService {
         }
         const canceledDetail = new ReservationDetailEntity();
         canceledDetail.reservation_state_id = RESERVATION_STATE.CANCELED;
-        await this.reservationRepository.updateReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: reservation.reservation_state_id}, canceledDetail);
+        await this.reservationRepository.updateReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: detail_state}, canceledDetail);
 
         // 4. 결제 대기 — 결제 만료(환불 없음)
-        if (reservation.reservation_state_id === RESERVATION_STATE.PENDING) {
+        if (pending) {
             for (const detail of details) {
                 const expired = new PaymentEntity();
                 expired.payment_state_id = PAYMENT_STATE.EXPIRED;
@@ -457,16 +486,25 @@ export class ReservationService {
             return {refund_amount: null};
         }
 
-        // 5. 확정 — 환불액 > 0 이면 환불 신청(백그라운드 crontab 이 토스로), 0 이면 결제는 그대로(환불 없이 취소)
+        // 5. 확정 · 이용 중 — 환불액 > 0 이면 환불 신청(백그라운드 crontab 이 토스로), 0 이면 결제는 그대로(환불 없이 취소)
         for (const refund of refunds.filter((item) => item.amount > 0)) {
             const requested = new PaymentEntity();
             requested.payment_state_id = PAYMENT_STATE.REFUND_REQUESTED;
             requested.refund_amount = refund.amount;
-            requested.refund_reason = RESERVATION_REFUND_REASON.USER;
+            requested.refund_reason = is_room_disabled ? RESERVATION_REFUND_REASON.DISABLED_ROOM : RESERVATION_REFUND_REASON.USER;
             requested.refund_requested_at = now.toDate();
             if (!(await this.reservationRepository.updatePayment({payment_id: refund.payment_id, payment_state_id: PAYMENT_STATE.DONE}, requested))) {
                 throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
             }
+        }
+
+        // 6. QR 이 지금 유효하면(이용 중이던 사용중지 호실) 끝낸다 — DB 유효 종료 = 지금(이력은 남는다), Redis 현재 QR 지우기는 외부 단계라 마지막
+        const roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
+        if (roomQr && isRoomQrActive(roomQr, now.toDate())) {
+            const endedQr = new RoomQrEntity();
+            endedQr.ends_at = now.toDate();
+            await this.reservationRepository.updateRoomQr({room_qr_id: roomQr.room_qr_id}, endedQr);
+            await this.doorStore.revokeQr(roomQr.room_id, roomQr.qr);
         }
         return {refund_amount: refunds.reduce((sum, item) => sum + item.amount, 0)};
     }
@@ -502,8 +540,9 @@ export class ReservationService {
     }
 
     /**
-     * 내 예약 QR (이용자) — 확정 · 이용 중 예약의 이용 시간 안에서만. QR 이 아직 없으면(scheduler 발급 전) 그 자리에서 발급한다(유효 = 이용 시작 ~ 이용 끝).
-     * scheduler 와 겹치면 먼저 들어간 행을 쓴다(ON CONFLICT DO NOTHING 뒤 다시 읽기). 내주는 QR 은 Redis 현재 QR 로도 쓴다(문 소켓 QR 확인이 그 QR 로 맞는다).
+     * 내 예약 QR (이용자) — 이용 중 예약에만, 정확히 시작 시각부터(사용자 결정 2026-11-07). 시작했는데 아직 확정이면(scheduler 가 돌기 전) 그 자리에서 이용 중 · 호실 사용중으로 바꾼다.
+     * QR 이 아직 없으면 그 자리에서 발급한다(유효 = 이용 시작 ~ 이용 끝). scheduler 와 겹치면 먼저 들어간 행을 쓴다(ON CONFLICT DO NOTHING 뒤 다시 읽기).
+     * 내주는 QR 은 Redis 현재 QR 로도 쓴다(문 소켓 QR 확인이 그 QR 로 맞는다).
      * (내부 HTTP: GET /internal/v1/user-service/reservation/:reservation_id/qr)
      *
      * @param user_id 이용자 ID
@@ -521,7 +560,7 @@ export class ReservationService {
         }
         let roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
 
-        // 2. 판정 — 상태 · 이용 시간 · QR 유효
+        // 2. 판정 — 이용 중에만 · 시작 시각부터 · QR 유효
         const verdict = judgeReservationQr(reservation, roomQr, nowKst().toDate());
         if (verdict === 'NO_QR') {
             throw new BadRequestException({message: 'QR 을 볼 수 없는 예약입니다.'});
@@ -530,8 +569,20 @@ export class ReservationService {
             throw new BadRequestException({message: 'QR 은 이용 시간에만 볼 수 있습니다.'});
         }
 
-        // 3. 없으면 발급 — 유효 = 이용 시작 ~ 이용 끝, QR 은 32자 무작위. 같은 예약에 이미 들어갔으면 DB 가 무시하고, 다시 읽은 행을 쓴다
-        if (verdict === 'ISSUE') {
+        // 3. 시작했는데 아직 확정 — 그 자리에서 이용 시작: 예약(상태 조건 — 겹치면 400) · 호실(예약가능 · 예약완료 · 정비중만 사용중)
+        if (verdict === 'START') {
+            const inUse = new ReservationEntity();
+            inUse.reservation_state_id = RESERVATION_STATE.CHECKED_IN;
+            if (!(await this.reservationRepository.updateReservation({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED}, inUse))) {
+                throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+            }
+            const inUseRoom = new RoomEntity();
+            inUseRoom.room_state_id = USAGE_ROOM_STATE.IN_USE;
+            await this.reservationRepository.updateReservationRoom({room_id: reservation.room_id, room_state_id: In([...USAGE_ROOM_STATE.START_FROM])}, inUseRoom);
+        }
+
+        // 4. 없으면 발급 — 유효 = 이용 시작 ~ 이용 끝, QR 은 32자 무작위. 같은 예약에 이미 들어갔으면 DB 가 무시하고, 다시 읽은 행을 쓴다
+        if (verdict === 'ISSUE' || verdict === 'START') {
             await this.reservationRepository.insertRoomQr(buildRoomQr(reservation));
             roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
         }
@@ -539,8 +590,160 @@ export class ReservationService {
             throw new InternalServerErrorException({message: RESERVATION_QR_ISSUE_FAILED_MESSAGE});
         }
 
-        // 4. Redis 현재 QR 로 — 문 소켓 QR 확인이 이 QR 로 맞는다(유효 종료에 저절로 사라진다)
+        // 5. Redis 현재 QR 로 — 문 소켓 QR 확인이 이 QR 로 맞는다(유효 종료에 저절로 사라진다)
         await this.doorStore.setQr(roomQr.room_id, roomQr.qr, roomQr.ends_at);
         return toReservationQr(roomQr);
+    }
+
+    /**
+     * 내 예약의 이용 중 취소 요청 (이용자) — 그 예약의 마지막 요청 1건(SMS 링크 화면), 보이는 상태는 만료를 계산한다. 승인하면 받는 금액은 결제가 끝난 금액 전액.
+     * (내부 HTTP: GET /internal/v1/user-service/reservation/:reservation_id/cancel-request)
+     *
+     * @param user_id 이용자 ID
+     * @param reservation_id 예약 ID
+     * @returns 요청
+     * @throws NotFoundException 내 예약이 아니거나 요청이 없을 때
+     */
+    async getMyCancelRequest(user_id: string, reservation_id: string): Promise<ReservationCancelRequestResultDto> {
+        const row = await this.reservationRepository.findMyReservationRow(user_id, reservation_id);
+        if (!row) {
+            throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
+        }
+        const request = await this.reservationRepository.findLatestCancelRequest({reservation_id: row.reservation_id});
+        if (!request) {
+            throw new NotFoundException({message: RESERVATION_CANCEL_REQUEST_NOT_FOUND_MESSAGE});
+        }
+        const segments = await this.reservationRepository.findReservationSegmentRows(row.reservation_id);
+        return toCancelRequest(request, row, segments, nowKst().toDate());
+    }
+
+    /**
+     * 이용 중 취소 요청 승인 (이용자) — 업체 취소와 같은 결과(사용자 결정 2026-11-07): 예약 · 구간 취소(주체 업체 · 사유 = 요청 사유) · 결제마다 전액 환불 신청 · QR 끝 · 호실 사용중 → 정비중 · 요청 승인.
+     * 마지막 요청이 요청 중이고 만료 전일 때만, 예약이 아직 확정 · 이용 중이고 끝 전일 때만. Redis 현재 QR 지우기는 외부 단계라 마지막. (RabbitMQ: user.reservation.cancel-request-approve)
+     *
+     * @param user_id 이용자 ID
+     * @param reservation_id 예약 ID
+     * @returns 환불 금액(전액)
+     */
+    @Transactional()
+    async approveCancelRequest(user_id: string, reservation_id: string): Promise<ReservationCancelRequestApproveResultDto> {
+        // 1. 내 예약 · 마지막 요청 — 요청 중 · 만료 전만
+        const reservation = await this.reservationRepository.findReservation({reservation_id, user_id});
+        if (!reservation || reservation.reservation_state_id === RESERVATION_STATE.EXPIRED) {
+            throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
+        }
+        const request = await this.reservationRepository.findLatestCancelRequest({reservation_id: reservation.reservation_id});
+        if (!request) {
+            throw new NotFoundException({message: RESERVATION_CANCEL_REQUEST_NOT_FOUND_MESSAGE});
+        }
+        const now = nowKst().toDate();
+        if (!cancelRequestState(request, now).respondable) {
+            throw new BadRequestException({message: RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE});
+        }
+
+        // 2. 예약이 아직 이용 중인지 — 확정 · 이용 중 + 끝 전(끝났거나 취소됐으면 400)
+        const state = reservation.reservation_state_id;
+        if ((state !== RESERVATION_STATE.CONFIRMED && state !== RESERVATION_STATE.CHECKED_IN) || judgeUsageTransition(reservation, now) === 'END') {
+            throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+        }
+
+        // 3. 예약 · 구간 취소(상태 조건) — 주체 업체 · 사유 = 요청 사유
+        const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED});
+        const canceled = new ReservationEntity();
+        canceled.reservation_state_id = RESERVATION_STATE.CANCELED;
+        canceled.canceled_at = now;
+        canceled.cancel_actor = RESERVATION_CANCEL_ACTOR.STORE;
+        canceled.cancel_reason = request.cancel_reason;
+        if (!(await this.reservationRepository.updateReservation({reservation_id: reservation.reservation_id, reservation_state_id: state}, canceled))) {
+            throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+        }
+        const canceledDetail = new ReservationDetailEntity();
+        canceledDetail.reservation_state_id = RESERVATION_STATE.CANCELED;
+        await this.reservationRepository.updateReservationDetails({reservation_id: reservation.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED}, canceledDetail);
+
+        // 4. 결제마다 전액 환불 신청(업체 취소 사유) — 백그라운드 crontab 이 토스로
+        for (const detail of details) {
+            const requested = new PaymentEntity();
+            requested.payment_state_id = PAYMENT_STATE.REFUND_REQUESTED;
+            requested.refund_amount = detail.price;
+            requested.refund_reason = RESERVATION_REFUND_REASON.STORE;
+            requested.refund_requested_at = now;
+            if (!(await this.reservationRepository.updatePayment({payment_id: detail.payment_id, payment_state_id: PAYMENT_STATE.DONE}, requested))) {
+                throw new BadRequestException({message: RESERVATION_STATE_CHANGED_MESSAGE});
+            }
+        }
+
+        // 5. QR 끝 — DB 유효 종료 = 지금(이력은 남는다)
+        const roomQr = await this.reservationRepository.findRoomQr({reservation_id: reservation.reservation_id});
+        const activeQr = roomQr && isRoomQrActive(roomQr, now) ? roomQr : null;
+        if (activeQr) {
+            const endedQr = new RoomQrEntity();
+            endedQr.ends_at = now;
+            await this.reservationRepository.updateRoomQr({room_qr_id: activeQr.room_qr_id}, endedQr);
+        }
+
+        // 6. 호실 — 사용중이면 정비중(이용 종료와 같다), 그 밖은 그대로
+        const room = await this.reservationRepository.findReservationRoom({room_id: reservation.room_id});
+        const next_room_state_id = room ? toEndedUsageRoomState(room.room_state_id) : null;
+        if (room && next_room_state_id) {
+            const nextRoom = new RoomEntity();
+            nextRoom.room_state_id = next_room_state_id;
+            await this.reservationRepository.updateReservationRoom({room_id: room.room_id, room_state_id: room.room_state_id}, nextRoom);
+        }
+
+        // 7. 요청 → 승인(상태 조건 — 그 사이 새 요청 · 다른 응답이면 400 롤백)
+        const approved = new ReservationCancelRequestEntity();
+        approved.reservation_cancel_request_state_id = RESERVATION_CANCEL_REQUEST_STATE.APPROVED;
+        approved.responded_at = now;
+        if (
+            !(await this.reservationRepository.updateCancelRequest(
+                {reservation_cancel_request_id: request.reservation_cancel_request_id, reservation_cancel_request_state_id: RESERVATION_CANCEL_REQUEST_STATE.REQUESTED},
+                approved,
+            ))
+        ) {
+            throw new BadRequestException({message: RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE});
+        }
+
+        // 8. Redis 현재 QR 지우기 — 외부 단계라 마지막
+        if (activeQr) {
+            await this.doorStore.revokeQr(activeQr.room_id, activeQr.qr);
+        }
+        return {refund_amount: details.reduce((sum, detail) => sum + detail.price, 0)};
+    }
+
+    /**
+     * 이용 중 취소 요청 거절 (이용자) — 요청만 끝나고 예약은 그대로. 마지막 요청이 요청 중이고 만료 전일 때만. (RabbitMQ: user.reservation.cancel-request-reject)
+     *
+     * @param user_id 이용자 ID
+     * @param reservation_id 예약 ID
+     */
+    @Transactional()
+    async rejectCancelRequest(user_id: string, reservation_id: string): Promise<void> {
+        // 1. 내 예약 · 마지막 요청 — 요청 중 · 만료 전만
+        const reservation = await this.reservationRepository.findReservation({reservation_id, user_id});
+        if (!reservation || reservation.reservation_state_id === RESERVATION_STATE.EXPIRED) {
+            throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
+        }
+        const request = await this.reservationRepository.findLatestCancelRequest({reservation_id: reservation.reservation_id});
+        if (!request) {
+            throw new NotFoundException({message: RESERVATION_CANCEL_REQUEST_NOT_FOUND_MESSAGE});
+        }
+        const now = nowKst().toDate();
+        if (!cancelRequestState(request, now).respondable) {
+            throw new BadRequestException({message: RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE});
+        }
+
+        // 2. 요청 → 거절(상태 조건)
+        const rejected = new ReservationCancelRequestEntity();
+        rejected.reservation_cancel_request_state_id = RESERVATION_CANCEL_REQUEST_STATE.REJECTED;
+        rejected.responded_at = now;
+        if (
+            !(await this.reservationRepository.updateCancelRequest(
+                {reservation_cancel_request_id: request.reservation_cancel_request_id, reservation_cancel_request_state_id: RESERVATION_CANCEL_REQUEST_STATE.REQUESTED},
+                rejected,
+            ))
+        ) {
+            throw new BadRequestException({message: RESERVATION_CANCEL_REQUEST_NOT_RESPONDABLE_MESSAGE});
+        }
     }
 }

@@ -2,6 +2,7 @@ import {Injectable} from '@nestjs/common';
 import type {MessageEnvelope} from '@app/contracts/message-envelope.js';
 import type {ReservationRoomChangeDto, ReservationRoomChangeParamDto} from '@app/contracts/reservation/dto/reservation-room-change.dto.js';
 import type {ReservationStoreCancelDto, ReservationStoreCancelParamDto} from '@app/contracts/reservation/dto/reservation-store-cancel.dto.js';
+import type {ReservationUseCancelRequestDto, ReservationUseCancelRequestParamDto, ReservationUseCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-use-cancel-request.dto.js';
 import {RESERVATION_MANAGER_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
 import {requireActor} from '@app/messaging/messaging.util.js';
 import {OnCommand} from '@app/messaging/on-command.decorator.js';
@@ -36,5 +37,15 @@ export class ReservationQueueController {
     @OnCommand(RESERVATION_MANAGER_COMMAND.ROOM_CHANGE)
     async changeReservationRoom(command: MessageEnvelope<ReservationRoomChangeParamDto & ReservationRoomChangeDto>): Promise<void> {
         return this.reservationService.changeReservationRoom(requireActor(command).user_id, command.payload.reservation_id, command.payload);
+    }
+
+    /**
+     * 이용 중 취소 요청 — 매니저 (예약자 동의)
+     *
+     * @param command 명령 봉투 (actor 필수, payload = path param + 본문)
+     */
+    @OnCommand(RESERVATION_MANAGER_COMMAND.USE_CANCEL_REQUEST)
+    async requestUseCancel(command: MessageEnvelope<ReservationUseCancelRequestParamDto & ReservationUseCancelRequestDto>): Promise<ReservationUseCancelRequestResultDto> {
+        return this.reservationService.requestUseCancel(requireActor(command).user_id, command.payload.reservation_id, command.payload);
     }
 }

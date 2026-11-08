@@ -1,7 +1,8 @@
 import type {ReservationStoreRoomResultDto} from '@app/contracts/reservation/dto/reservation-store.dto.js';
+import {RESERVATION_CANCEL_REQUEST_MINUTES, RESERVATION_CANCEL_REQUEST_STATE} from '@app/contracts/reservation/reservation.constants.js';
 import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import type {Dayjs} from '@app/common/utils/dayjs.js';
-import type {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
+import type {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import type {StoreReservationRow, StoreRoomRow} from './interfaces/reservation.repository.interface.js';
 import {RESERVATION_DATE_FORMAT} from './reservation.constants.js';
 
@@ -60,6 +61,53 @@ export function buildRoomChangeSms(store_name: string, start_at: Date, from_room
 }
 
 /**
+ * 이용 중 취소 요청 SMS — 예약자 승인 링크(로그인해 승인 · 거절 — 사용자 결정 2026-11-07).
+ *
+ * @param store_name 상호명
+ * @param link 승인 화면 주소(`<USER_WEB_URL>/reservation/<예약 ID>/cancel-request`)
+ * @returns 문구
+ */
+export function buildUseCancelRequestSms(store_name: string, link: string): string {
+    return `[roomless] ${store_name}에서 이용 중인 예약 취소를 요청했습니다(전액 환불). 동의하려면 ${RESERVATION_CANCEL_REQUEST_MINUTES}분 안에 확인해주세요: ${link}`;
+}
+
+/**
+ * 이용자 화면 주소(USER_WEB_URL) — 끝의 / 를 뗀다. 비어 있으면 null(승인 링크를 만들 수 없다).
+ *
+ * @returns 주소 또는 null
+ */
+export function readUserWebUrl(): string | null {
+    const value = process.env.USER_WEB_URL?.trim().replace(/\/+$/, '');
+    return value ? value : null;
+}
+
+/**
+ * 이용 중 취소 요청 만료 시각 — min(요청 + 10분, 예약 끝)(사용자 결정 2026-11-07).
+ *
+ * @param requested_at 요청 시각
+ * @param end_at 예약 끝
+ * @returns 만료 시각
+ */
+export function cancelRequestExpiresAt(requested_at: Date, end_at: Date): Date {
+    const limit = dayjs(requested_at).add(RESERVATION_CANCEL_REQUEST_MINUTES, 'minute');
+    return limit.isBefore(end_at) ? limit.toDate() : dayjs(end_at).toDate();
+}
+
+/**
+ * 이용 중 취소 요청의 보이는 상태 — 요청 중인데 만료 시각이 지났으면(정각 포함) 만료(만료는 저장하지 않고 읽을 때 계산한다 — user-service 와 같은 규칙).
+ *
+ * @param request 요청 (상태 · 만료)
+ * @param now 지금
+ * @returns 보이는 상태
+ */
+export function cancelRequestState(request: Pick<ReservationCancelRequestEntity, 'reservation_cancel_request_state_id' | 'expires_at'>, now: Date): string {
+    if (request.reservation_cancel_request_state_id !== RESERVATION_CANCEL_REQUEST_STATE.REQUESTED) {
+        return request.reservation_cancel_request_state_id;
+    }
+    return dayjs(now).isBefore(request.expires_at) ? RESERVATION_CANCEL_REQUEST_STATE.REQUESTED : RESERVATION_CANCEL_REQUEST_STATE.EXPIRED;
+}
+
+/**
  * 시각 → ISO 8601(없으면 null) — raw select 는 Date 로 온다.
  *
  * @param value 시각
@@ -70,13 +118,14 @@ function toIso(value: Date | string | null): string | null {
 }
 
 /**
- * 업체 예약 현황 — 호실마다 그날 예약(입실 순)을 붙인다.
+ * 업체 예약 현황 — 호실마다 그날 예약(입실 순)을 붙인다. 마지막 이용 중 취소 요청은 보이는 상태(만료 계산)로.
  *
  * @param rooms 지워지지 않은 호실(층 · 호실명 순)
  * @param rows 그날과 겹치는 예약(입실 순)
+ * @param now 지금(취소 요청 만료 계산)
  * @returns 호실 목록
  */
-export function toStoreReservationRooms(rooms: StoreRoomRow[], rows: StoreReservationRow[]): ReservationStoreRoomResultDto[] {
+export function toStoreReservationRooms(rooms: StoreRoomRow[], rows: StoreReservationRow[], now: Date): ReservationStoreRoomResultDto[] {
     return rooms.map((room) => ({
         room_id: room.room_id,
         room_name: room.room_name,
@@ -99,18 +148,11 @@ export function toStoreReservationRooms(rooms: StoreRoomRow[], rows: StoreReserv
                 total_price: Number(row.total_price),
                 user_name: row.user_name,
                 user_phone: row.user_phone ?? null,
+                cancel_request_state_id:
+                    row.cancel_request_state_id && row.cancel_request_expires_at
+                        ? cancelRequestState({reservation_cancel_request_state_id: row.cancel_request_state_id, expires_at: dayjs(row.cancel_request_expires_at).toDate()}, now)
+                        : null,
+                cancel_request_created_at: toIso(row.cancel_request_created_at ?? null),
             })),
     }));
-}
-
-/**
- * QR 이 지금 유효한지 — [starts_at, ends_at) 안. 업체 취소가 끝낼 QR 을 고를 때 쓴다.
- *
- * @param roomQr QR 행
- * @param now 지금
- * @returns 지금 유효하면 true
- */
-export function isRoomQrActive(roomQr: Pick<RoomQrEntity, 'starts_at' | 'ends_at'>, now: Date): boolean {
-    const at = dayjs(now);
-    return !at.isBefore(roomQr.starts_at) && at.isBefore(roomQr.ends_at);
 }

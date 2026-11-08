@@ -54,6 +54,16 @@ export class ReservationStoreItemResultDto {
 
     @ApiProperty({description: '이용자 휴대폰 번호 — 인증 전이면 null', nullable: true, type: String})
     user_phone: string | null;
+
+    @ApiProperty({
+        description: '마지막 이용 중 취소 요청 상태 (REQUESTED: 요청 중, APPROVED: 승인, REJECTED: 거절, EXPIRED: 만료 — 요청 중인데 10분이 지나면 만료) — 요청이 없으면 null',
+        nullable: true,
+        type: String,
+    })
+    cancel_request_state_id: string | null;
+
+    @ApiProperty({description: '마지막 이용 중 취소 요청 일시 (ISO 8601) — 요청이 없으면 null', nullable: true, type: String})
+    cancel_request_created_at: string | null;
 }
 
 /**

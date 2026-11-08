@@ -35,12 +35,18 @@ export type DoorRepositoryMock = {[K in keyof DoorRepositoryInterface]: Mock};
 export type DoorStoreMock = {[K in keyof DoorStoreInterface]: Mock};
 
 /**
- * door repository mock — 업체 · 호실은 없음(null), 호실 목록은 빈 배열
+ * door repository mock — 업체 · 호실 · QR 이력은 없음(null), 호실 목록은 빈 배열, 열림 기록은 성공
  *
  * @returns mock
  */
 export function createDoorRepositoryMock(): DoorRepositoryMock {
-    return {findDoorStore: vi.fn().mockResolvedValue(null), findDoorRoom: vi.fn().mockResolvedValue(null), findStoreDoorRoomRows: vi.fn().mockResolvedValue([])};
+    return {
+        findDoorStore: vi.fn().mockResolvedValue(null),
+        findDoorRoom: vi.fn().mockResolvedValue(null),
+        findStoreDoorRoomRows: vi.fn().mockResolvedValue([]),
+        findDoorRoomQr: vi.fn().mockResolvedValue(null),
+        insertDoorOpenLog: vi.fn().mockResolvedValue(undefined),
+    };
 }
 
 /**

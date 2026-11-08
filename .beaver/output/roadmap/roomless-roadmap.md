@@ -37,7 +37,7 @@ flowchart LR
   P9 --> P25["Phase 25 · 서버 위치 정리 (3)"]:::done
   P15 --> P25
   P17 --> P25
-  P25 --> P19["Phase 19 · 이용 (4)"]:::todo
+  P25 --> P19["Phase 19 · 이용 (6)"]:::inprog
   P15 --> P19
   P17 --> P19
   P5 --> P19
@@ -81,7 +81,7 @@ flowchart LR
 - Phase 15 — 문 관리·QR 확인 · 유닛 5개 · 의존: Phase 14, 17 · 푼다: Phase 19, 25 · 파일 집합: apps/admin-service/src/{room,store}(문 상태 · 바로 열기 · 소켓 처리 · 시크릿), apps/user-service/src/{reservation,door 삭제}(내 예약 QR), apps/scheduler/src/reservation(QR 맞추기), apps/gateway/src/modules/door-socket, libs/integration/src/door, libs/database(t_room_qr · door_secret), libs/contracts/src/{door,room,store,reservation} · done
 - Phase 18 — discovery · 유닛 5개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/user-service/src/{discovery,reservation}, apps/gateway/src/api/v1/user-service/discovery, libs/contracts/src/{discovery,reservation} · done
 - Phase 25 — 서버 위치 정리 · 유닛 3개 · 의존: Phase 9, Phase 15, Phase 17 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/{door,store}(새) · reservation(매니저 기능 빼기), apps/admin-service/src/reservation(새) · {room,store}(이용자 · 문 소켓 처리 빼기), apps/gateway/src/api/v1/{user-service/store(새), admin-service/reservation(새), admin-service/store, user-service/reservation}, apps/gateway/src/modules/door-socket, libs/contracts/src/{door,room,store,reservation}, README.md, AGENTS.md, docs/ · done
-- Phase 19 — 이용 · 유닛 4개 · 의존: Phase 5, Phase 15, Phase 17, Phase 25 · 푼다: Phase 21, 26 · 파일 집합: apps/user-service/src/{door,reservation}, apps/scheduler/src/reservation(crontabs), apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/{door,reservation}, libs/database(entities · migrations — 링크 발송 표시) · todo
+- Phase 19 — 이용 · 유닛 6개 · 의존: Phase 5, Phase 15, Phase 17, Phase 25 · 푼다: Phase 21, 26 · 파일 집합: apps/scheduler/src/reservation(crontabs · repository · 모듈 SmsModule), apps/user-service/src/{reservation,door}, apps/admin-service/src/reservation, apps/gateway/src/api/v1/{user-service,admin-service}/reservation, libs/contracts/src/reservation, libs/database(entities · migrations · seeder), compose.scheduler.yml, .env.example, README.md, AGENTS.md, docs/ · in-progress
 - Phase 26 — 연장 · 유닛 1개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation · todo
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/admin(이용자 · 업체 관리자 관리 — 공유 DB 의 t_user 를 관리자 도메인 repository 가 다룬다), apps/gateway/src/api/v1/admin-service/admin, libs/contracts/src/admin · todo
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats, apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats · todo
@@ -91,14 +91,16 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 19
+지금: Phase 19 진행 중 · Next up: Phase 19
 
 ## 지금 할 일
-Phase 19 이용 시작하기
+Phase 19 이용 — 만드는 중
 - #78 QR 확인 링크 발송 crontab
-- #79 체크인 = 첫 입장
-- #82 체크아웃
-- #83 이용 종료 자동 완료 crontab
+- #79 이용 시작 자동 전환
+- #83 이용 종료 자동 전환
+- #121 QR 문 열림 로그
+- #122 사용중지 호실 전액 환불 취소
+- #123 이용 중 업체 취소 — 이용자 동의
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) · `BCRYPT_CODE` 는 user-service · admin-service 가 같은 값(문 시크릿 확인 · 업체 총관리자 비밀번호 해시를 Phase 25 부터 user-service 도 한다) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
@@ -446,16 +448,21 @@ ship b68d48c — report: `.beaver/output/report/discovery/discovery-report.md` �
 
 ship 8d46fa9 — report: `.beaver/output/report/architecture/service-placement-report.md` · review: `main-review-261107.md`(Info 3 — bcrypt pepper 같은 값 · 옛 경로 401 · 배포 순서). 104파일 1024건 통과.
 
-### Phase 19 — 이용 (입장 QR · 체크인 · 퇴실) · depends: Phase 5, Phase 15, Phase 17, Phase 25
+### Phase 19 — 이용 (예약 시간 = 이용 권한 · QR 링크 · 문 로그 · 취소 보완) · depends: Phase 5, Phase 15, Phase 17, Phase 25
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 78 | QR 확인 링크 발송 crontab | 이용 시작 5분 전 SMS로 QR 확인 웹페이지(로그인 — #112) 링크 (scheduler 서버 · 1분 주기 · `JobLockService`) | — | 17, 69, 88, 112 | todo |
-| 79 | 체크인 = 첫 입장 | 이용 시간 안의 첫 문 열기(문 소켓 QR 확인 `door.verify` ok — #115)로 예약 체크인 · 호실 사용중 | 문 열기와 체크인 연결 방식 — QR 확인을 user-service `door` 도메인으로 옮긴 뒤(#118) 그 안에서 체크인(사용자 결정 2026-11-07) | 115, 118, 78 | todo |
+| 78 | QR 확인 링크 발송 crontab | 이용 시작 5분 전 SMS로 예약 1건 화면 링크(`USER_WEB_URL/reservation/<id>`) — scheduler 1분 · 예약당 1번(`qr_link_sent_at`) · 실패면 다음 회차 | 링크 화면 · 발송 표시(사용자 결정 2026-11-07) | 17, 69, 88, 112 | in-progress |
+| 79 | 이용 시작 자동 전환 | 시작 시각이 된 확정 예약 → 이용 중 + 호실 사용중(손님이 안 와도, 사용중지는 그대로) + QR 발급 — scheduler 1분 · 결제 확인 · 내 예약 QR(이용 중에만 반환) | 체크인 없음 — 예약 시간이 곧 권한(사용자 결정 2026-11-07) | 115, 118 | in-progress |
 | 80 | 이용 중 사물 제어 | 내 예약 구간 안에서만 | — | 61, 79 | dropped(기기 제어 제외, 사용자 결정 2026-11-01) |
-| 82 | 체크아웃 | 호실 정비중 전이 | — | 79 | todo |
-| 83 | 이용 종료 자동 완료 crontab | 종료 경과 예약 완료 · 호실 정비중 (scheduler 서버) | 퇴실 지연 처리 | 79, 88 | todo |
+| 82 | 체크아웃 | 호실 정비중 전이 | — | 79 | dropped(퇴실 API 없음 — 예약 시간이 끝나면 자동으로 끝, 사용자 결정 2026-11-07) |
+| 83 | 이용 종료 자동 전환 | 끝 시각이 지난 예약 → 이용 완료 + 호실 사용중 → 정비중(정비 뒤 업체가 예약가능으로) — scheduler 1분 | 퇴실 지연은 강제하지 않는다(QR 만료 · 정비 담당이 처리, 사용자 결정 2026-11-07) | 79, 88 | in-progress |
+| 121 | QR 문 열림 로그 | QR 로 문을 연 기록(호실 · 예약 · QR · 시각)을 `t_door_open_log` 에 쌓는다. 체크인 · 완료 시각 컬럼(`checked_in_at` · `completed_at`)은 삭제 | QR 로 연 것만 · 조회 API 없음(사용자 결정 2026-11-07) | 115, 118 | in-progress |
+| 122 | 사용중지 호실 전액 환불 취소 | 예약한 호실이 사용중지면 이용자가 끝 전까지 언제든 취소 · 100% 환불(기존 취소 API), 내 예약에 `is_room_disabled` | 사용중지 호실은 상태 그대로(사용자 결정 2026-11-07) | 70 | in-progress |
+| 123 | 이용 중 업체 취소 — 이용자 동의 | 업체 관리자 요청 → 예약자에게 승인 링크 SMS → 로그인한 이용자가 10분 안에 승인(100% 환불 · QR 끝 · 정비중) · 거절, 결과는 업체 예약 현황. 기존 업체 취소는 시작 전만 | 동의 방식 · 유효 시간(사용자 결정 2026-11-07) | 73, 120 | in-progress |
 
-**Expected APIs** (가칭, 이용자 가드): 체크인은 문 소켓 QR 확인 ok 때 user-service `door` 도메인이 한다(#79 — 따로 부르는 API 없음), `POST /api/v1/user-service/reservation/:reservation_id/check-out`(#82). 연장(#81)은 Phase 26 으로 나눴다(사용자 결정 2026-11-07). 이용 중 사물 제어(#80)는 기기 제어를 빼면서 dropped (사용자 결정 2026-11-01).
+**Expected APIs** (spec `.beaver/output/spec/reservation/reservation-usage-spec.md`): scheduler crontab `reservation-usage`(#79 · #83) · `reservation-qr-link`(#78), 업체 관리자 `POST /api/v1/admin-service/reservation/:reservation_id/use-cancel-request`(#123), 이용자 `GET /api/v1/user-service/reservation/:reservation_id/cancel-request` · `PATCH …/cancel-request/approve` · `…/reject`(#123). 변경: 내 예약 QR(이용 중에만) · 목록 · 상세(`is_room_disabled`) · 이용자 취소(사용중지 100%) · 결제 확인(시작이면 이용 중) · 업체 취소(시작 전만) · 업체 현황(취소 요청 상태) · 문 소켓 QR 확인(열림 로그). 체크인 · 체크아웃 API 는 두지 않는다(#82 dropped). 연장(#81)은 Phase 26 으로 나눴다(사용자 결정 2026-11-07). 이용 중 사물 제어(#80)는 기기 제어를 빼면서 dropped (사용자 결정 2026-11-01).
+
+build 완료 (2026-11-08) — report: `.beaver/output/report/reservation/reservation-usage-report.md`. 전체 108파일 1142건 · db:check 통과, ship 대기.
 
 ### Phase 26 — 연장 · depends: Phase 19
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -514,7 +521,7 @@ ship 8d46fa9 — report: `.beaver/output/report/architecture/service-placement-r
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 98/112 units done (19/26 phases)
+**Progress**: 98/114 units done (19/26 phases)
 **Next up**: Phase 19 이용 — 의존(Phase 5, Phase 15, Phase 17, Phase 25) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
@@ -539,7 +546,7 @@ ship 8d46fa9 — report: `.beaver/output/report/architecture/service-placement-r
 - **결제 대기** — 예약 뒤 5분 결제 대기. scheduler 가 1분마다 만료 건을 토스 조회(orderId = `payment_id`)로 정리한다 — 승인 · 금액 일치면 확정, 금액 다르면 환불 + 만료, 그 밖은 만료. 만료 뒤 30분은 5분마다 다시 조회해 늦은 승인을 환불한다. 만료 뒤 같은 이용자는 같은 호실을 10분 동안 다시 예약할 수 없다 (사용자 결정 2026-11-03)
 - **설정 변경과 기존 예약** — 영업중지 · 영업시간 · 브레이크 · 일시 예약불가 · 상품 설정을 바꿔도 이미 받은 예약은 그대로 둔다(자동 취소 · 특수 표시 없음 — 필요하면 업체 취소). 점유 예약(결제 대기 · 확정 · 이용 중)이 있는 호실 · 객실 그룹은 지울 수 없다 (사용자 결정 2026-11-03)
 - **문 · QR** — 호실 문마다 열림/닫힘 · 마지막 시각(`door:<room_id>` = `open|close:yyyyMMddHHmmss`)과 현재 유효 QR(`door-qr:<room_id>`, 만료 = 이용 끝)을 Redis 에, 모든 QR 은 DB `t_room_qr` 에 이력(유효 시작 · 종료)으로 둔다. QR 은 미래 예약에 미리 주지 않고 이용 시작 때 발급(scheduler · 이용자 조회), 예약자는 로그인 웹페이지에서 본다. 문 쪽 타 업체 프로그램은 업체 ID + 시크릿으로 gateway 문 소켓에 붙어 읽은 QR 을 묻고(`door.verify` — 서버가 Redis 현재 QR 과 비교, QR 값은 밖으로 나가지 않는다) 잠금을 알리고(`door.closed`) 바로 열기 명령(`door.open`)을 받는다. HTTP 문 열기 · 닫기 API 는 없다. 기기 제어는 하지 않는다 (사용자 결정 2026-11-01 · 2026-11-04 · Phase 14 · 15)
-- **체크인 · 연장** — 시작 5분 전 SMS로 QR 확인 웹페이지 링크, 이용 시간 안의 첫 문 열기 = 체크인. 연장은 같은 호실 바로 다음 시간이 비어 있을 때 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(Phase 26 #81)
+- **이용 · 연장** — 체크인 · 체크아웃은 없다: 예약 시간이 되면 이용 중(호실 사용중, 손님이 안 와도), 끝나면 이용 완료(호실 정비중 → 정비 뒤 업체가 예약가능). 내 예약 QR 은 이용 중에만, 시작 5분 전 SMS 로 예약 화면 링크, QR 로 연 문은 로그로만 남긴다. 사용중지 호실 예약은 이용자가 끝 전까지 전액 환불 취소, 이용 중 예약의 업체 취소는 이용자 동의(링크 · 로그인 승인 10분) (사용자 결정 2026-11-07 · Phase 19). 연장은 같은 호실 바로 다음 시간이 비어 있을 때 이어서 예약 — 시간 이용은 이용 시간 단위, 1박도 연장 가능(Phase 26 #81)
 - **업체 측 예약 변경** — 업체 관리자는 예약 취소(100% 환불) · 호실 이동(같은 그룹 · 사용중지 아닌 호실 · 시작 전 확정 예약만) 가능, 이용자에게 SMS(인증된 번호가 없으면 건너뜀). 업체 예약 현황은 이용자 이름 · 휴대폰 번호를 보여 준다 (사용자 결정 2026-11-03)
 - **통계** — 기본 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체, 업체 관리자는 자기 업체
 - **발송 채널 · 외부 연동** — 발송은 SMS(AWS SNS) 하나 — 이메일 · 알림톡 · 푸시는 쓰지 않는다. 외부 연동은 mock 없이 실제 서비스에 붙이고 세팅 가이드(`docs/guides/`)를 남긴다 — SMS · 이미지 = AWS(Phase 3), 결제 = 토스(테스트 키), 문 정보 = Redis(Phase 14 — 기기 플랫폼 연동 없음)

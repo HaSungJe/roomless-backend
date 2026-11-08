@@ -1,11 +1,13 @@
 import {ServiceUnavailableException} from '@nestjs/common';
 import type {TestingModule} from '@nestjs/testing';
+import {In} from 'typeorm';
 import {ReservationPaymentConfirmDto} from '@app/contracts/reservation/dto/reservation-payment-confirm.dto.js';
 import {RESERVATION_COMMAND} from '@app/contracts/reservation/reservation.commands.js';
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
+import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import type {CommandDispatcher} from '@app/messaging/command.dispatcher.js';
 import {
     bootCommandPath,
@@ -101,18 +103,30 @@ describe('user.reservation.payment-confirm — 결제 확인 (큐 경로)', () =
         });
     });
 
-    describe('[SUCCESS] 이용이 시작된 예약 — QR 바로 발급', () => {
+    describe('[SUCCESS] 이미 시작한 예약 — 바로 이용 중 · 호실 사용중 · QR 발급 (사용자 결정 2026-11-07)', () => {
         /** 지금 바로 예약 — 2026-11-03 08:59 ~ 12:59(한국), 지금 09:00 */
         const STARTED = {reservation_state_id: 'PENDING', start_at: new Date('2026-11-02T23:59:00Z'), end_at: new Date('2026-11-03T03:59:00Z')};
 
-        it('확정 뒤 QR 발급(INSERT … ON CONFLICT) → 다시 읽기 → Redis 현재 QR — 모두 예약 확정 뒤', async () => {
+        it('확정 → 이용 중(확정 조건) → 호실 사용중(예약가능 · 예약완료 · 정비중 조건) → QR 발급(INSERT … ON CONFLICT) → 다시 읽기 → Redis 현재 QR, 결과 상태 CHECKED_IN', async () => {
             repo.findReservation.mockResolvedValue(reservationEntity(STARTED));
             repo.findRoomQr.mockResolvedValueOnce(roomQrEntity({starts_at: STARTED.start_at, ends_at: STARTED.end_at}));
 
             const {decision, result} = await runConfirm();
 
             expect(decision.action).toBe('ack');
-            expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CONFIRMED'});
+            expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CHECKED_IN'});
+            expect(repo.updateReservation).toHaveBeenCalledTimes(2);
+            const [confirmWhere, confirmed] = repo.updateReservation.mock.calls[0] as [unknown, ReservationEntity];
+            expect(confirmWhere).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'PENDING'});
+            expect(confirmed.reservation_state_id).toBe('CONFIRMED');
+            const [startWhere, started] = repo.updateReservation.mock.calls[1] as [unknown, ReservationEntity];
+            expect(startWhere).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CONFIRMED'});
+            expect(started).toBeInstanceOf(ReservationEntity);
+            expect(started.reservation_state_id).toBe('CHECKED_IN');
+            const [roomWhere, room] = repo.updateReservationRoom.mock.calls[0] as [unknown, RoomEntity];
+            expect(roomWhere).toEqual({room_id: ROOM_ID, room_state_id: In(['AVAILABLE', 'RESERVED', 'MAINTENANCE'])});
+            expect(room).toBeInstanceOf(RoomEntity);
+            expect(room.room_state_id).toBe('IN_USE');
             const [issued] = repo.insertRoomQr.mock.calls[0] as [RoomQrEntity];
             expect(issued).toBeInstanceOf(RoomQrEntity);
             expect(issued.room_qr_id).toMatch(ID_PATTERN);
@@ -121,15 +135,40 @@ describe('user.reservation.payment-confirm — 결제 확인 (큐 경로)', () =
             expect(repo.findRoomQr).toHaveBeenCalledWith({reservation_id: RESERVATION_ID});
             expect(door.setQr).toHaveBeenCalledTimes(1);
             expect(door.setQr).toHaveBeenCalledWith(ROOM_ID, QR, STARTED.end_at);
-            expect(repo.insertRoomQr.mock.invocationCallOrder[0]).toBeGreaterThan(repo.updateReservation.mock.invocationCallOrder[0]);
+            expect(repo.updateReservationRoom.mock.invocationCallOrder[0]).toBeGreaterThan(repo.updateReservation.mock.invocationCallOrder[1]);
+            expect(repo.insertRoomQr.mock.invocationCallOrder[0]).toBeGreaterThan(repo.updateReservationRoom.mock.invocationCallOrder[0]);
             expect(door.setQr.mock.invocationCallOrder[0]).toBeGreaterThan(repo.findRoomQr.mock.invocationCallOrder[0]);
         });
 
-        it('시작 전 예약이면 QR 을 발급하지 않는다(이용 시작 때 scheduler · 내 예약 QR)', async () => {
-            await runConfirm();
+        it('시작 전 예약이면 확정만 — 이용 중 · 호실 · QR 쓰기 없음(시작 시각에 scheduler · 내 예약 QR)', async () => {
+            const {result} = await runConfirm();
 
+            expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CONFIRMED'});
+            expect(repo.updateReservation).toHaveBeenCalledTimes(1);
+            expect(repo.updateReservationRoom).not.toHaveBeenCalled();
             expect(repo.insertRoomQr).not.toHaveBeenCalled();
             expect(door.setQr).not.toHaveBeenCalled();
+        });
+
+        it('끝 시각이 지난 뒤 결제가 확인되면 확정만 — 이용 완료는 scheduler 가 한다', async () => {
+            repo.findReservation.mockResolvedValue(reservationEntity({...STARTED, start_at: new Date('2026-11-02T20:00:00Z'), end_at: new Date('2026-11-02T23:00:00Z')}));
+
+            const {result} = await runConfirm();
+
+            expect(result?.result).toEqual({reservation_id: RESERVATION_ID, reservation_state_id: 'CONFIRMED'});
+            expect(repo.updateReservationRoom).not.toHaveBeenCalled();
+            expect(repo.insertRoomQr).not.toHaveBeenCalled();
+        });
+
+        it('[FAIL:service] 이용 중으로 바꾸는 사이 scheduler 가 먼저 바꿨으면(확정 조건 0행) 400 롤백, 호실 · QR 쓰기 없음', async () => {
+            repo.findReservation.mockResolvedValue(reservationEntity(STARTED));
+            repo.updateReservation.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+            const {result} = await runConfirm();
+
+            expect(result?.error).toEqual({status_code: 400, body: {message: '예약 상태가 바뀌었습니다. 다시 확인해주세요.', validation_errors: null}});
+            expect(repo.updateReservationRoom).not.toHaveBeenCalled();
+            expect(repo.insertRoomQr).not.toHaveBeenCalled();
         });
 
         it('[FAIL:external] Redis 503 이면 재시도(requeue) — 확정은 롤백되어 다시 확인한다', async () => {

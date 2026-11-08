@@ -7,10 +7,11 @@ import {ReservationStateEntity} from './reservation-state.entity.js';
 
 /**
  * 예약 1건 — 기본 구간 + 연장 구간들(t_reservation_detail)을 묶는다. 예: 예약 + 연장 2번 = 이 표 1행 + 구간 3행 + 결제 3행.
- * end_at 은 최종 체크아웃(연장이 확정되면 늘어난다), blocked_until 은 end_at + 정비시간(예약 때 업체 값 maintenance_minutes)으로 호실을 점유하는 끝이다.
+ * end_at 은 이용 끝(연장이 확정되면 늘어난다 — 이 시각에 이용 완료), blocked_until 은 end_at + 정비시간(예약 때 업체 값 maintenance_minutes)으로 호실을 점유하는 끝이다.
  * 같은 호실의 [start_at, blocked_until) 이 겹치는 활성 예약(결제 대기 · 확정 · 이용 중)은 DB 배타 제약(EXC_ — btree_gist)이 막는다. 끝과 시작이 맞닿는 것은 된다.
  * 합계(total_price) · 기본 상품(room_plan_type_id)은 목록 · 조회가 구간을 모으지 않게 여기에도 둔다. 객실 그룹은 두지 않는다 — 호실로 찾는다(호실의 그룹은 바뀌지 않는다).
  * 환불 마감(refund_deadline_at) · 마감 뒤 환불 비율(late_refund_percent)은 예약 때 업체 값 — 업체가 규정을 바꿔도 이 예약은 그대로다.
+ * 체크인 · 체크아웃은 없다 — 시작 시각에 이용 중(CHECKED_IN), 끝 시각에 이용 완료(COMPLETED)로 scheduler 가 바꾼다(사용자 결정 2026-11-07).
  * 지우지 않는다 — 취소는 상태(CANCELED)이고, 취소 주체(USER · STORE)와 사유를 함께 남긴다(CHECK).
  */
 @Entity({name: 't_reservation', comment: '예약'})
@@ -49,10 +50,10 @@ export class ReservationEntity {
     @JoinColumn({name: 'reservation_state_id', referencedColumnName: 'reservation_state_id', foreignKeyConstraintName: 'FK_Reservation_ReservationState'})
     reservation_state_id: string;
 
-    @Column({name: 'start_at', type: 'timestamptz', nullable: false, comment: '입실 시각(기본 구간의 시작)'})
+    @Column({name: 'start_at', type: 'timestamptz', nullable: false, comment: '이용 시작 시각(기본 구간의 시작 — 이 시각에 이용 중)'})
     start_at: Date;
 
-    @Column({name: 'end_at', type: 'timestamptz', nullable: false, comment: '최종 체크아웃 시각(마지막 확정 구간의 끝 — 연장이 확정되면 늘어난다)'})
+    @Column({name: 'end_at', type: 'timestamptz', nullable: false, comment: '이용 끝 시각(마지막 확정 구간의 끝 — 연장이 확정되면 늘어난다, 이 시각에 이용 완료)'})
     end_at: Date;
 
     @Column({name: 'maintenance_minutes', type: 'smallint', nullable: false, comment: '정비시간(분) — 예약 때 업체 값, 연장해도 이 값으로 점유 끝을 다시 계산한다'})
@@ -70,11 +71,8 @@ export class ReservationEntity {
     @Column({name: 'late_refund_percent', type: 'smallint', nullable: false, comment: '마감 뒤 환불 비율(%) — 예약 때 업체 값, 환불 마감 뒤 ~ 이용 시작 전 취소에 쓴다(0 ~ 100)'})
     late_refund_percent: number;
 
-    @Column({name: 'checked_in_at', type: 'timestamptz', nullable: true, comment: '체크인 시각(이용 시간 안의 첫 문 열기)'})
-    checked_in_at: Date | null;
-
-    @Column({name: 'completed_at', type: 'timestamptz', nullable: true, comment: '이용 완료 시각(체크아웃 또는 이용 시간 경과)'})
-    completed_at: Date | null;
+    @Column({name: 'qr_link_sent_at', type: 'timestamptz', nullable: true, comment: 'QR 확인 링크 SMS 를 보낸 시각(예약당 1번 — 보내기 전 NULL)'})
+    qr_link_sent_at: Date | null;
 
     @Column({name: 'canceled_at', type: 'timestamptz', nullable: true, comment: '취소 시각(취소일 때만)'})
     canceled_at: Date | null;

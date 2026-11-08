@@ -2,8 +2,8 @@ import {BadRequestException, InternalServerErrorException} from '@nestjs/common'
 import type {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
 import {DataSource, QueryFailedError} from 'typeorm';
-import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {ENTITIES} from '@app/database/entities.js';
+import {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
@@ -27,6 +27,9 @@ const STORE_RESERVATION_ROW_KEYS: (keyof StoreReservationRow)[] = [
     'total_price',
     'user_name',
     'user_phone',
+    'cancel_request_state_id',
+    'cancel_request_expires_at',
+    'cancel_request_created_at',
 ];
 
 /**
@@ -56,7 +59,7 @@ function selectAliases(sql: string): string[] {
  * @returns 저장소와 가짜 repository 들
  */
 function makeRepository() {
-    const fake = () => ({findOne: vi.fn().mockResolvedValue(null), find: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({affected: 1})});
+    const fake = () => ({findOne: vi.fn().mockResolvedValue(null), find: vi.fn().mockResolvedValue([]), insert: vi.fn(), update: vi.fn().mockResolvedValue({affected: 1})});
     const repositories = new Map<unknown, ReturnType<typeof fake>>();
     const txHost = {
         tx: {
@@ -104,25 +107,49 @@ describe('ReservationRepository (매니저 예약) — 조건 · 오류 변환',
         await expect(repository.updateReservation({reservation_id: 'r1', reservation_state_id: 'CONFIRMED'}, new ReservationEntity())).resolves.toBe(false);
     });
 
-    it('[SUCCESS] findRoomQr 은 받은 조건 그대로(삭제 표시 없는 표) loadRelationIds, updateRoomQr 은 조건 · 엔티티 그대로(@BeforeUpdate)', async () => {
+    it('[SUCCESS] expireCancelRequests 는 받은 조건(예약 · 요청 중) · 엔티티 그대로(지우지 않는 표 — @BeforeUpdate)', async () => {
         const {repository, of} = makeRepository();
-        const ended = new RoomQrEntity();
-        ended.ends_at = new Date('2026-11-10T05:00:00Z');
+        const expired = new ReservationCancelRequestEntity();
+        expired.reservation_cancel_request_state_id = 'EXPIRED';
 
-        await repository.findRoomQr({reservation_id: 'v1'});
-        await repository.updateRoomQr({room_qr_id: 'q1'}, ended);
+        await repository.expireCancelRequests({reservation_id: 'v1', reservation_cancel_request_state_id: 'REQUESTED'}, expired);
 
-        expect(of(RoomQrEntity).findOne).toHaveBeenCalledWith({where: {reservation_id: 'v1'}, loadRelationIds: true});
-        expect(of(RoomQrEntity).update).toHaveBeenCalledWith({room_qr_id: 'q1'}, ended);
+        expect(of(ReservationCancelRequestEntity).update).toHaveBeenCalledTimes(1);
+        expect(of(ReservationCancelRequestEntity).update).toHaveBeenCalledWith({reservation_id: 'v1', reservation_cancel_request_state_id: 'REQUESTED'}, expired);
     });
 
-    it('[FAIL:repository] QR 조회 · 수정 실패는 통일 500', async () => {
+    it('[SUCCESS] insertCancelRequest 는 받은 엔티티 그대로 insert(@BeforeInsert)', async () => {
         const {repository, of} = makeRepository();
-        of(RoomQrEntity).findOne.mockRejectedValueOnce(new Error('db'));
-        of(RoomQrEntity).update.mockRejectedValueOnce(new Error('db'));
+        const request = new ReservationCancelRequestEntity();
+        request.reservation_cancel_request_id = 'c1';
 
-        await expect(repository.findRoomQr({reservation_id: 'v1'})).rejects.toBeInstanceOf(InternalServerErrorException);
-        await expect(repository.updateRoomQr({room_qr_id: 'q1'}, new RoomQrEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+        await repository.insertCancelRequest(request);
+
+        expect(of(ReservationCancelRequestEntity).insert).toHaveBeenCalledWith(request);
+    });
+
+    it('[FAIL:duplicate] insertCancelRequest 는 진행 중 요청 겹침(UK_ReservationCancelRequest_ReservationIdRequested)을 400 으로, 다른 제약 · 그 밖은 통일 500', async () => {
+        const {repository, of} = makeRepository();
+        of(ReservationCancelRequestEntity).insert.mockRejectedValueOnce(constraintError('23505', 'UK_ReservationCancelRequest_ReservationIdRequested'));
+        of(ReservationCancelRequestEntity).insert.mockRejectedValueOnce(constraintError('23505', 'PK_ReservationCancelRequest'));
+        of(ReservationCancelRequestEntity).insert.mockRejectedValueOnce(new Error('db'));
+
+        const duplicate = await repository.insertCancelRequest(new ReservationCancelRequestEntity()).catch((e: unknown) => e);
+        const otherConstraint = await repository.insertCancelRequest(new ReservationCancelRequestEntity()).catch((e: unknown) => e);
+        const failed = await repository.insertCancelRequest(new ReservationCancelRequestEntity()).catch((e: unknown) => e);
+
+        expect(duplicate).toBeInstanceOf(BadRequestException);
+        expect((duplicate as BadRequestException).getResponse()).toEqual({message: '이미 진행 중인 취소 요청이 있습니다.'});
+        expect(otherConstraint).toBeInstanceOf(InternalServerErrorException);
+        expect(failed).toBeInstanceOf(InternalServerErrorException);
+        expect((failed as InternalServerErrorException).getResponse()).toEqual({message: '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.'});
+    });
+
+    it('[FAIL:repository] 취소 요청 만료 쓰기 실패는 통일 500', async () => {
+        const {repository, of} = makeRepository();
+        of(ReservationCancelRequestEntity).update.mockRejectedValueOnce(new Error('db'));
+
+        await expect(repository.expireCancelRequests({reservation_id: 'v1'}, new ReservationCancelRequestEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
     });
 
     it.each([
@@ -152,7 +179,7 @@ describe('[SMOKE:data-access] 매니저의 소속 업체 · 업체 현황(호실
         'SELECT "r"."room_id" AS "room_id", "r"."room_name" AS "room_name", "r"."floor" AS "floor", "r"."room_group_id" AS "room_group_id", "r"."room_state_id" AS "room_state_id", "g"."room_group_name" AS "room_group_name", "rs"."room_state_name" AS "room_state_name" FROM "t_room" "r" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "r"."room_group_id" INNER JOIN "t_room_state" "rs" ON "rs"."room_state_id" = "r"."room_state_id" WHERE "r"."store_id" = $1 AND "r"."is_deleted" = 0 AND "g"."is_deleted" = 0 ORDER BY "r"."floor" ASC, "r"."room_name" ASC';
     /** 업체 현황 예약 */
     const STORE_RESERVATIONS_SQL =
-        'SELECT "r"."reservation_id" AS "reservation_id", "r"."room_id" AS "room_id", "r"."reservation_state_id" AS "reservation_state_id", "r"."room_plan_type_id" AS "room_plan_type_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at", "r"."blocked_until" AS "blocked_until", "r"."total_price" AS "total_price", "st"."reservation_state_name" AS "reservation_state_name", "pt"."room_plan_type_name" AS "room_plan_type_name", "u"."name" AS "user_name", "u"."phone" AS "user_phone" FROM "t_reservation" "r" INNER JOIN "t_reservation_state" "st" ON "st"."reservation_state_id" = "r"."reservation_state_id" INNER JOIN "t_room_plan_type" "pt" ON "pt"."room_plan_type_id" = "r"."room_plan_type_id" INNER JOIN "t_user" "u" ON "u"."user_id" = "r"."user_id" WHERE "r"."store_id" = $1 AND "r"."reservation_state_id" IN ($2, $3, $4, $5) AND "r"."start_at" < $6 AND "r"."end_at" > $7 ORDER BY "r"."start_at" ASC';
+        'SELECT "r"."reservation_id" AS "reservation_id", "r"."room_id" AS "room_id", "r"."reservation_state_id" AS "reservation_state_id", "r"."room_plan_type_id" AS "room_plan_type_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at", "r"."blocked_until" AS "blocked_until", "r"."total_price" AS "total_price", "st"."reservation_state_name" AS "reservation_state_name", "pt"."room_plan_type_name" AS "room_plan_type_name", "u"."name" AS "user_name", "u"."phone" AS "user_phone", (SELECT "c1"."reservation_cancel_request_state_id" AS "c1_reservation_cancel_request_state_id" FROM "t_reservation_cancel_request" "c1" WHERE "c1"."reservation_id" = "r"."reservation_id" ORDER BY "c1"."created_at" DESC LIMIT 1) AS "cancel_request_state_id", (SELECT "c2"."expires_at" AS "c2_expires_at" FROM "t_reservation_cancel_request" "c2" WHERE "c2"."reservation_id" = "r"."reservation_id" ORDER BY "c2"."created_at" DESC LIMIT 1) AS "cancel_request_expires_at", (SELECT "c3"."created_at" AS "c3_created_at" FROM "t_reservation_cancel_request" "c3" WHERE "c3"."reservation_id" = "r"."reservation_id" ORDER BY "c3_created_at" DESC LIMIT 1) AS "cancel_request_created_at" FROM "t_reservation" "r" INNER JOIN "t_reservation_state" "st" ON "st"."reservation_state_id" = "r"."reservation_state_id" INNER JOIN "t_room_plan_type" "pt" ON "pt"."room_plan_type_id" = "r"."room_plan_type_id" INNER JOIN "t_user" "u" ON "u"."user_id" = "r"."user_id" WHERE "r"."store_id" = $1 AND "r"."reservation_state_id" IN ($2, $3, $4, $5) AND "r"."start_at" < $6 AND "r"."end_at" > $7 ORDER BY "r"."start_at" ASC';
 
     beforeAll(async () => {
         // 접속하지 않는다 — 엔티티 메타데이터만 만들어 QueryBuilder 가 SQL 을 조립하게 한다
@@ -185,7 +212,7 @@ describe('[SMOKE:data-access] 매니저의 소속 업체 · 업체 현황(호실
         expect(flat).toBe(STORE_ROOMS_SQL);
     });
 
-    it('업체 현황 예약 — 보이는 상태 IN · [from, to) 겹침 · 이용자 조인, 별칭 = StoreReservationRow 키', () => {
+    it('업체 현황 예약 — 보이는 상태 IN · [from, to) 겹침 · 이용자 조인 · 마지막 취소 요청 상관 서브쿼리 3개(등록 최근 1건), 별칭 = StoreReservationRow 키', () => {
         const from = new Date('2026-11-09T15:00:00Z');
         const to = new Date('2026-11-10T15:00:00Z');
         const [sql, parameters] = repository.buildStoreReservationsQuery('s1', from, to).getQueryAndParameters();
@@ -193,6 +220,14 @@ describe('[SMOKE:data-access] 매니저의 소속 업체 · 업체 현황(호실
 
         expect(parameters).toEqual(['s1', 'PENDING', 'CONFIRMED', 'CHECKED_IN', 'COMPLETED', to, from]);
         expect(flat).toContain('INNER JOIN "t_user" "u"');
+        expect(flat).toContain(
+            '(SELECT "c1"."reservation_cancel_request_state_id" AS "c1_reservation_cancel_request_state_id" FROM "t_reservation_cancel_request" "c1" WHERE "c1"."reservation_id" = "r"."reservation_id" ORDER BY "c1"."created_at" DESC LIMIT 1) AS "cancel_request_state_id"',
+        );
+        expect(flat).toContain('ORDER BY "c2"."created_at" DESC LIMIT 1) AS "cancel_request_expires_at"');
+        // 고르는 컬럼이 정렬 컬럼과 같으면 TypeORM 이 정렬을 그 출력 별칭으로 쓴다(PostgreSQL 은 ORDER BY 에 출력 별칭을 받는다)
+        expect(flat).toContain(
+            '(SELECT "c3"."created_at" AS "c3_created_at" FROM "t_reservation_cancel_request" "c3" WHERE "c3"."reservation_id" = "r"."reservation_id" ORDER BY "c3_created_at" DESC LIMIT 1) AS "cancel_request_created_at"',
+        );
         expect([...selectAliases(flat)].sort()).toEqual([...STORE_RESERVATION_ROW_KEYS].sort());
         expect(flat).toBe(STORE_RESERVATIONS_SQL);
     });

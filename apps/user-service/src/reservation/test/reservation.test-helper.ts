@@ -51,6 +51,9 @@ export const ROOM_QR_ID = '4'.repeat(32);
 /** QR 정보 */
 export const QR = '5'.repeat(32);
 
+/** 이용 중 취소 요청 ID */
+export const CANCEL_REQUEST_ID = '6'.repeat(32);
+
 /** 토스 결제 키 */
 export const PAYMENT_KEY = 'tgen_20261103000000abcde';
 
@@ -97,6 +100,10 @@ export function createReservationRepositoryMock(): ReservationRepositoryMock {
         findReservationSegmentRows: vi.fn().mockResolvedValue([]),
         findRoomQr: vi.fn().mockResolvedValue(null),
         insertRoomQr: vi.fn(),
+        updateRoomQr: vi.fn(),
+        updateReservationRoom: vi.fn(),
+        findLatestCancelRequest: vi.fn().mockResolvedValue(null),
+        updateCancelRequest: vi.fn().mockResolvedValue(true),
     };
 }
 
@@ -323,8 +330,7 @@ export function reservationEntity(override: Record<string, unknown> = {}): Recor
         total_price: 30000,
         refund_deadline_at: new Date('2026-11-10T03:00:00Z'),
         late_refund_percent: 50,
-        checked_in_at: null,
-        completed_at: null,
+        qr_link_sent_at: null,
         canceled_at: null,
         cancel_actor: null,
         cancel_reason: null,
@@ -401,17 +407,19 @@ export function tossLookup(override: Partial<PaymentLookupResult> = {}): Payment
     };
 }
 /**
- * 내 예약 목록 · 상세 행 — 확정, 2026-11-10 13:00 ~ 16:00
+ * 내 예약 목록 · 상세 행 — 확정, 2026-11-10 13:00 ~ 16:00, 호실 예약가능
  *
+ * @param override 바꿀 필드
  * @returns 행
  */
-export function listRow(): Record<string, unknown> {
+export function listRow(override: Record<string, unknown> = {}): Record<string, unknown> {
     return {
         reservation_id: RESERVATION_ID,
         store_id: STORE_ID,
         store_name: '루미 강남점',
         room_id: ROOM_ID,
         room_name: '101호',
+        room_state_id: 'AVAILABLE',
         room_group_name: '스탠다드',
         room_plan_type_id: 'HOURLY',
         room_plan_type_name: '시간 이용',
@@ -426,6 +434,7 @@ export function listRow(): Record<string, unknown> {
         cancel_actor: null,
         cancel_reason: null,
         created_at: new Date('2026-11-03T00:00:00Z'),
+        ...override,
     };
 }
 
@@ -437,4 +446,54 @@ export function listRow(): Record<string, unknown> {
  */
 export function roomQrEntity(override: Record<string, unknown> = {}): Record<string, unknown> {
     return {room_qr_id: ROOM_QR_ID, room_id: ROOM_ID, reservation_id: RESERVATION_ID, qr: QR, starts_at: new Date('2026-11-10T04:00:00Z'), ends_at: new Date('2026-11-10T07:00:00Z'), ...override};
+}
+
+/**
+ * 이용 중 취소 요청 — 요청 중, 2026-11-10 14:00 요청 · 14:10 만료(한국 시각)
+ *
+ * @param override 바꿀 필드
+ * @returns 요청 엔티티 모양
+ */
+export function cancelRequestEntity(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        reservation_cancel_request_id: CANCEL_REQUEST_ID,
+        reservation_id: RESERVATION_ID,
+        user_id: '7'.repeat(32),
+        reservation_cancel_request_state_id: 'REQUESTED',
+        cancel_reason: '배관 누수로 객실을 쓸 수 없습니다',
+        expires_at: new Date('2026-11-10T05:10:00Z'),
+        responded_at: null,
+        created_at: new Date('2026-11-10T05:00:00Z'),
+        updated_at: new Date('2026-11-10T05:00:00Z'),
+        ...override,
+    };
+}
+
+/**
+ * 예약 구간 행 — 확정 기본 구간 · 결제 완료 30,000원
+ *
+ * @param override 바꿀 필드
+ * @returns 행
+ */
+export function segmentRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        reservation_detail_id: DETAIL_ID,
+        reservation_detail_type_id: 'BASE',
+        reservation_detail_type_name: '기본',
+        reservation_state_id: 'CONFIRMED',
+        start_at: new Date('2026-11-10T04:00:00Z'),
+        end_at: new Date('2026-11-10T07:00:00Z'),
+        price: 30000,
+        expires_at: new Date('2026-11-03T00:05:00Z'),
+        payment_id: PAYMENT_ID,
+        payment_state_id: 'DONE',
+        payment_state_name: '결제 완료',
+        amount: 30000,
+        method: '카드',
+        approved_at: new Date('2026-11-03T00:01:00Z'),
+        receipt_url: 'https://receipt.test/1',
+        refund_amount: null,
+        refunded_at: null,
+        ...override,
+    };
 }

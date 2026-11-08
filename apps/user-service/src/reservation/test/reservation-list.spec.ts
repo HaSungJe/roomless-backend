@@ -43,8 +43,24 @@ describe('GET /internal/v1/user-service/reservation — 내 예약 목록 (동�
             end_at: '2026-11-10T07:00:00.000Z',
             total_price: 30000,
             refund_deadline_at: '2026-11-10T03:00:00.000Z',
+            is_room_disabled: 0,
             created_at: '2026-11-03T00:00:00.000Z',
         });
         expect(res.body.pagination).toMatchObject({total_count: 21});
+    });
+
+    it.each([
+        ['사용중지 호실 → 1(전액 환불 취소 버튼)', 'DISABLED', 1],
+        ['예약가능 → 0', 'AVAILABLE', 0],
+        ['사용중 → 0', 'IN_USE', 0],
+        ['정비중 → 0', 'MAINTENANCE', 0],
+    ])('[SUCCESS] is_room_disabled — %s', async (_label, room_state_id, expected) => {
+        repo.countReservations.mockResolvedValueOnce(1);
+        repo.findMyReservationRows.mockResolvedValueOnce([listRow({room_state_id})]);
+
+        const res = await request(app.getHttpServer()).get(PATH).set(internalHeaders(USER_ACTOR));
+
+        expect(res.status).toBe(200);
+        expect(res.body.list[0].is_room_disabled).toBe(expected);
     });
 });

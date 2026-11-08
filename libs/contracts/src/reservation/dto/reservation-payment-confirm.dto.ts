@@ -23,6 +23,6 @@ export class ReservationPaymentConfirmResultDto {
     @ApiProperty({description: '예약 ID'})
     reservation_id: string;
 
-    @ApiProperty({description: '예약 상태 (CONFIRMED: 예약 확정 — 같은 결제를 다시 확인하면 지금 상태)'})
+    @ApiProperty({description: '예약 상태 (CONFIRMED: 예약 확정, CHECKED_IN: 이미 시작한 예약이면 이용 중 — 같은 결제를 다시 확인하면 지금 상태)'})
     reservation_state_id: string;
 }

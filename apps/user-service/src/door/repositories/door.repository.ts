@@ -2,6 +2,8 @@ import {Injectable, InternalServerErrorException} from '@nestjs/common';
 import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
 import type {FindOptionsWhere, Repository, SelectQueryBuilder} from 'typeorm';
+import {DoorOpenLogEntity} from '@app/database/entities/door/door-open-log.entity.js';
+import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {RoomGroupEntity} from '@app/database/entities/room/room-group.entity.js';
 import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
@@ -12,7 +14,7 @@ import type {DoorRepositoryInterface, DoorRoomRow} from '../interfaces/door.repo
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
 
 /**
- * door repository — 문 소켓이 확인하는 업체 · 호실을 공유 DB 에서 직접 읽는다(쓰기 없음 — 문 상태는 Redis).
+ * door repository — 문 소켓이 확인하는 업체 · 호실 · QR 이력을 공유 DB 에서 직접 읽고, QR 로 연 기록만 쓴다(문 상태 · 현재 QR 은 Redis).
  */
 @Injectable()
 export class DoorRepository implements DoorRepositoryInterface {
@@ -29,6 +31,16 @@ export class DoorRepository implements DoorRepositoryInterface {
     /** t_room */
     private get rooms(): Repository<RoomEntity> {
         return this.txHost.tx.getRepository(RoomEntity);
+    }
+
+    /** t_room_qr */
+    private get roomQrs(): Repository<RoomQrEntity> {
+        return this.txHost.tx.getRepository(RoomQrEntity);
+    }
+
+    /** t_door_open_log */
+    private get doorOpenLogs(): Repository<DoorOpenLogEntity> {
+        return this.txHost.tx.getRepository(DoorOpenLogEntity);
     }
 
     /**
@@ -92,5 +104,32 @@ export class DoorRepository implements DoorRepositoryInterface {
             .andWhere('g.is_deleted = 0')
             .orderBy('r.floor', 'ASC')
             .addOrderBy('r.room_name', 'ASC');
+    }
+
+    /**
+     * 문이 읽은 QR 의 이력 — 그 호실 · 그 QR(지우지 않는 표)
+     *
+     * @param where 조회 조건 (호실 · QR)
+     * @returns QR 행 또는 null
+     */
+    async findDoorRoomQr(where: FindOptionsWhere<RoomQrEntity>): Promise<RoomQrEntity | null> {
+        try {
+            return await this.roomQrs.findOne({where, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * QR 로 문을 연 기록 등록
+     *
+     * @param entity new DoorOpenLogEntity() + 할당 (@BeforeInsert 가 돈다)
+     */
+    async insertDoorOpenLog(entity: DoorOpenLogEntity): Promise<void> {
+        try {
+            await this.doorOpenLogs.insert(entity);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
     }
 }

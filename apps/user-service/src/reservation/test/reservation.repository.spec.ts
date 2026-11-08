@@ -6,7 +6,9 @@ import type {EntityTarget, FindManyOptions, ObjectLiteral} from 'typeorm';
 import {RESERVATION_OCCUPYING_STATES, RESERVATION_STATE} from '@app/contracts/reservation/reservation.constants.js';
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {ENTITIES} from '@app/database/entities.js';
+import {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
+import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import {RoomPlanEntity} from '@app/database/entities/room/room-plan.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
@@ -43,6 +45,19 @@ function selectAliases(sql: string): string[] {
 function buildFindQuery(dataSource: DataSource, call: unknown[]): [string, unknown[]] {
     const [target, options] = call as [EntityTarget<ObjectLiteral>, FindManyOptions<ObjectLiteral>];
     const [sql, parameters] = dataSource.manager.createQueryBuilder(target, dataSource.getMetadata(target).name).setFindOptions(options).getQueryAndParameters();
+    return [sql.replace(/\s+/g, ' '), parameters];
+}
+
+/**
+ * repository 가 manager.update 에 넘긴 조건 · 값을 SQL 로 빌드한다 — Repository.update 와 같은 방식(실행만 뺀다).
+ *
+ * @param dataSource 메타데이터만 만든 DataSource
+ * @param call 가로챈 호출 인자(대상 엔티티, 조건, 바꿀 값)
+ * @returns 공백을 하나로 줄인 SQL 과 파라미터
+ */
+function buildUpdateQuery(dataSource: DataSource, call: unknown[]): [string, unknown[]] {
+    const [target, criteria, partial] = call as [EntityTarget<ObjectLiteral>, ObjectLiteral, ObjectLiteral];
+    const [sql, parameters] = dataSource.manager.createQueryBuilder().update(target).set(partial).where(criteria).getQueryAndParameters();
     return [sql.replace(/\s+/g, ' '), parameters];
 }
 
@@ -117,6 +132,60 @@ describe('ReservationRepository — 조건 · 오류 변환', () => {
         expect(of(RoomQrEntity).findOne).toHaveBeenCalledWith({where: {reservation_id: 'v1'}, loadRelationIds: true});
     });
 
+    it('[SUCCESS] updateRoomQr 는 받은 조건 · 엔티티 그대로(삭제 표시 없는 표)', async () => {
+        const {repository, of} = makeRepository();
+        const ended = new RoomQrEntity();
+        ended.ends_at = new Date('2026-11-10T05:00:00Z');
+
+        await repository.updateRoomQr({room_qr_id: 'q1'}, ended);
+
+        expect(of(RoomQrEntity).update).toHaveBeenCalledTimes(1);
+        expect(of(RoomQrEntity).update).toHaveBeenCalledWith({room_qr_id: 'q1'}, ended);
+    });
+
+    it('[SUCCESS] updateReservationRoom 은 받은 조건(호실 · 상태)에 is_deleted = 0 을 더한다 — 지운 호실은 바꾸지 않는다', async () => {
+        const {repository, of} = makeRepository();
+        const room = new RoomEntity();
+        room.room_state_id = 'IN_USE';
+
+        await repository.updateReservationRoom({room_id: 'r1', room_state_id: In(['AVAILABLE', 'RESERVED', 'MAINTENANCE'])}, room);
+
+        expect(of(RoomEntity).update).toHaveBeenCalledTimes(1);
+        expect(of(RoomEntity).update).toHaveBeenCalledWith({room_id: 'r1', room_state_id: In(['AVAILABLE', 'RESERVED', 'MAINTENANCE']), is_deleted: 0}, room);
+    });
+
+    it('[SUCCESS] findLatestCancelRequest 는 받은 조건 그대로 · 등록 최근순 1건 · loadRelationIds', async () => {
+        const {repository, of} = makeRepository();
+
+        await repository.findLatestCancelRequest({reservation_id: 'v1'});
+
+        expect(of(ReservationCancelRequestEntity).findOne).toHaveBeenCalledWith({where: {reservation_id: 'v1'}, order: {created_at: 'DESC'}, loadRelationIds: true});
+    });
+
+    it('[SUCCESS] updateCancelRequest 는 상태 조건 쓰기 — 1행이면 true, 0행이면 false', async () => {
+        const {repository, of} = makeRepository();
+        of(ReservationCancelRequestEntity).update.mockResolvedValueOnce({affected: 1}).mockResolvedValueOnce({affected: 0});
+        const approved = new ReservationCancelRequestEntity();
+        const where = {reservation_cancel_request_id: 'c1', reservation_cancel_request_state_id: 'REQUESTED'};
+
+        await expect(repository.updateCancelRequest(where, approved)).resolves.toBe(true);
+        await expect(repository.updateCancelRequest(where, approved)).resolves.toBe(false);
+        expect(of(ReservationCancelRequestEntity).update).toHaveBeenCalledWith(where, approved);
+    });
+
+    it('[FAIL:repository] QR 수정 · 호실 상태 · 취소 요청 조회 · 수정 실패는 통일 500', async () => {
+        const {repository, of} = makeRepository();
+        of(RoomQrEntity).update.mockRejectedValueOnce(new Error('db'));
+        of(RoomEntity).update.mockRejectedValueOnce(new Error('db'));
+        of(ReservationCancelRequestEntity).findOne.mockRejectedValueOnce(new Error('db'));
+        of(ReservationCancelRequestEntity).update.mockRejectedValueOnce(new Error('db'));
+
+        await expect(repository.updateRoomQr({room_qr_id: 'q1'}, new RoomQrEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+        await expect(repository.updateReservationRoom({room_id: 'r1'}, new RoomEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+        await expect(repository.findLatestCancelRequest({reservation_id: 'v1'})).rejects.toBeInstanceOf(InternalServerErrorException);
+        await expect(repository.updateCancelRequest({reservation_cancel_request_id: 'c1'}, new ReservationCancelRequestEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
+    });
+
     it('[FAIL:repository] QR 조회 · 발급 실패는 통일 500', async () => {
         const {repository, of} = makeRepository();
         of(RoomQrEntity).findOne.mockRejectedValueOnce(new Error('db'));
@@ -148,11 +217,11 @@ describe('[SMOKE:data-access] 예약 가능 호실 · 최근 만료 · 내 예�
     const BOOKABLE_ROOMS_SQL =
         'SELECT "r"."room_id" AS "room_id", "r"."room_name" AS "room_name", "r"."floor" AS "floor", "r"."room_state_id" AS "room_state_id", "r"."room_group_id" AS "room_group_id", "g"."room_group_name" AS "room_group_name" FROM "t_room" "r" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "r"."room_group_id" WHERE "r"."store_id" = $1 AND "r"."is_deleted" = 0 AND "g"."is_deleted" = 0 ORDER BY "r"."floor" ASC, "r"."room_name" ASC';
     const RECENT_EXPIRED_SQL =
-        'SELECT "r"."reservation_id" AS "r_reservation_id", "r"."start_at" AS "r_start_at", "r"."end_at" AS "r_end_at", "r"."maintenance_minutes" AS "r_maintenance_minutes", "r"."blocked_until" AS "r_blocked_until", "r"."total_price" AS "r_total_price", "r"."refund_deadline_at" AS "r_refund_deadline_at", "r"."late_refund_percent" AS "r_late_refund_percent", "r"."checked_in_at" AS "r_checked_in_at", "r"."completed_at" AS "r_completed_at", "r"."canceled_at" AS "r_canceled_at", "r"."cancel_actor" AS "r_cancel_actor", "r"."cancel_reason" AS "r_cancel_reason", "r"."created_at" AS "r_created_at", "r"."updated_at" AS "r_updated_at", "r"."user_id" AS "r_user_id", "r"."store_id" AS "r_store_id", "r"."room_id" AS "r_room_id", "r"."room_plan_type_id" AS "r_room_plan_type_id", "r"."reservation_state_id" AS "r_reservation_state_id" FROM "t_reservation" "r" INNER JOIN "t_reservation_detail" "d" ON "d"."reservation_id" = "r"."reservation_id" AND "d"."reservation_detail_type_id" = $1 WHERE "r"."user_id" = $2 AND "r"."room_id" = $3 AND "r"."reservation_state_id" = $4 AND "d"."expires_at" > $5';
+        'SELECT "r"."reservation_id" AS "r_reservation_id", "r"."start_at" AS "r_start_at", "r"."end_at" AS "r_end_at", "r"."maintenance_minutes" AS "r_maintenance_minutes", "r"."blocked_until" AS "r_blocked_until", "r"."total_price" AS "r_total_price", "r"."refund_deadline_at" AS "r_refund_deadline_at", "r"."late_refund_percent" AS "r_late_refund_percent", "r"."qr_link_sent_at" AS "r_qr_link_sent_at", "r"."canceled_at" AS "r_canceled_at", "r"."cancel_actor" AS "r_cancel_actor", "r"."cancel_reason" AS "r_cancel_reason", "r"."created_at" AS "r_created_at", "r"."updated_at" AS "r_updated_at", "r"."user_id" AS "r_user_id", "r"."store_id" AS "r_store_id", "r"."room_id" AS "r_room_id", "r"."room_plan_type_id" AS "r_room_plan_type_id", "r"."reservation_state_id" AS "r_reservation_state_id" FROM "t_reservation" "r" INNER JOIN "t_reservation_detail" "d" ON "d"."reservation_id" = "r"."reservation_id" AND "d"."reservation_detail_type_id" = $1 WHERE "r"."user_id" = $2 AND "r"."room_id" = $3 AND "r"."reservation_state_id" = $4 AND "d"."expires_at" > $5';
     const MY_RESERVATIONS_SQL =
-        'SELECT "r"."reservation_id" AS "reservation_id", "r"."store_id" AS "store_id", "r"."room_id" AS "room_id", "r"."room_plan_type_id" AS "room_plan_type_id", "r"."reservation_state_id" AS "reservation_state_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at", "r"."total_price" AS "total_price", "r"."refund_deadline_at" AS "refund_deadline_at", "r"."late_refund_percent" AS "late_refund_percent", "r"."canceled_at" AS "canceled_at", "r"."cancel_actor" AS "cancel_actor", "r"."cancel_reason" AS "cancel_reason", "r"."created_at" AS "created_at", "s"."store_name" AS "store_name", "rm"."room_name" AS "room_name", "g"."room_group_name" AS "room_group_name", "pt"."room_plan_type_name" AS "room_plan_type_name", "st"."reservation_state_name" AS "reservation_state_name" FROM "t_reservation" "r" INNER JOIN "t_store" "s" ON "s"."store_id" = "r"."store_id" INNER JOIN "t_room" "rm" ON "rm"."room_id" = "r"."room_id" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "rm"."room_group_id" INNER JOIN "t_room_plan_type" "pt" ON "pt"."room_plan_type_id" = "r"."room_plan_type_id" INNER JOIN "t_reservation_state" "st" ON "st"."reservation_state_id" = "r"."reservation_state_id" WHERE "r"."user_id" = $1 AND "r"."reservation_state_id" <> $2';
+        'SELECT "r"."reservation_id" AS "reservation_id", "r"."store_id" AS "store_id", "r"."room_id" AS "room_id", "r"."room_plan_type_id" AS "room_plan_type_id", "r"."reservation_state_id" AS "reservation_state_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at", "r"."total_price" AS "total_price", "r"."refund_deadline_at" AS "refund_deadline_at", "r"."late_refund_percent" AS "late_refund_percent", "r"."canceled_at" AS "canceled_at", "r"."cancel_actor" AS "cancel_actor", "r"."cancel_reason" AS "cancel_reason", "r"."created_at" AS "created_at", "s"."store_name" AS "store_name", "rm"."room_name" AS "room_name", "rm"."room_state_id" AS "room_state_id", "g"."room_group_name" AS "room_group_name", "pt"."room_plan_type_name" AS "room_plan_type_name", "st"."reservation_state_name" AS "reservation_state_name" FROM "t_reservation" "r" INNER JOIN "t_store" "s" ON "s"."store_id" = "r"."store_id" INNER JOIN "t_room" "rm" ON "rm"."room_id" = "r"."room_id" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "rm"."room_group_id" INNER JOIN "t_room_plan_type" "pt" ON "pt"."room_plan_type_id" = "r"."room_plan_type_id" INNER JOIN "t_reservation_state" "st" ON "st"."reservation_state_id" = "r"."reservation_state_id" WHERE "r"."user_id" = $1 AND "r"."reservation_state_id" <> $2';
     const MY_RESERVATION_SQL =
-        'SELECT "r"."reservation_id" AS "reservation_id", "r"."store_id" AS "store_id", "r"."room_id" AS "room_id", "r"."room_plan_type_id" AS "room_plan_type_id", "r"."reservation_state_id" AS "reservation_state_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at", "r"."total_price" AS "total_price", "r"."refund_deadline_at" AS "refund_deadline_at", "r"."late_refund_percent" AS "late_refund_percent", "r"."canceled_at" AS "canceled_at", "r"."cancel_actor" AS "cancel_actor", "r"."cancel_reason" AS "cancel_reason", "r"."created_at" AS "created_at", "s"."store_name" AS "store_name", "rm"."room_name" AS "room_name", "g"."room_group_name" AS "room_group_name", "pt"."room_plan_type_name" AS "room_plan_type_name", "st"."reservation_state_name" AS "reservation_state_name" FROM "t_reservation" "r" INNER JOIN "t_store" "s" ON "s"."store_id" = "r"."store_id" INNER JOIN "t_room" "rm" ON "rm"."room_id" = "r"."room_id" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "rm"."room_group_id" INNER JOIN "t_room_plan_type" "pt" ON "pt"."room_plan_type_id" = "r"."room_plan_type_id" INNER JOIN "t_reservation_state" "st" ON "st"."reservation_state_id" = "r"."reservation_state_id" WHERE "r"."user_id" = $1 AND "r"."reservation_state_id" <> $2 AND "r"."reservation_id" = $3';
+        'SELECT "r"."reservation_id" AS "reservation_id", "r"."store_id" AS "store_id", "r"."room_id" AS "room_id", "r"."room_plan_type_id" AS "room_plan_type_id", "r"."reservation_state_id" AS "reservation_state_id", "r"."start_at" AS "start_at", "r"."end_at" AS "end_at", "r"."total_price" AS "total_price", "r"."refund_deadline_at" AS "refund_deadline_at", "r"."late_refund_percent" AS "late_refund_percent", "r"."canceled_at" AS "canceled_at", "r"."cancel_actor" AS "cancel_actor", "r"."cancel_reason" AS "cancel_reason", "r"."created_at" AS "created_at", "s"."store_name" AS "store_name", "rm"."room_name" AS "room_name", "rm"."room_state_id" AS "room_state_id", "g"."room_group_name" AS "room_group_name", "pt"."room_plan_type_name" AS "room_plan_type_name", "st"."reservation_state_name" AS "reservation_state_name" FROM "t_reservation" "r" INNER JOIN "t_store" "s" ON "s"."store_id" = "r"."store_id" INNER JOIN "t_room" "rm" ON "rm"."room_id" = "r"."room_id" INNER JOIN "t_room_group" "g" ON "g"."room_group_id" = "rm"."room_group_id" INNER JOIN "t_room_plan_type" "pt" ON "pt"."room_plan_type_id" = "r"."room_plan_type_id" INNER JOIN "t_reservation_state" "st" ON "st"."reservation_state_id" = "r"."reservation_state_id" WHERE "r"."user_id" = $1 AND "r"."reservation_state_id" <> $2 AND "r"."reservation_id" = $3';
     const SEGMENTS_SQL =
         'SELECT "d"."reservation_detail_id" AS "reservation_detail_id", "d"."reservation_detail_type_id" AS "reservation_detail_type_id", "d"."reservation_state_id" AS "reservation_state_id", "d"."start_at" AS "start_at", "d"."end_at" AS "end_at", "d"."price" AS "price", "d"."expires_at" AS "expires_at", "d"."payment_id" AS "payment_id", "dt"."reservation_detail_type_name" AS "reservation_detail_type_name", "p"."payment_state_id" AS "payment_state_id", "p"."amount" AS "amount", "p"."method" AS "method", "p"."approved_at" AS "approved_at", "p"."receipt_url" AS "receipt_url", "p"."refund_amount" AS "refund_amount", "p"."refunded_at" AS "refunded_at", "ps"."payment_state_name" AS "payment_state_name" FROM "t_reservation_detail" "d" INNER JOIN "t_reservation_detail_type" "dt" ON "dt"."reservation_detail_type_id" = "d"."reservation_detail_type_id" INNER JOIN "t_payment" "p" ON "p"."payment_id" = "d"."payment_id" INNER JOIN "t_payment_state" "ps" ON "ps"."payment_state_id" = "p"."payment_state_id" WHERE "d"."reservation_id" = $1 ORDER BY "d"."start_at" ASC';
     const INSERT_ROOM_QR_SQL =
@@ -190,13 +259,14 @@ describe('[SMOKE:data-access] 예약 가능 호실 · 최근 만료 · 내 예�
     it.each([
         [null, ['u1', 'EXPIRED']],
         ['v1', ['u1', 'EXPIRED', 'v1']],
-    ])('내 예약 (예약 %s) — 업체 · 호실 · 그룹 · 상품 종류 · 상태 조인, 결제 대기 만료 제외, 별칭 = ReservationListRow 키', (reservation_id, expectedParameters) => {
+    ])('내 예약 (예약 %s) — 업체 · 호실(상태 — 사용중지 표시) · 그룹 · 상품 종류 · 상태 조인, 결제 대기 만료 제외, 별칭 = ReservationListRow 키', (reservation_id, expectedParameters) => {
         const [sql, parameters] = repository.buildMyReservationsQuery('u1', reservation_id).getQueryAndParameters();
         const flat = sql.replace(/\s+/g, ' ');
 
         expect(parameters).toEqual(expectedParameters);
         expect(flat).toContain('"r"."reservation_state_id" <> $2');
-        expect(selectAliases(flat)).toHaveLength(19);
+        expect(flat).toContain('"rm"."room_state_id" AS "room_state_id"');
+        expect(selectAliases(flat)).toHaveLength(20);
         expect(flat).toBe(reservation_id === null ? MY_RESERVATIONS_SQL : MY_RESERVATION_SQL);
     });
 
@@ -230,7 +300,7 @@ describe('[SMOKE:data-access] 예약 가능 호실 · 최근 만료 · 내 예�
     });
 });
 
-describe('[SMOKE:data-access] find 조건(관계 필드 In · LessThan · MoreThan · Not) — DB 연결 없이 SQL 빌드, repository 가 넘긴 옵션 그대로', () => {
+describe('[SMOKE:data-access] find · update 조건(관계 필드 In · LessThan · MoreThan · Not · 정렬) — DB 연결 없이 SQL 빌드, repository 가 넘긴 옵션 그대로', () => {
     let dataSource: DataSource;
     let repository: ReservationRepository;
     let find: ReturnType<typeof vi.spyOn>;
@@ -240,7 +310,7 @@ describe('[SMOKE:data-access] find 조건(관계 필드 In · LessThan · MoreTh
 
     /** 빌드된 SQL(빌드 때 실행 출력으로 고정) */
     const OCCUPIED_SQL =
-        'SELECT "ReservationEntity"."reservation_id" AS "ReservationEntity_reservation_id", "ReservationEntity"."start_at" AS "ReservationEntity_start_at", "ReservationEntity"."end_at" AS "ReservationEntity_end_at", "ReservationEntity"."maintenance_minutes" AS "ReservationEntity_maintenance_minutes", "ReservationEntity"."blocked_until" AS "ReservationEntity_blocked_until", "ReservationEntity"."total_price" AS "ReservationEntity_total_price", "ReservationEntity"."refund_deadline_at" AS "ReservationEntity_refund_deadline_at", "ReservationEntity"."late_refund_percent" AS "ReservationEntity_late_refund_percent", "ReservationEntity"."checked_in_at" AS "ReservationEntity_checked_in_at", "ReservationEntity"."completed_at" AS "ReservationEntity_completed_at", "ReservationEntity"."canceled_at" AS "ReservationEntity_canceled_at", "ReservationEntity"."cancel_actor" AS "ReservationEntity_cancel_actor", "ReservationEntity"."cancel_reason" AS "ReservationEntity_cancel_reason", "ReservationEntity"."created_at" AS "ReservationEntity_created_at", "ReservationEntity"."updated_at" AS "ReservationEntity_updated_at", "ReservationEntity"."user_id" AS "ReservationEntity_user_id", "ReservationEntity"."store_id" AS "ReservationEntity_store_id", "ReservationEntity"."room_id" AS "ReservationEntity_room_id", "ReservationEntity"."room_plan_type_id" AS "ReservationEntity_room_plan_type_id", "ReservationEntity"."reservation_state_id" AS "ReservationEntity_reservation_state_id" FROM "t_reservation" "ReservationEntity" WHERE (("ReservationEntity"."room_id" IN ($1, $2)) AND ("ReservationEntity"."reservation_state_id" IN ($3, $4, $5)) AND ("ReservationEntity"."start_at" < $6) AND ("ReservationEntity"."blocked_until" > $7))';
+        'SELECT "ReservationEntity"."reservation_id" AS "ReservationEntity_reservation_id", "ReservationEntity"."start_at" AS "ReservationEntity_start_at", "ReservationEntity"."end_at" AS "ReservationEntity_end_at", "ReservationEntity"."maintenance_minutes" AS "ReservationEntity_maintenance_minutes", "ReservationEntity"."blocked_until" AS "ReservationEntity_blocked_until", "ReservationEntity"."total_price" AS "ReservationEntity_total_price", "ReservationEntity"."refund_deadline_at" AS "ReservationEntity_refund_deadline_at", "ReservationEntity"."late_refund_percent" AS "ReservationEntity_late_refund_percent", "ReservationEntity"."qr_link_sent_at" AS "ReservationEntity_qr_link_sent_at", "ReservationEntity"."canceled_at" AS "ReservationEntity_canceled_at", "ReservationEntity"."cancel_actor" AS "ReservationEntity_cancel_actor", "ReservationEntity"."cancel_reason" AS "ReservationEntity_cancel_reason", "ReservationEntity"."created_at" AS "ReservationEntity_created_at", "ReservationEntity"."updated_at" AS "ReservationEntity_updated_at", "ReservationEntity"."user_id" AS "ReservationEntity_user_id", "ReservationEntity"."store_id" AS "ReservationEntity_store_id", "ReservationEntity"."room_id" AS "ReservationEntity_room_id", "ReservationEntity"."room_plan_type_id" AS "ReservationEntity_room_plan_type_id", "ReservationEntity"."reservation_state_id" AS "ReservationEntity_reservation_state_id" FROM "t_reservation" "ReservationEntity" WHERE (("ReservationEntity"."room_id" IN ($1, $2)) AND ("ReservationEntity"."reservation_state_id" IN ($3, $4, $5)) AND ("ReservationEntity"."start_at" < $6) AND ("ReservationEntity"."blocked_until" > $7))';
     const UNAVAILABLE_SQL =
         'SELECT "StoreUnavailablePeriodEntity"."store_unavailable_period_id" AS "StoreUnavailablePeriodEntity_store_unavailable_period_id", "StoreUnavailablePeriodEntity"."starts_at" AS "StoreUnavailablePeriodEntity_starts_at", "StoreUnavailablePeriodEntity"."ends_at" AS "StoreUnavailablePeriodEntity_ends_at", "StoreUnavailablePeriodEntity"."memo" AS "StoreUnavailablePeriodEntity_memo", "StoreUnavailablePeriodEntity"."is_deleted" AS "StoreUnavailablePeriodEntity_is_deleted", "StoreUnavailablePeriodEntity"."created_at" AS "StoreUnavailablePeriodEntity_created_at", "StoreUnavailablePeriodEntity"."updated_at" AS "StoreUnavailablePeriodEntity_updated_at", "StoreUnavailablePeriodEntity"."store_id" AS "StoreUnavailablePeriodEntity_store_id" FROM "t_store_unavailable_period" "StoreUnavailablePeriodEntity" WHERE (("StoreUnavailablePeriodEntity"."store_id" = $1) AND ("StoreUnavailablePeriodEntity"."starts_at" < $2) AND ("StoreUnavailablePeriodEntity"."ends_at" > $3) AND ("StoreUnavailablePeriodEntity"."is_deleted" = $4))';
     const GROUP_PLANS_SQL =
@@ -252,7 +322,11 @@ describe('[SMOKE:data-access] find 조건(관계 필드 In · LessThan · MoreTh
     const STORE_BREAKS_SQL =
         'SELECT "StoreBreakEntity"."store_break_id" AS "StoreBreakEntity_store_break_id", "StoreBreakEntity"."start_time" AS "StoreBreakEntity_start_time", "StoreBreakEntity"."end_time" AS "StoreBreakEntity_end_time", "StoreBreakEntity"."is_deleted" AS "StoreBreakEntity_is_deleted", "StoreBreakEntity"."created_at" AS "StoreBreakEntity_created_at", "StoreBreakEntity"."updated_at" AS "StoreBreakEntity_updated_at", "StoreBreakEntity"."store_id" AS "StoreBreakEntity_store_id" FROM "t_store_break" "StoreBreakEntity" WHERE (("StoreBreakEntity"."store_id" = $1) AND ("StoreBreakEntity"."is_deleted" = $2))';
     const COUNT_RESERVATIONS_SQL =
-        'SELECT "ReservationEntity"."reservation_id" AS "ReservationEntity_reservation_id", "ReservationEntity"."start_at" AS "ReservationEntity_start_at", "ReservationEntity"."end_at" AS "ReservationEntity_end_at", "ReservationEntity"."maintenance_minutes" AS "ReservationEntity_maintenance_minutes", "ReservationEntity"."blocked_until" AS "ReservationEntity_blocked_until", "ReservationEntity"."total_price" AS "ReservationEntity_total_price", "ReservationEntity"."refund_deadline_at" AS "ReservationEntity_refund_deadline_at", "ReservationEntity"."late_refund_percent" AS "ReservationEntity_late_refund_percent", "ReservationEntity"."checked_in_at" AS "ReservationEntity_checked_in_at", "ReservationEntity"."completed_at" AS "ReservationEntity_completed_at", "ReservationEntity"."canceled_at" AS "ReservationEntity_canceled_at", "ReservationEntity"."cancel_actor" AS "ReservationEntity_cancel_actor", "ReservationEntity"."cancel_reason" AS "ReservationEntity_cancel_reason", "ReservationEntity"."created_at" AS "ReservationEntity_created_at", "ReservationEntity"."updated_at" AS "ReservationEntity_updated_at", "ReservationEntity"."user_id" AS "ReservationEntity_user_id", "ReservationEntity"."store_id" AS "ReservationEntity_store_id", "ReservationEntity"."room_id" AS "ReservationEntity_room_id", "ReservationEntity"."room_plan_type_id" AS "ReservationEntity_room_plan_type_id", "ReservationEntity"."reservation_state_id" AS "ReservationEntity_reservation_state_id" FROM "t_reservation" "ReservationEntity" WHERE (("ReservationEntity"."user_id" = $1) AND ("ReservationEntity"."reservation_state_id" != $2))';
+        'SELECT "ReservationEntity"."reservation_id" AS "ReservationEntity_reservation_id", "ReservationEntity"."start_at" AS "ReservationEntity_start_at", "ReservationEntity"."end_at" AS "ReservationEntity_end_at", "ReservationEntity"."maintenance_minutes" AS "ReservationEntity_maintenance_minutes", "ReservationEntity"."blocked_until" AS "ReservationEntity_blocked_until", "ReservationEntity"."total_price" AS "ReservationEntity_total_price", "ReservationEntity"."refund_deadline_at" AS "ReservationEntity_refund_deadline_at", "ReservationEntity"."late_refund_percent" AS "ReservationEntity_late_refund_percent", "ReservationEntity"."qr_link_sent_at" AS "ReservationEntity_qr_link_sent_at", "ReservationEntity"."canceled_at" AS "ReservationEntity_canceled_at", "ReservationEntity"."cancel_actor" AS "ReservationEntity_cancel_actor", "ReservationEntity"."cancel_reason" AS "ReservationEntity_cancel_reason", "ReservationEntity"."created_at" AS "ReservationEntity_created_at", "ReservationEntity"."updated_at" AS "ReservationEntity_updated_at", "ReservationEntity"."user_id" AS "ReservationEntity_user_id", "ReservationEntity"."store_id" AS "ReservationEntity_store_id", "ReservationEntity"."room_id" AS "ReservationEntity_room_id", "ReservationEntity"."room_plan_type_id" AS "ReservationEntity_room_plan_type_id", "ReservationEntity"."reservation_state_id" AS "ReservationEntity_reservation_state_id" FROM "t_reservation" "ReservationEntity" WHERE (("ReservationEntity"."user_id" = $1) AND ("ReservationEntity"."reservation_state_id" != $2))';
+
+    /** 마지막 이용 중 취소 요청 — findOne 에 넘긴 조건 · 정렬 */
+    const LATEST_CANCEL_REQUEST_SQL =
+        'SELECT "ReservationCancelRequestEntity"."reservation_cancel_request_id" AS "ReservationCancelRequestEntity_reservation_cancel_request_id", "ReservationCancelRequestEntity"."cancel_reason" AS "ReservationCancelRequestEntity_cancel_reason", "ReservationCancelRequestEntity"."expires_at" AS "ReservationCancelRequestEntity_expires_at", "ReservationCancelRequestEntity"."responded_at" AS "ReservationCancelRequestEntity_responded_at", "ReservationCancelRequestEntity"."created_at" AS "ReservationCancelRequestEntity_created_at", "ReservationCancelRequestEntity"."updated_at" AS "ReservationCancelRequestEntity_updated_at", "ReservationCancelRequestEntity"."reservation_id" AS "ReservationCancelRequestEntity_reservation_id", "ReservationCancelRequestEntity"."user_id" AS "ReservationCancelRequestEntity_user_id", "ReservationCancelRequestEntity"."reservation_cancel_request_state_id" AS "a2ccf08b00457cb3c0d3f278591697f184e826a6" FROM "t_reservation_cancel_request" "ReservationCancelRequestEntity" WHERE (("ReservationCancelRequestEntity"."reservation_id" = $1)) ORDER BY "ReservationCancelRequestEntity"."created_at" DESC';
 
     beforeAll(async () => {
         // 접속하지 않는다 — find · count 는 옵션만 가로채고, SQL 은 같은 옵션으로 QueryBuilder 가 조립한다
@@ -327,5 +401,30 @@ describe('[SMOKE:data-access] find 조건(관계 필드 In · LessThan · MoreTh
         expect(parameters).toEqual(['u1', 'EXPIRED']);
         expect(sql).toContain('WHERE (("ReservationEntity"."user_id" = $1) AND ("ReservationEntity"."reservation_state_id" != $2))');
         expect(sql).toBe(COUNT_RESERVATIONS_SQL);
+    });
+
+    it('마지막 이용 중 취소 요청 — findOne 에 넘긴 조건(관계 컬럼 예약) · 등록 최근순', async () => {
+        const findOne = vi.spyOn(dataSource.manager, 'findOne').mockResolvedValue(null);
+
+        await repository.findLatestCancelRequest({reservation_id: 'v1'});
+        const [sql, parameters] = buildFindQuery(dataSource, findOne.mock.calls[0]);
+        findOne.mockRestore();
+
+        expect(parameters).toEqual(['v1']);
+        expect(sql).toContain('WHERE (("ReservationCancelRequestEntity"."reservation_id" = $1)) ORDER BY "ReservationCancelRequestEntity"."created_at" DESC');
+        expect(sql).toBe(LATEST_CANCEL_REQUEST_SQL);
+    });
+
+    it('예약 호실 상태 쓰기 — update 에 넘긴 조건(호실 · 관계 컬럼 상태 IN · 지워지지 않음) 그대로', async () => {
+        const update = vi.spyOn(dataSource.manager, 'update').mockResolvedValue({affected: 1, raw: [], generatedMaps: []});
+        const room = new RoomEntity();
+        room.room_state_id = 'IN_USE';
+
+        await repository.updateReservationRoom({room_id: 'r1', room_state_id: In(['AVAILABLE', 'RESERVED', 'MAINTENANCE'])}, room);
+        const [sql, parameters] = buildUpdateQuery(dataSource, update.mock.calls[0]);
+        update.mockRestore();
+
+        expect(parameters).toEqual(['IN_USE', 'r1', 'AVAILABLE', 'RESERVED', 'MAINTENANCE', 0]);
+        expect(sql).toBe('UPDATE "t_room" SET "room_state_id" = $1 WHERE ("room_id" = $2 AND "room_state_id" IN ($3, $4, $5) AND "is_deleted" = $6)');
     });
 });

@@ -6,7 +6,8 @@
 # 설정 원칙 — compose.user-service.yml 과 같다
 #   - 환경 값(NODE_ENV · DATABASE_URL · REDIS_URL)은 .env 를 그대로 쓴다. compose 는 바꾸지 않고, 필수값이 비어 있으면 띄우지 않는다.
 #   - 서버 구성(TZ)만 아래에 고정한다.
-#   - 쓰지 않는 비밀값(브로커 · JWT · 토큰 암호화 · 내부 토큰 · 비밀번호 해시 · AWS · DB 관리자)은 빈 값으로 덮어 전달하지 않는다. 토스 시크릿 키는 결제 대기 만료 · 환불에 쓴다.
+#   - 쓰지 않는 비밀값(브로커 · JWT · 토큰 암호화 · 내부 토큰 · 비밀번호 해시 · DB 관리자)은 빈 값으로 덮어 전달하지 않는다. 토스 시크릿 키는 결제 대기 만료 · 환불에,
+#     AWS 키(SNS)와 USER_WEB_URL 은 이용 시작 5분 전 QR 확인 링크 SMS 에 쓴다.
 #
 # 네트워크 — DB · Redis 로 나가는 roomless-data 하나뿐이다(서비스 · 브로커 · 외부 진입 네트워크에 붙지 않는다)
 name: roomless-scheduler
@@ -46,8 +47,6 @@ services:
             TOKEN_CIPHER_KEY: ''
             INTERNAL_API_TOKEN: ''
             BCRYPT_CODE: ''
-            AWS_ACCESS_KEY_ID: ''
-            AWS_SECRET_ACCESS_KEY: ''
         deploy:
             replicas: ${SCHEDULER_REPLICAS:-1}
         networks: [data]

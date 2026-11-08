@@ -1,6 +1,6 @@
 import type {FindOptionsWhere} from 'typeorm';
-import type {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import type {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
+import type {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import type {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {RoomEntity} from '@app/database/entities/room/room.entity.js';
@@ -18,7 +18,7 @@ export interface StoreRoomRow {
     room_state_name: string;
 }
 
-/** 업체 현황 예약 행 — 예약 + 상태명 · 상품 종류명 + 이용자 이름 · 휴대폰(QueryBuilder raw) */
+/** 업체 현황 예약 행 — 예약 + 상태명 · 상품 종류명 + 이용자 이름 · 휴대폰 + 마지막 이용 중 취소 요청(상태 · 만료 · 등록 — 없으면 null, QueryBuilder raw) */
 export interface StoreReservationRow {
     reservation_id: string;
     room_id: string;
@@ -32,16 +32,19 @@ export interface StoreReservationRow {
     total_price: number;
     user_name: string;
     user_phone: string | null;
+    cancel_request_state_id: string | null;
+    cancel_request_expires_at: Date | null;
+    cancel_request_created_at: Date | null;
 }
 
 /**
- * reservation repository 포트 (매니저 예약) — 공유 DB 의 예약 · 구간 · 결제 · QR 이력을 쓰고, 업체 · 호실 · 회원을 예약 어휘로 읽는다.
+ * reservation repository 포트 (매니저 예약) — 공유 DB 의 예약 · 구간 · 결제 · 이용 중 취소 요청을 쓰고, 업체 · 호실 · 회원을 예약 어휘로 읽는다.
  * WHERE 는 service 가 만들고 repository 는 is_deleted = 0 을 붙여 실행 + DB 오류 변환만 한다. 상태 조건을 건 쓰기는 1행이면 true.
  */
 export interface ReservationRepositoryInterface {
     /** 매니저의 소속 업체 (탈퇴 업체 · 지운 업체 제외) — lock 이면 업체 행을 잠근다(쓰기 트랜잭션 안에서만) */
     findManagerStore(user_id: string, lock: boolean): Promise<StoreEntity | null>;
-    /** 회원 단건 — 이용자 연락처(업체 취소 · 호실 이동 SMS) */
+    /** 회원 단건 — 이용자 연락처(업체 취소 · 호실 이동 · 이용 중 취소 요청 SMS) */
     findReservationUser(where: FindOptionsWhere<UserEntity>): Promise<UserEntity | null>;
     /** 예약 업체 — 지워지지 않은 업체 */
     findReservationStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null>;
@@ -63,8 +66,8 @@ export interface ReservationRepositoryInterface {
     findStoreRoomRows(store_id: string): Promise<StoreRoomRow[]>;
     /** 업체 현황 예약 행 — [from, to) 와 겹치는 결제 대기 · 확정 · 이용 중 · 이용 완료, 입실 순 */
     findStoreReservationRows(store_id: string, from: Date, to: Date): Promise<StoreReservationRow[]>;
-    /** 예약의 QR — 예약 1건에 1행 */
-    findRoomQr(where: FindOptionsWhere<RoomQrEntity>): Promise<RoomQrEntity | null>;
-    /** QR 수정 — 업체 취소 때 유효 종료 */
-    updateRoomQr(where: FindOptionsWhere<RoomQrEntity>, entity: RoomQrEntity): Promise<void>;
+    /** 진행 중인 이용 중 취소 요청을 만료로 — 새 요청 전에(상태 조건 · 여러 행) */
+    expireCancelRequests(where: FindOptionsWhere<ReservationCancelRequestEntity>, entity: ReservationCancelRequestEntity): Promise<void>;
+    /** 이용 중 취소 요청 등록 — 진행 중 요청 겹침(UK_ReservationCancelRequest_ReservationIdRequested) → 400 */
+    insertCancelRequest(entity: ReservationCancelRequestEntity): Promise<void>;
 }

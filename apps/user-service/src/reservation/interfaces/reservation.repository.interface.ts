@@ -1,6 +1,7 @@
 import type {FindOptionsWhere} from 'typeorm';
 import type {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import type {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
+import type {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import type {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
@@ -23,13 +24,14 @@ export interface BookableRoomRow {
     room_group_name: string;
 }
 
-/** 예약 목록 · 상세 행 — 예약 + 업체 · 호실 · 그룹 · 상품 종류명 · 상태명(QueryBuilder raw) */
+/** 예약 목록 · 상세 행 — 예약 + 업체 · 호실(상태 — 사용중지 표시) · 그룹 · 상품 종류명 · 상태명(QueryBuilder raw) */
 export interface ReservationListRow {
     reservation_id: string;
     store_id: string;
     store_name: string;
     room_id: string;
     room_name: string;
+    room_state_id: string;
     room_group_name: string;
     room_plan_type_id: string;
     room_plan_type_name: string;
@@ -126,4 +128,12 @@ export interface ReservationRepositoryInterface {
     findRoomQr(where: FindOptionsWhere<RoomQrEntity>): Promise<RoomQrEntity | null>;
     /** QR 발급 — 같은 예약 · 같은 QR 이 이미 있으면 넣지 않는다(ON CONFLICT DO NOTHING — 트랜잭션을 깨지 않는다, 호출자가 다시 읽는다) */
     insertRoomQr(entity: RoomQrEntity): Promise<void>;
+    /** QR 수정 — 취소 때 유효 종료 */
+    updateRoomQr(where: FindOptionsWhere<RoomQrEntity>, entity: RoomQrEntity): Promise<void>;
+    /** 예약 호실 상태 쓰기 — 상태 조건(이용 시작 · 이용 중 취소 승인), 지워지지 않은 호실만. 0행이면 그대로(바꿀 상태가 아니다) */
+    updateReservationRoom(where: FindOptionsWhere<RoomEntity>, entity: RoomEntity): Promise<void>;
+    /** 예약의 마지막 이용 중 취소 요청 — 등록 최근 1건 */
+    findLatestCancelRequest(where: FindOptionsWhere<ReservationCancelRequestEntity>): Promise<ReservationCancelRequestEntity | null>;
+    /** 이용 중 취소 요청 수정 — 상태 조건(요청 중)을 건 쓰기, 1행이면 true */
+    updateCancelRequest(where: FindOptionsWhere<ReservationCancelRequestEntity>, entity: ReservationCancelRequestEntity): Promise<boolean>;
 }

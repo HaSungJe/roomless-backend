@@ -32,3 +32,9 @@ export const RESERVATION_STATE_CHANGED_MESSAGE = '예약 상태가 바뀌었습�
 
 /** 취소할 수 없는 상태 */
 export const RESERVATION_NOT_CANCELABLE_MESSAGE = '취소할 수 없는 예약입니다.';
+
+/** 이용자 화면 주소(USER_WEB_URL)가 없음 — 이용 중 취소 요청의 승인 링크를 만들 수 없다(503) */
+export const RESERVATION_USER_WEB_URL_MISSING_MESSAGE = '이용자 화면 주소가 설정되지 않아 요청할 수 없습니다. 관리자에게 문의해주세요.';
+
+/** 이미 진행 중인 이용 중 취소 요청 — 부분 유니크 UK_ReservationCancelRequest_ReservationIdRequested */
+export const RESERVATION_CANCEL_REQUEST_DUPLICATE_MESSAGE = '이미 진행 중인 취소 요청이 있습니다.';

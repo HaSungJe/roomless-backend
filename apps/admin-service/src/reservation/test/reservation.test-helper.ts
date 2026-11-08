@@ -9,7 +9,7 @@ import {validationExceptionFactory} from '@app/common/utils/validation.js';
 import type {Actor} from '@app/contracts/actor.js';
 import {INTERNAL_HEADER} from '@app/contracts/actor.js';
 import type {MessageEnvelope, ResultPayload} from '@app/contracts/message-envelope.js';
-import {DOOR_STORE, SMS_SENDER} from '@app/integration/integration.symbols.js';
+import {SMS_SENDER} from '@app/integration/integration.symbols.js';
 import {CommandHandlerRegistry} from '@app/messaging/command-handler.registry.js';
 import {CommandDispatcher, DispatchDecision} from '@app/messaging/command.dispatcher.js';
 import {buildCommandEnvelope, encodeEnvelope} from '@app/messaging/messaging.util.js';
@@ -38,18 +38,14 @@ export const RESERVATION_ID = '1'.repeat(32);
 export const PAYMENT_ID = '2'.repeat(32);
 export const DETAIL_ID = '3'.repeat(32);
 
-/** 호실 QR ID · QR 정보 */
-export const ROOM_QR_ID = '4'.repeat(32);
-export const QR = '5'.repeat(32);
+/** 이용 중 취소 요청 ID */
+export const CANCEL_REQUEST_ID = '6'.repeat(32);
 
 /** repository mock 모양 — 포트 메서드마다 vi.fn() */
 export type ReservationRepositoryMock = {[K in keyof ReservationRepositoryInterface]: Mock};
 
 /** SMS 포트 mock */
 export type SmsSenderMock = {send: Mock};
-
-/** 문 정보 포트 mock — 업체 취소가 쓰는 현재 QR 지우기만 */
-export type DoorStoreMock = {revokeQr: Mock};
 
 /**
  * 예약 repository mock (매니저 예약) — 매니저의 소속 업체는 활성 업체, 예약자 연락처는 인증된 번호, 쓰기는 성공 기본값
@@ -70,8 +66,8 @@ export function createReservationRepositoryMock(): ReservationRepositoryMock {
         updatePayment: vi.fn().mockResolvedValue(true),
         findStoreRoomRows: vi.fn().mockResolvedValue([]),
         findStoreReservationRows: vi.fn().mockResolvedValue([]),
-        findRoomQr: vi.fn().mockResolvedValue(null),
-        updateRoomQr: vi.fn(),
+        expireCancelRequests: vi.fn(),
+        insertCancelRequest: vi.fn(),
     };
 }
 
@@ -85,39 +81,17 @@ export function createSmsSenderMock(): SmsSenderMock {
 }
 
 /**
- * 문 정보 포트 mock — 현재 QR 지우기는 성공
- *
- * @returns mock
- */
-export function createDoorStoreMock(): DoorStoreMock {
-    return {revokeQr: vi.fn().mockResolvedValue(undefined)};
-}
-
-/**
- * 큐 경로 부팅 — 실제 ReservationQueueController · ReservationService · CommandHandlerRegistry · CommandDispatcher, repository · SMS · 문 정보 포트만 mock.
+ * 큐 경로 부팅 — 실제 ReservationQueueController · ReservationService · CommandHandlerRegistry · CommandDispatcher, repository · SMS 포트만 mock.
  * registry 가 @OnCommand 를 찾도록 DiscoveryModule + module.init() 이 필수다.
  *
  * @param repo repository mock
  * @param sms SMS 포트 mock
- * @param door 문 정보 포트 mock
  * @returns dispatcher · module
  */
-export async function bootCommandPath(
-    repo: ReservationRepositoryMock,
-    sms: SmsSenderMock = createSmsSenderMock(),
-    door: DoorStoreMock = createDoorStoreMock(),
-): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
+export async function bootCommandPath(repo: ReservationRepositoryMock, sms: SmsSenderMock = createSmsSenderMock()): Promise<{dispatcher: CommandDispatcher; module: TestingModule}> {
     const module = await Test.createTestingModule({
         imports: [DiscoveryModule],
-        providers: [
-            ReservationService,
-            ReservationQueueController,
-            CommandHandlerRegistry,
-            CommandDispatcher,
-            {provide: RESERVATION_REPOSITORY, useValue: repo},
-            {provide: SMS_SENDER, useValue: sms},
-            {provide: DOOR_STORE, useValue: door},
-        ],
+        providers: [ReservationService, ReservationQueueController, CommandHandlerRegistry, CommandDispatcher, {provide: RESERVATION_REPOSITORY, useValue: repo}, {provide: SMS_SENDER, useValue: sms}],
     }).compile();
     await module.init();
     return {dispatcher: module.get(CommandDispatcher), module};
@@ -137,7 +111,6 @@ export async function bootHttpPath(repo: ReservationRepositoryMock): Promise<INe
             ReservationService,
             {provide: RESERVATION_REPOSITORY, useValue: repo},
             {provide: SMS_SENDER, useValue: createSmsSenderMock()},
-            {provide: DOOR_STORE, useValue: createDoorStoreMock()},
             {provide: APP_GUARD, useClass: InternalAuthGuard},
             {provide: APP_INTERCEPTOR, useClass: ReturnedExceptionInterceptor},
         ],
@@ -250,8 +223,7 @@ export function reservationEntity(override: Record<string, unknown> = {}): Recor
         total_price: 30000,
         refund_deadline_at: new Date('2026-11-10T03:00:00Z'),
         late_refund_percent: 50,
-        checked_in_at: null,
-        completed_at: null,
+        qr_link_sent_at: null,
         canceled_at: null,
         cancel_actor: null,
         cancel_reason: null,
@@ -282,11 +254,28 @@ export function detailEntity(override: Record<string, unknown> = {}): Record<str
 }
 
 /**
- * 호실 QR — 예약 이용 구간(2026-11-10 13:00 ~ 16:00 한국 시각) 동안 유효
+ * 업체 현황 예약 행 — 확정, 2026-11-10 13:00 ~ 16:00, 취소 요청 없음
  *
  * @param override 바꿀 필드
- * @returns QR 엔티티 모양
+ * @returns 행
  */
-export function roomQrEntity(override: Record<string, unknown> = {}): Record<string, unknown> {
-    return {room_qr_id: ROOM_QR_ID, room_id: ROOM_ID, reservation_id: RESERVATION_ID, qr: QR, starts_at: new Date('2026-11-10T04:00:00Z'), ends_at: new Date('2026-11-10T07:00:00Z'), ...override};
+export function storeReservationRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        reservation_id: RESERVATION_ID,
+        room_id: ROOM_ID,
+        reservation_state_id: 'CONFIRMED',
+        reservation_state_name: '예약 확정',
+        room_plan_type_id: 'HOURLY',
+        room_plan_type_name: '시간 이용',
+        start_at: new Date('2026-11-10T04:00:00Z'),
+        end_at: new Date('2026-11-10T07:00:00Z'),
+        blocked_until: new Date('2026-11-10T07:30:00Z'),
+        total_price: 30000,
+        user_name: '김이용',
+        user_phone: '01012345678',
+        cancel_request_state_id: null,
+        cancel_request_expires_at: null,
+        cancel_request_created_at: null,
+        ...override,
+    };
 }

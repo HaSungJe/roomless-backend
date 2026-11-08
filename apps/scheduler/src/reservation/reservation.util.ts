@@ -1,12 +1,14 @@
 import {BadRequestException} from '@nestjs/common';
+import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import {generateId} from '@app/common/utils/id.js';
-import {PAYMENT_STATE, RESERVATION_STATE} from '@app/contracts/reservation/reservation.constants.js';
+import {PAYMENT_STATE, RESERVATION_STATE, USAGE_ROOM_STATE} from '@app/contracts/reservation/reservation.constants.js';
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
+import {RoomEntity} from '@app/database/entities/room/room.entity.js';
 import type {PaymentLookupResult} from '@app/integration/interfaces/integration.interface.js';
-import type {QrSyncTargetRow} from './interfaces/reservation.repository.interface.js';
+import type {UsageRow} from './interfaces/reservation.repository.interface.js';
 
 /** 결제 대기 전환 — 결제 · 구간 · 예약에 쓸 엔티티 */
 export interface PendingTransition {
@@ -121,10 +123,10 @@ function buildStateEntities(state: string): {detail: ReservationDetailEntity; re
 /**
  * 이용이 시작된 예약의 QR — 유효 = 이용 시작 ~ 이용 끝, QR 은 32자 무작위(user-service 내 예약 QR 발급과 같은 값).
  *
- * @param row 맞추기 대상 예약
+ * @param row 이용 시작 · QR 맞추기 대상 예약
  * @returns QR 엔티티
  */
-export function buildRoomQr(row: QrSyncTargetRow): RoomQrEntity {
+export function buildRoomQr(row: UsageRow): RoomQrEntity {
     const roomQr = new RoomQrEntity();
     roomQr.room_qr_id = generateId();
     roomQr.room_id = row.room_id;
@@ -133,4 +135,70 @@ export function buildRoomQr(row: QrSyncTargetRow): RoomQrEntity {
     roomQr.starts_at = row.start_at;
     roomQr.ends_at = row.end_at;
     return roomQr;
+}
+
+/** 이용 전환 — 예약 · 호실에 쓸 엔티티 */
+export interface UsageTransition {
+    reservation: ReservationEntity;
+    room: RoomEntity;
+}
+
+/**
+ * 이용 시작 — 예약 이용 중 · 호실 사용중(체크인 없이 시작 시각에 — 사용자 결정 2026-11-07).
+ *
+ * @returns 예약 CHECKED_IN · 호실 IN_USE
+ */
+export function buildUsageStartTransition(): UsageTransition {
+    const reservation = new ReservationEntity();
+    reservation.reservation_state_id = RESERVATION_STATE.CHECKED_IN;
+    const room = new RoomEntity();
+    room.room_state_id = USAGE_ROOM_STATE.IN_USE;
+    return {reservation, room};
+}
+
+/**
+ * 이용 종료 — 예약 이용 완료 · 호실 정비중(정비 뒤 업체가 예약가능으로 — 사용자 결정 2026-11-07).
+ *
+ * @returns 예약 COMPLETED · 호실 MAINTENANCE
+ */
+export function buildUsageEndTransition(): UsageTransition {
+    const reservation = new ReservationEntity();
+    reservation.reservation_state_id = RESERVATION_STATE.COMPLETED;
+    const room = new RoomEntity();
+    room.room_state_id = USAGE_ROOM_STATE.MAINTENANCE;
+    return {reservation, room};
+}
+
+/**
+ * QR 확인 링크 보냄 표시 — 보낸 시각(되돌릴 때는 null).
+ *
+ * @param sent_at 보낸 시각 또는 null
+ * @returns 예약(qr_link_sent_at 만)
+ */
+export function buildQrLinkSent(sent_at: Date | null): ReservationEntity {
+    const reservation = new ReservationEntity();
+    reservation.qr_link_sent_at = sent_at;
+    return reservation;
+}
+
+/**
+ * QR 확인 링크 SMS — 예약 1건 화면 링크(QR 은 시작 시각부터 열린다 — 사용자 결정 2026-11-07).
+ *
+ * @param store_name 상호명
+ * @param start_at 이용 시작
+ * @param link 예약 화면 주소(`<USER_WEB_URL>/reservation/<예약 ID>`)
+ * @returns 문구
+ */
+export function buildQrLinkSms(store_name: string, start_at: Date, link: string): string {
+    return `[roomless] ${store_name} ${dayjs(start_at).tz(KST_TIMEZONE).format('M/D HH:mm')} 예약 — QR 확인: ${link}`;
+}
+
+/**
+ * 이용자 화면 주소(USER_WEB_URL) — 끝의 / 를 뗀다. 비어 있으면 null(링크를 보내지 않는다).
+ *
+ * @returns 주소 또는 null
+ */
+export function readUserWebUrl(): string | null {
+    const value = process.env.USER_WEB_URL?.trim().replace(/\/+$/, '');
+    return value ? value : null;
 }

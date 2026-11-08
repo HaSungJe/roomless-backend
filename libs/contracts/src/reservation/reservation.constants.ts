@@ -25,4 +25,22 @@ export const RESERVATION_PAYMENT_PENDING_MINUTES = 5;
 export const RESERVATION_REBOOK_BLOCK_MINUTES = 10;
 
 /** 토스 환불 사유(cancelReason — 200자) — t_payment.refund_reason */
-export const RESERVATION_REFUND_REASON = {USER: '이용자 예약 취소', STORE: '업체 예약 취소', AMOUNT_MISMATCH: '결제 금액 불일치', LATE_PAYMENT: '결제 대기 시간 경과'} as const;
+export const RESERVATION_REFUND_REASON = {
+    USER: '이용자 예약 취소',
+    STORE: '업체 예약 취소',
+    DISABLED_ROOM: '사용중지 호실 취소',
+    AMOUNT_MISMATCH: '결제 금액 불일치',
+    LATE_PAYMENT: '결제 대기 시간 경과',
+} as const;
+
+/**
+ * 이용 전환의 호실 상태 — 시작은 예약가능 · 예약완료 · 정비중일 때만 사용중(사용중지 · 사용중은 그대로), 끝 · 이용 중 업체 취소는 사용중일 때만 정비중.
+ * 체크인 · 체크아웃 없이 예약 시간이 곧 이용이다 — user-service(결제 확인 · 내 예약 QR · 취소 동의 승인) · scheduler(이용 전환 crontab) 공통(사용자 결정 2026-11-07).
+ */
+export const USAGE_ROOM_STATE = {IN_USE: 'IN_USE', MAINTENANCE: 'MAINTENANCE', START_FROM: ['AVAILABLE', 'RESERVED', 'MAINTENANCE']} as const;
+
+/** 이용 중 취소 요청 상태(t_reservation_cancel_request_state) — 요청 중인데 만료 시각이 지나면 읽을 때 만료로 본다 */
+export const RESERVATION_CANCEL_REQUEST_STATE = {REQUESTED: 'REQUESTED', APPROVED: 'APPROVED', REJECTED: 'REJECTED', EXPIRED: 'EXPIRED'} as const;
+
+/** 이용 중 취소 요청 유효 시간(분) — 예약 끝이 먼저면 예약 끝까지(사용자 결정 2026-11-07) */
+export const RESERVATION_CANCEL_REQUEST_MINUTES = 10;

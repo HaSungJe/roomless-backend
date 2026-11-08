@@ -1,22 +1,26 @@
 import {Injectable, InternalServerErrorException} from '@nestjs/common';
 import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
-import {MoreThanOrEqual} from 'typeorm';
+import {In, IsNull, MoreThanOrEqual} from 'typeorm';
 import type {FindOptionsWhere, InsertQueryBuilder, Repository, SelectQueryBuilder} from 'typeorm';
-import {PAYMENT_STATE, RESERVATION_DETAIL_TYPE, RESERVATION_STATE} from '@app/contracts/reservation/reservation.constants.js';
+import {PAYMENT_STATE, RESERVATION_DETAIL_TYPE, RESERVATION_STATE, USAGE_ROOM_STATE} from '@app/contracts/reservation/reservation.constants.js';
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
-import type {ExpiredPendingRow, QrSyncTargetRow, ReservationRepositoryInterface} from '../interfaces/reservation.repository.interface.js';
-import type {PendingTransition} from '../reservation.util.js';
+import {RoomEntity} from '@app/database/entities/room/room.entity.js';
+import {StoreEntity} from '@app/database/entities/store/store.entity.js';
+import {UserEntity} from '@app/database/entities/user/user.entity.js';
+import {notDeleted} from '@app/database/soft-delete.js';
+import type {ExpiredPendingRow, QrLinkRow, QrSyncTargetRow, ReservationRepositoryInterface, UsageRow} from '../interfaces/reservation.repository.interface.js';
+import type {PendingTransition, UsageTransition} from '../reservation.util.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
 
 /**
- * 예약 repository(scheduler) — crontab 이 쓰는 예약 · 구간 · 결제 접근. 한 건의 상태 전환(결제 · 구간 · 예약)은 withTransaction 으로 묶고,
- * 상태 조건(READY · PENDING · EXPIRED · REFUND_REQUESTED)을 걸어 다른 요청(결제 확인 · 취소)과 겹쳐도 한쪽만 바꾼다.
+ * 예약 repository(scheduler) — crontab 이 쓰는 예약 · 구간 · 결제 · 호실 상태 · QR 접근. 한 건의 상태 전환(결제 · 구간 · 예약 / 예약 · 호실 · QR)은 withTransaction 으로 묶고,
+ * 상태 조건(READY · PENDING · EXPIRED · REFUND_REQUESTED · CONFIRMED · 호실 상태)을 걸어 다른 요청(결제 확인 · 취소 · 내 예약 QR)과 겹쳐도 한쪽만 바꾼다.
  */
 @Injectable()
 export class ReservationRepository implements ReservationRepositoryInterface {
@@ -43,6 +47,11 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     /** t_room_qr */
     private get roomQrs(): Repository<RoomQrEntity> {
         return this.txHost.tx.getRepository(RoomQrEntity);
+    }
+
+    /** t_room */
+    private get rooms(): Repository<RoomEntity> {
+        return this.txHost.tx.getRepository(RoomEntity);
     }
 
     /**
@@ -164,7 +173,7 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * QR 맞추기 대상 쿼리 — 확정 · 이용 중 · start_at ≤ now < end_at, 그 예약의 QR 을 왼쪽 조인(없으면 qr · qr_ends_at NULL), 시작 순.
+     * QR 맞추기 대상 쿼리 — 이용 중 · start_at ≤ now < end_at, 그 예약의 QR 을 왼쪽 조인(없으면 qr · qr_ends_at NULL), 시작 순. 확정 예약은 이용 전환 crontab 이 시작 때 발급한다.
      * 매핑 민감(조인 · raw select — 별칭이 QrSyncTargetRow 키와 같다)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param now 지금
@@ -180,7 +189,7 @@ export class ReservationRepository implements ReservationRepositoryInterface {
             .addSelect('q.qr', 'qr')
             .addSelect('q.ends_at', 'qr_ends_at')
             .leftJoin(RoomQrEntity, 'q', 'q.reservation_id = r.reservation_id')
-            .where('r.reservation_state_id IN (:...states)', {states: [RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN]})
+            .where('r.reservation_state_id = :state', {state: RESERVATION_STATE.CHECKED_IN})
             .andWhere('r.start_at <= :now', {now})
             .andWhere('r.end_at > :now', {now})
             .orderBy('r.start_at', 'ASC');
@@ -221,5 +230,194 @@ export class ReservationRepository implements ReservationRepositoryInterface {
      */
     buildInsertRoomQrQuery(entity: RoomQrEntity): InsertQueryBuilder<RoomQrEntity> {
         return this.roomQrs.createQueryBuilder().insert().into(RoomQrEntity).values(entity).orIgnore();
+    }
+
+    /**
+     * 이용 시작 대상
+     *
+     * @param now 지금
+     * @returns 예약 행
+     */
+    async findUsageStartRows(now: Date): Promise<UsageRow[]> {
+        try {
+            return await this.buildUsageStartRowsQuery(now).getRawMany<UsageRow>();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 이용 시작 대상 쿼리 — 확정 · start_at ≤ now < end_at(시작 정각부터, 끝을 놓친 예약은 종료가 가져간다), 시작 순.
+     * 매핑 민감(raw select — 별칭이 UsageRow 키와 같다 · 시각 경계)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param now 지금
+     * @returns 쿼리 빌더
+     */
+    buildUsageStartRowsQuery(now: Date): SelectQueryBuilder<ReservationEntity> {
+        return this.reservations
+            .createQueryBuilder('r')
+            .select('r.reservation_id', 'reservation_id')
+            .addSelect('r.room_id', 'room_id')
+            .addSelect('r.start_at', 'start_at')
+            .addSelect('r.end_at', 'end_at')
+            .where('r.reservation_state_id = :state', {state: RESERVATION_STATE.CONFIRMED})
+            .andWhere('r.start_at <= :now', {now})
+            .andWhere('r.end_at > :now', {now})
+            .orderBy('r.start_at', 'ASC');
+    }
+
+    /**
+     * 이용 종료 대상
+     *
+     * @param now 지금
+     * @returns 예약 행
+     */
+    async findUsageEndRows(now: Date): Promise<UsageRow[]> {
+        try {
+            return await this.buildUsageEndRowsQuery(now).getRawMany<UsageRow>();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 이용 종료 대상 쿼리 — 확정 · 이용 중 · end_at ≤ now(끝 정각부터 — 시작을 놓친 확정도), 끝 순.
+     * 매핑 민감(raw select — 별칭이 UsageRow 키와 같다 · IN · 시각 경계)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param now 지금
+     * @returns 쿼리 빌더
+     */
+    buildUsageEndRowsQuery(now: Date): SelectQueryBuilder<ReservationEntity> {
+        return this.reservations
+            .createQueryBuilder('r')
+            .select('r.reservation_id', 'reservation_id')
+            .addSelect('r.room_id', 'room_id')
+            .addSelect('r.start_at', 'start_at')
+            .addSelect('r.end_at', 'end_at')
+            .where('r.reservation_state_id IN (:...states)', {states: [RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN]})
+            .andWhere('r.end_at <= :now', {now})
+            .orderBy('r.end_at', 'ASC');
+    }
+
+    /**
+     * 이용 시작 — 예약(확정 → 이용 중, 상태 조건) · 호실(예약가능 · 예약완료 · 정비중 → 사용중, 지워지지 않은 호실 — 0행이면 그대로) · QR 발급(ON CONFLICT DO NOTHING)을 한 트랜잭션으로.
+     * 예약이 이미 바뀌었으면(내 예약 QR · 결제 확인이 먼저) 아무것도 바꾸지 않고 false.
+     *
+     * @param row 이용 시작 대상
+     * @param transition 예약 · 호실 엔티티
+     * @param roomQr 발급할 QR
+     * @returns 바꿨으면 true
+     */
+    async startUsage(row: UsageRow, transition: UsageTransition, roomQr: RoomQrEntity): Promise<boolean> {
+        try {
+            return await this.txHost.withTransaction(async () => {
+                const reservation = await this.reservations.update({reservation_id: row.reservation_id, reservation_state_id: RESERVATION_STATE.CONFIRMED}, transition.reservation);
+                if (reservation.affected !== 1) {
+                    return false;
+                }
+                await this.rooms.update(notDeleted<RoomEntity>({room_id: row.room_id, room_state_id: In([...USAGE_ROOM_STATE.START_FROM])}), transition.room);
+                await this.buildInsertRoomQrQuery(roomQr).execute();
+                return true;
+            });
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 이용 종료 — 예약(확정 · 이용 중 → 이용 완료, 상태 조건) · 호실(사용중 → 정비중, 지워지지 않은 호실 — 0행이면 그대로)을 한 트랜잭션으로.
+     * QR 은 Redis 가 끝 시각에 저절로 지운다(PXAT). 예약이 이미 바뀌었으면(취소가 먼저) false.
+     *
+     * @param row 이용 종료 대상
+     * @param transition 예약 · 호실 엔티티
+     * @returns 바꿨으면 true
+     */
+    async endUsage(row: UsageRow, transition: UsageTransition): Promise<boolean> {
+        try {
+            return await this.txHost.withTransaction(async () => {
+                const reservation = await this.reservations.update(
+                    {reservation_id: row.reservation_id, reservation_state_id: In([RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN])},
+                    transition.reservation,
+                );
+                if (reservation.affected !== 1) {
+                    return false;
+                }
+                await this.rooms.update(notDeleted<RoomEntity>({room_id: row.room_id, room_state_id: USAGE_ROOM_STATE.IN_USE}), transition.room);
+                return true;
+            });
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * QR 확인 링크 SMS 대상
+     *
+     * @param now 지금
+     * @param until 지금 + 5분
+     * @returns 예약 행
+     */
+    async findQrLinkRows(now: Date, until: Date): Promise<QrLinkRow[]> {
+        try {
+            return await this.buildQrLinkRowsQuery(now, until).getRawMany<QrLinkRow>();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * QR 확인 링크 SMS 대상 쿼리 — 확정 · 이용 중 · start_at ≤ until · end_at > now · 링크 안 보냄 · 예약자 번호 있음, 업체 · 회원 조인(지운 업체도 기록이라 그대로 보낸다), 시작 순.
+     * 매핑 민감(조인 · raw select — 별칭이 QrLinkRow 키와 같다 · NULL 조건)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param now 지금
+     * @param until 지금 + 5분
+     * @returns 쿼리 빌더
+     */
+    buildQrLinkRowsQuery(now: Date, until: Date): SelectQueryBuilder<ReservationEntity> {
+        return this.reservations
+            .createQueryBuilder('r')
+            .select('r.reservation_id', 'reservation_id')
+            .addSelect('r.start_at', 'start_at')
+            .addSelect('s.store_name', 'store_name')
+            .addSelect('u.phone', 'user_phone')
+            .innerJoin(StoreEntity, 's', 's.store_id = r.store_id')
+            .innerJoin(UserEntity, 'u', 'u.user_id = r.user_id')
+            .where('r.reservation_state_id IN (:...states)', {states: [RESERVATION_STATE.CONFIRMED, RESERVATION_STATE.CHECKED_IN]})
+            .andWhere('r.start_at <= :until', {until})
+            .andWhere('r.end_at > :now', {now})
+            .andWhere('r.qr_link_sent_at IS NULL')
+            .andWhere('u.phone IS NOT NULL')
+            .orderBy('r.start_at', 'ASC');
+    }
+
+    /**
+     * 링크 보냄 표시 — 비어 있을 때만(겹쳐 돌아도 1번)
+     *
+     * @param reservation_id 예약 ID
+     * @param entity 보낸 시각을 할당한 엔티티
+     * @returns 1행이면 true
+     */
+    async claimQrLink(reservation_id: string, entity: ReservationEntity): Promise<boolean> {
+        try {
+            const result = await this.reservations.update({reservation_id, qr_link_sent_at: IsNull()}, entity);
+            return result.affected === 1;
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 링크 보냄 표시 되돌리기 — 그 표시일 때만(다음 회차에 다시 보낸다)
+     *
+     * @param reservation_id 예약 ID
+     * @param sent_at 이번 회차가 표시한 시각
+     * @param entity qr_link_sent_at = null 을 할당한 엔티티
+     */
+    async releaseQrLink(reservation_id: string, sent_at: Date, entity: ReservationEntity): Promise<void> {
+        try {
+            await this.reservations.update({reservation_id, qr_link_sent_at: sent_at}, entity);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
     }
 }

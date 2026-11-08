@@ -47,7 +47,7 @@ describe('GET /internal/v1/user-service/reservation/:reservation_id — 내 예�
         expect(res.status).toBe(200);
         expect(repo.findMyReservationRow).toHaveBeenCalledWith(USER_ACTOR.user_id, RESERVATION_ID);
         expect(repo.findReservationSegmentRows).toHaveBeenCalledWith(RESERVATION_ID);
-        expect(res.body).toMatchObject({reservation_id: RESERVATION_ID, late_refund_percent: 50, canceled_at: null, cancel_actor: null, cancel_reason: null});
+        expect(res.body).toMatchObject({reservation_id: RESERVATION_ID, late_refund_percent: 50, is_room_disabled: 0, canceled_at: null, cancel_actor: null, cancel_reason: null});
         expect(res.body.segments).toEqual([
             {
                 reservation_detail_id: DETAIL_ID,
@@ -71,6 +71,15 @@ describe('GET /internal/v1/user-service/reservation/:reservation_id — 내 예�
                 },
             },
         ]);
+    });
+
+    it('[SUCCESS] 예약한 호실이 사용중지면 is_room_disabled 1 — 이용 중이어도 끝 전까지 전액 환불 취소', async () => {
+        repo.findMyReservationRow.mockResolvedValueOnce(listRow({room_state_id: 'DISABLED', reservation_state_id: 'CHECKED_IN', reservation_state_name: '이용 중'}));
+
+        const res = await request(app.getHttpServer()).get(PATH).set(internalHeaders(USER_ACTOR));
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({reservation_state_id: 'CHECKED_IN', is_room_disabled: 1});
     });
 
     it('[FAIL:service] 남의 예약 · 결제 대기 만료 건(행 없음)은 404, 구간 조회 없음', async () => {

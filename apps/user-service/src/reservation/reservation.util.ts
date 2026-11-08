@@ -1,11 +1,14 @@
+import type {ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import type {ReservationAvailabilityGroupResultDto, ReservationAvailabilityRoomResultDto, ReservationAvailabilitySlotResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import type {ReservationListItemResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import type {ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
+import {PAYMENT_STATE, RESERVATION_CANCEL_REQUEST_STATE, RESERVATION_STATE, USAGE_ROOM_STATE} from '@app/contracts/reservation/reservation.constants.js';
 import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import type {Dayjs} from '@app/common/utils/dayjs.js';
 import {generateId} from '@app/common/utils/id.js';
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
+import type {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import type {ReservationEntity} from '@app/database/entities/reservation/reservation.entity.js';
 import type {RoomGroupPlanPriceEntity} from '@app/database/entities/room/room-group-plan-price.entity.js';
 import type {RoomGroupPlanEntity} from '@app/database/entities/room/room-group-plan.entity.js';
@@ -22,7 +25,6 @@ import {
     RESERVATION_ORDER_NAME_MAX_LENGTH,
     RESERVATION_PLAN_TYPE,
     RESERVATION_PLAN_TYPE_NAME,
-    RESERVATION_QR_STATES,
     RESERVATION_ROOM_STATE,
 } from './reservation.constants.js';
 
@@ -470,16 +472,38 @@ export function buildRoomQr(reservation: Pick<ReservationEntity, 'reservation_id
     return roomQr;
 }
 
+/** 이용 전환 — START: 확정 → 이용 중, END: 끝 시각 지남(이용 완료 — scheduler), NONE: 그대로 */
+export type UsageTransition = 'START' | 'END' | 'NONE';
+
 /**
- * 이용이 이미 시작됐는지 — [start_at, end_at) 안(결제 확인 때 QR 을 바로 발급할지).
+ * 이용 전환 판정 — 확정 · 이용 중 예약만. 끝 시각 정각부터 END, 확정이 시작 정각부터 끝 전이면 START(체크인 없이 예약 시간이 곧 이용 — 사용자 결정 2026-11-07).
+ * scheduler 이용 전환 crontab 의 대상 쿼리(start_at ≤ 지금 < end_at · end_at ≤ 지금)와 같은 경계다.
  *
- * @param reservation 예약
+ * @param reservation 예약 (상태 · 시작 · 끝)
  * @param now 지금
- * @returns 이용 중 시간이면 true
+ * @returns 전환
  */
-export function isReservationStarted(reservation: Pick<ReservationEntity, 'start_at' | 'end_at'>, now: Date): boolean {
+export function judgeUsageTransition(reservation: Pick<ReservationEntity, 'reservation_state_id' | 'start_at' | 'end_at'>, now: Date): UsageTransition {
+    const state = reservation.reservation_state_id;
+    if (state !== RESERVATION_STATE.CONFIRMED && state !== RESERVATION_STATE.CHECKED_IN) {
+        return 'NONE';
+    }
     const at = dayjs(now);
-    return !at.isBefore(reservation.start_at) && at.isBefore(reservation.end_at);
+    if (!at.isBefore(reservation.end_at)) {
+        return 'END';
+    }
+    return state === RESERVATION_STATE.CONFIRMED && !at.isBefore(reservation.start_at) ? 'START' : 'NONE';
+}
+
+/**
+ * 이용이 끝난 호실 상태(이용 중 업체 취소 승인 — scheduler 이용 종료와 같다) — 사용중만 정비중, 그 밖(예약가능 · 사용중지 · 정비중 …)은 그대로라 null(사용자 결정 2026-11-07).
+ * 이용 시작은 호실을 읽지 않고 상태 조건 쓰기(USAGE_ROOM_STATE.START_FROM → 사용중)로 바꾼다.
+ *
+ * @param room_state_id 지금 호실 상태
+ * @returns 새 상태 또는 null
+ */
+export function toEndedUsageRoomState(room_state_id: string): string | null {
+    return room_state_id === USAGE_ROOM_STATE.IN_USE ? USAGE_ROOM_STATE.MAINTENANCE : null;
 }
 
 /**
@@ -517,6 +541,32 @@ export function calculateRefundAmount(amount: number, now: Dayjs, refund_deadlin
 }
 
 /**
+ * 이용자 취소 환불액 — 사용중지 호실이면 확정 · 이용 중 예약을 끝 전까지 100%(마감 · 시작과 상관없다 — 사용자 결정 2026-11-07),
+ * 아니면 확정만 calculateRefundAmount(마감 전 100% · 마감 뒤 비율 · 시작 뒤 불가). 취소할 수 없으면 null.
+ *
+ * @param reservation 예약 (상태 · 환불 마감 · 시작 · 끝 · 마감 뒤 비율)
+ * @param is_room_disabled 예약한 호실이 사용중지인지
+ * @param amount 결제 금액(원)
+ * @param now 지금
+ * @returns 환불액 — 취소할 수 없으면 null
+ */
+export function calculateCancelRefund(
+    reservation: Pick<ReservationEntity, 'reservation_state_id' | 'refund_deadline_at' | 'start_at' | 'end_at' | 'late_refund_percent'>,
+    is_room_disabled: boolean,
+    amount: number,
+    now: Dayjs,
+): number | null {
+    const state = reservation.reservation_state_id;
+    if (is_room_disabled && (state === RESERVATION_STATE.CONFIRMED || state === RESERVATION_STATE.CHECKED_IN)) {
+        return now.isBefore(dayjs(reservation.end_at)) ? amount : null;
+    }
+    if (state !== RESERVATION_STATE.CONFIRMED) {
+        return null;
+    }
+    return calculateRefundAmount(amount, now, reservation.refund_deadline_at, reservation.start_at, reservation.late_refund_percent);
+}
+
+/**
  * 시각 → ISO 8601(없으면 null) — raw select 는 Date 로 온다.
  *
  * @param value 시각
@@ -548,6 +598,7 @@ export function toReservationListItem(row: ReservationListRow): ReservationListI
         end_at: toIso(row.end_at) as string,
         total_price: Number(row.total_price),
         refund_deadline_at: toIso(row.refund_deadline_at) as string,
+        is_room_disabled: row.room_state_id === RESERVATION_ROOM_STATE.DISABLED ? 1 : 0,
         created_at: toIso(row.created_at) as string,
     };
 }
@@ -590,12 +641,13 @@ export function toReservationDetail(row: ReservationListRow, segments: Reservati
     };
 }
 
-/** 내 예약 QR 판정 — SHOW: 지금 QR 을 준다, ISSUE: 발급해서 준다, OUT_OF_TIME: 이용 시간 밖, NO_QR: QR 을 볼 수 없는 예약 */
-export type ReservationQrVerdict = 'SHOW' | 'ISSUE' | 'OUT_OF_TIME' | 'NO_QR';
+/** 내 예약 QR 판정 — SHOW: 지금 QR 을 준다, ISSUE: 발급해서 준다, START: 그 자리에서 이용 시작 · 발급해서 준다, OUT_OF_TIME: 이용 시간 밖, NO_QR: QR 을 볼 수 없는 예약 */
+export type ReservationQrVerdict = 'SHOW' | 'ISSUE' | 'START' | 'OUT_OF_TIME' | 'NO_QR';
 
 /**
- * 내 예약 QR 판정 — 확정 · 이용 중 예약의 이용 구간 [start_at, end_at) 안일 때만. QR 행이 없으면 발급(사용자 결정 2026-11-04),
- * 있으면 지금 유효할 때만 준다(업체가 끝낸 QR — ends_at ≤ 지금 — 은 볼 수 없다).
+ * 내 예약 QR 판정 — 이용 중 예약에만 QR 을 준다(사용자 결정 2026-11-07). QR 은 정확히 시작 시각부터 — 링크 SMS 가 5분 전에 가도 시작 전에는 이용 시간 밖이다.
+ * 시작했는데 아직 확정이면(scheduler 가 돌기 전) START — 그 자리에서 이용 중으로 바꾸고 발급한다. 끝 시각이 지난 예약은 이용 시간 밖.
+ * 이용 중인데 QR 행이 없으면 발급(사용자 결정 2026-11-04), 있으면 지금 유효할 때만 준다(끝낸 QR — ends_at ≤ 지금 — 은 볼 수 없다).
  *
  * @param reservation 예약 (상태 · 이용 구간)
  * @param roomQr 그 예약의 QR 행 (없으면 null)
@@ -607,12 +659,15 @@ export function judgeReservationQr(
     roomQr: Pick<RoomQrEntity, 'starts_at' | 'ends_at'> | null,
     now: Date,
 ): ReservationQrVerdict {
-    if (!RESERVATION_QR_STATES.includes(reservation.reservation_state_id)) {
-        return 'NO_QR';
+    const transition = judgeUsageTransition(reservation, now);
+    if (transition === 'START') {
+        return 'START';
     }
-    const at = dayjs(now);
-    if (at.isBefore(reservation.start_at) || !at.isBefore(reservation.end_at)) {
+    if (reservation.reservation_state_id === RESERVATION_STATE.CONFIRMED || transition === 'END') {
         return 'OUT_OF_TIME';
+    }
+    if (reservation.reservation_state_id !== RESERVATION_STATE.CHECKED_IN) {
+        return 'NO_QR';
     }
     if (!roomQr) {
         return 'ISSUE';
@@ -640,4 +695,43 @@ export function isRoomQrActive(roomQr: Pick<RoomQrEntity, 'starts_at' | 'ends_at
  */
 export function toReservationQr(roomQr: RoomQrEntity): ReservationQrResultDto {
     return {reservation_id: roomQr.reservation_id, room_id: roomQr.room_id, qr: roomQr.qr, qr_starts_at: dayjs(roomQr.starts_at).toISOString(), qr_ends_at: dayjs(roomQr.ends_at).toISOString()};
+}
+
+/**
+ * 이용 중 취소 요청의 보이는 상태 · 승인 · 거절 가능 — 요청 중인데 만료 시각이 지났으면(정각 포함) 만료(만료는 저장하지 않고 읽을 때 계산한다 — 사용자 결정 2026-11-07).
+ *
+ * @param request 요청 (상태 · 만료)
+ * @param now 지금
+ * @returns 보이는 상태 · 승인 · 거절 가능
+ */
+export function cancelRequestState(request: Pick<ReservationCancelRequestEntity, 'reservation_cancel_request_state_id' | 'expires_at'>, now: Date): {state: string; respondable: boolean} {
+    if (request.reservation_cancel_request_state_id !== RESERVATION_CANCEL_REQUEST_STATE.REQUESTED) {
+        return {state: request.reservation_cancel_request_state_id, respondable: false};
+    }
+    return dayjs(now).isBefore(request.expires_at) ? {state: RESERVATION_CANCEL_REQUEST_STATE.REQUESTED, respondable: true} : {state: RESERVATION_CANCEL_REQUEST_STATE.EXPIRED, respondable: false};
+}
+
+/** 결제가 끝난 결제 상태 — 이용 중 취소의 환불 금액(결제 완료 · 환불 신청 · 환불 완료 · 환불 실패) */
+const PAID_PAYMENT_STATES: string[] = [PAYMENT_STATE.DONE, PAYMENT_STATE.REFUND_REQUESTED, PAYMENT_STATE.REFUNDED, PAYMENT_STATE.REFUND_FAILED];
+
+/**
+ * 내 예약의 이용 중 취소 요청 응답 — 환불 금액은 결제가 끝난 구간 금액의 합(승인하면 전액 환불).
+ *
+ * @param request 마지막 요청
+ * @param row 내 예약 행 (업체 · 호실 이름)
+ * @param segments 구간 행
+ * @param now 지금
+ * @returns 요청
+ */
+export function toCancelRequest(request: ReservationCancelRequestEntity, row: ReservationListRow, segments: ReservationSegmentRow[], now: Date): ReservationCancelRequestResultDto {
+    return {
+        reservation_cancel_request_id: request.reservation_cancel_request_id,
+        reservation_cancel_request_state_id: cancelRequestState(request, now).state,
+        store_name: row.store_name,
+        room_name: row.room_name,
+        cancel_reason: request.cancel_reason,
+        refund_amount: segments.filter((segment) => PAID_PAYMENT_STATES.includes(segment.payment_state_id)).reduce((sum, segment) => sum + Number(segment.price), 0),
+        expires_at: dayjs(request.expires_at).toISOString(),
+        created_at: dayjs(request.created_at).toISOString(),
+    };
 }

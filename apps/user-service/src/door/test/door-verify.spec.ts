@@ -1,5 +1,6 @@
 import {INestApplication, ServiceUnavailableException} from '@nestjs/common';
 import request from 'supertest';
+import {DoorOpenLogEntity} from '@app/database/entities/door/door-open-log.entity.js';
 import {bootHttpPath, createDoorStoreMock, createDoorRepositoryMock, DoorStoreMock, internalHeaders, ROOM_ID, roomEntity, DoorRepositoryMock, STORE_ID} from './door.test-helper.js';
 
 const PATH = '/internal/v1/user-service/door/verify';
@@ -9,6 +10,12 @@ const QR = 'a1'.repeat(16);
 
 /** 요청 본문 — gateway 가 소켓 접속 때 확인한 업체 ID 를 붙인다 */
 const BODY = {store_id: STORE_ID, room_id: ROOM_ID, qr: QR};
+
+/** 32자 ID 형식 */
+const ID_PATTERN = /^[a-f0-9]{32}$/;
+
+/** 그 호실 · 그 QR 의 이력(t_room_qr) */
+const ROOM_QR = {room_qr_id: '4'.repeat(32), room_id: ROOM_ID, reservation_id: '1'.repeat(32), qr: QR, starts_at: new Date('2026-11-04T00:00:00Z'), ends_at: new Date('2026-11-04T03:00:00Z')};
 
 describe('POST /internal/v1/user-service/door/verify — 문 소켓 QR 확인 (gateway 문 소켓, 동기 경로)', () => {
     let app: INestApplication;
@@ -20,6 +27,7 @@ describe('POST /internal/v1/user-service/door/verify — 문 소켓 QR 확인 (g
         vi.setSystemTime(new Date('2026-11-04T00:30:12Z'));
         repo = createDoorRepositoryMock();
         repo.findDoorRoom.mockResolvedValue(roomEntity());
+        repo.findDoorRoomQr.mockResolvedValue(ROOM_QR);
         door = createDoorStoreMock();
         app = await bootHttpPath(repo, door);
     });
@@ -31,23 +39,43 @@ describe('POST /internal/v1/user-service/door/verify — 문 소켓 QR 확인 (g
     });
 
     describe('[SUCCESS]', () => {
-        it('그 업체 호실의 현재 QR 과 같으면 ok true(포트가 open + 지금 시각으로 기록)', async () => {
+        it('그 업체 호실의 현재 QR 과 같으면 ok true(포트가 open + 지금 시각으로 기록) + QR 로 연 기록 한 줄(호실 · 예약 · QR · 시각)', async () => {
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(BODY);
 
             expect(res.status).toBe(200);
             expect(res.body).toEqual({room_id: ROOM_ID, ok: true});
             expect(repo.findDoorRoom).toHaveBeenCalledWith({room_id: ROOM_ID, store_id: STORE_ID});
+            expect(repo.findDoorRoomQr).toHaveBeenCalledTimes(1);
+            expect(repo.findDoorRoomQr).toHaveBeenCalledWith({room_id: ROOM_ID, qr: QR});
             expect(door.verify).toHaveBeenCalledTimes(1);
             expect(door.verify).toHaveBeenCalledWith(ROOM_ID, QR, '20261104093012');
+            expect(repo.insertDoorOpenLog).toHaveBeenCalledTimes(1);
+            const [log] = repo.insertDoorOpenLog.mock.calls[0] as [DoorOpenLogEntity];
+            expect(log).toBeInstanceOf(DoorOpenLogEntity);
+            expect(log.door_open_log_id).toMatch(ID_PATTERN);
+            expect(log).toMatchObject({room_id: ROOM_ID, reservation_id: ROOM_QR.reservation_id, room_qr_id: ROOM_QR.room_qr_id, opened_at: new Date('2026-11-04T00:30:12Z')});
+            expect(repo.insertDoorOpenLog.mock.invocationCallOrder[0]).toBeGreaterThan(door.verify.mock.invocationCallOrder[0]);
         });
 
-        it('다르거나 현재 QR 이 없으면 ok false — 실패가 아니라 200(문은 열지 않는다)', async () => {
+        it('이력은 있지만 Redis 현재 QR 과 다르면(끝낸 QR · 다른 예약) ok false — 실패가 아니라 200, 열림 기록 없음', async () => {
             door.verify.mockResolvedValueOnce(false);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(BODY);
 
             expect(res.status).toBe(200);
             expect(res.body).toEqual({room_id: ROOM_ID, ok: false});
+            expect(repo.insertDoorOpenLog).not.toHaveBeenCalled();
+        });
+
+        it('그 호실 · 그 QR 의 이력이 없으면 Redis 를 보지 않고 ok false(200), 열림 기록 없음', async () => {
+            repo.findDoorRoomQr.mockResolvedValueOnce(null);
+
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send(BODY);
+
+            expect(res.status).toBe(200);
+            expect(res.body).toEqual({room_id: ROOM_ID, ok: false});
+            expect(door.verify).not.toHaveBeenCalled();
+            expect(repo.insertDoorOpenLog).not.toHaveBeenCalled();
         });
     });
 
@@ -59,6 +87,7 @@ describe('POST /internal/v1/user-service/door/verify — 문 소켓 QR 확인 (g
 
             expect(res.status).toBe(404);
             expect(res.body).toEqual({message: '호실을 찾을 수 없습니다.', validation_errors: null});
+            expect(repo.findDoorRoomQr).not.toHaveBeenCalled();
             expect(door.verify).not.toHaveBeenCalled();
         });
 
@@ -69,6 +98,7 @@ describe('POST /internal/v1/user-service/door/verify — 문 소켓 QR 확인 (g
 
             expect(res.status).toBe(503);
             expect(res.body).toEqual({message: '상태 저장소에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.', validation_errors: null});
+            expect(repo.insertDoorOpenLog).not.toHaveBeenCalled();
         });
     });
 

@@ -6,6 +6,7 @@ import {RESERVATION_DETAIL_TYPE, RESERVATION_STATE} from '@app/contracts/reserva
 import {RoomQrEntity} from '@app/database/entities/door/room-qr.entity.js';
 import {PaymentStateEntity} from '@app/database/entities/payment/payment-state.entity.js';
 import {PaymentEntity} from '@app/database/entities/payment/payment.entity.js';
+import {ReservationCancelRequestEntity} from '@app/database/entities/reservation/reservation-cancel-request.entity.js';
 import {ReservationDetailTypeEntity} from '@app/database/entities/reservation/reservation-detail-type.entity.js';
 import {ReservationDetailEntity} from '@app/database/entities/reservation/reservation-detail.entity.js';
 import {ReservationStateEntity} from '@app/database/entities/reservation/reservation-state.entity.js';
@@ -42,6 +43,11 @@ export class ReservationRepository implements ReservationRepositoryInterface {
      * @param txHost 트랜잭션 호스트
      */
     constructor(private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>) {}
+
+    /** t_reservation_cancel_request */
+    private get cancelRequests(): Repository<ReservationCancelRequestEntity> {
+        return this.txHost.tx.getRepository(ReservationCancelRequestEntity);
+    }
 
     /** t_reservation */
     private get reservations(): Repository<ReservationEntity> {
@@ -496,7 +502,7 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     }
 
     /**
-     * 내 예약 쿼리 — 업체 · 호실 · 그룹 · 상품 종류 · 상태 조인(지운 업체 · 호실 · 그룹도 기록이라 그대로 보인다), 결제 대기 만료 제외, 예약 하나면 그 예약만.
+     * 내 예약 쿼리 — 업체 · 호실(상태 — 사용중지 표시) · 그룹 · 상품 종류 · 상태 조인(지운 업체 · 호실 · 그룹도 기록이라 그대로 보인다), 결제 대기 만료 제외, 예약 하나면 그 예약만.
      * 매핑 민감(조인 · raw select — 별칭이 ReservationListRow 키와 같다 · 동적 조립)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param user_id 이용자 ID
@@ -511,6 +517,7 @@ export class ReservationRepository implements ReservationRepositoryInterface {
             .addSelect('s.store_name', 'store_name')
             .addSelect('r.room_id', 'room_id')
             .addSelect('rm.room_name', 'room_name')
+            .addSelect('rm.room_state_id', 'room_state_id')
             .addSelect('g.room_group_name', 'room_group_name')
             .addSelect('r.room_plan_type_id', 'room_plan_type_id')
             .addSelect('pt.room_plan_type_name', 'room_plan_type_name')
@@ -621,5 +628,63 @@ export class ReservationRepository implements ReservationRepositoryInterface {
      */
     buildInsertRoomQrQuery(entity: RoomQrEntity): InsertQueryBuilder<RoomQrEntity> {
         return this.roomQrs.createQueryBuilder().insert().into(RoomQrEntity).values(entity).orIgnore();
+    }
+
+    /**
+     * QR 수정 — 취소(사용중지 호실 · 이용 중 취소 승인) 때 유효 종료를 지금으로 당긴다(이력은 남는다)
+     *
+     * @param where 수정 조건
+     * @param entity 바꿀 필드만 할당한 엔티티
+     */
+    async updateRoomQr(where: FindOptionsWhere<RoomQrEntity>, entity: RoomQrEntity): Promise<void> {
+        try {
+            await this.roomQrs.update(where, entity);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 예약 호실 상태 쓰기 — 상태 조건(이용 시작: 예약가능 · 예약완료 · 정비중 → 사용중, 이용 중 취소 승인: 사용중 → 정비중). 지워지지 않은 호실만, 0행이면 그대로(바꿀 상태가 아니다)
+     *
+     * @param where 수정 조건(호실 · 상태)
+     * @param entity 바꿀 필드만 할당한 엔티티
+     */
+    async updateReservationRoom(where: FindOptionsWhere<RoomEntity>, entity: RoomEntity): Promise<void> {
+        try {
+            await this.rooms.update(notDeleted(where), entity);
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 예약의 마지막 이용 중 취소 요청 — 등록 최근 1건(새 요청이 이전 요청 중을 만료로 바꾸므로 마지막 요청만 승인 · 거절할 수 있다)
+     *
+     * @param where 조회 조건
+     * @returns 요청 또는 null
+     */
+    async findLatestCancelRequest(where: FindOptionsWhere<ReservationCancelRequestEntity>): Promise<ReservationCancelRequestEntity | null> {
+        try {
+            return await this.cancelRequests.findOne({where, order: {created_at: 'DESC'}, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 이용 중 취소 요청 수정 — 상태 조건(요청 중)을 건 쓰기(그 사이 새 요청 · 다른 응답으로 바뀌었는지 판별)
+     *
+     * @param where 수정 조건(상태 포함)
+     * @param entity 바꿀 필드만 할당한 엔티티
+     * @returns 1행이면 true
+     */
+    async updateCancelRequest(where: FindOptionsWhere<ReservationCancelRequestEntity>, entity: ReservationCancelRequestEntity): Promise<boolean> {
+        try {
+            const result = await this.cancelRequests.update(where, entity);
+            return result.affected === 1;
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
     }
 }

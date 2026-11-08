@@ -1,6 +1,7 @@
 import {Controller, Get, HttpCode, Param, Query} from '@nestjs/common';
 import {InternalActor} from '@app/common/internal/internal-request.decorator.js';
 import {ReservationAvailabilityDto, ReservationAvailabilityResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
+import {ReservationCancelRequestParamDto, ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import {ReservationDetailParamDto, ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
 import {ReservationListDto, ReservationListResultDto} from '@app/contracts/reservation/dto/reservation-list.dto.js';
 import {ReservationQrParamDto, ReservationQrResultDto} from '@app/contracts/reservation/dto/reservation-qr.dto.js';
@@ -53,5 +54,14 @@ export class ReservationController {
     @HttpCode(200)
     async getMyReservationQr(@InternalActor('user_id') user_id: string, @Param() param: ReservationQrParamDto): Promise<ReservationQrResultDto> {
         return this.reservationService.getMyReservationQr(user_id, param.reservation_id);
+    }
+
+    /**
+     * 내 예약의 이용 중 취소 요청 (이용자 — 마지막 요청)
+     */
+    @Get('/:reservation_id/cancel-request')
+    @HttpCode(200)
+    async getMyCancelRequest(@InternalActor('user_id') user_id: string, @Param() param: ReservationCancelRequestParamDto): Promise<ReservationCancelRequestResultDto> {
+        return this.reservationService.getMyCancelRequest(user_id, param.reservation_id);
     }
 }
