@@ -27,6 +27,8 @@ import {sha256Hex} from '@app/common/utils/hash.js';
 import {generateId} from '@app/common/utils/id.js';
 import {Pagination} from '@app/common/utils/pagination.js';
 import {createValidationError} from '@app/common/utils/validation.js';
+import type {ManagerAccountDetailResultDto} from '@app/contracts/manager/dto/manager-account-detail.dto.js';
+import type {ManagerAccountListDto, ManagerAccountListResultDto} from '@app/contracts/manager/dto/manager-account-list.dto.js';
 import type {ManagerAuthUserResultDto} from '@app/contracts/manager/dto/manager-auth-user.dto.js';
 import type {ManagerFindLoginIdConfirmDto, ManagerFindLoginIdConfirmResultDto} from '@app/contracts/manager/dto/manager-find-login-id-confirm.dto.js';
 import type {ManagerFindLoginIdDto, ManagerFindLoginIdResultDto} from '@app/contracts/manager/dto/manager-find-login-id.dto.js';
@@ -48,14 +50,23 @@ import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {SMS_SENDER} from '@app/integration/integration.symbols.js';
 import type {SmsSenderInterface} from '@app/integration/interfaces/integration.interface.js';
 import type {ManagerRepositoryInterface} from './interfaces/manager.repository.interface.js';
-import {MANAGER_STORE_NOT_FOUND_MESSAGE, STAFF_LOGIN_ID_TAKEN_MESSAGE, STAFF_NOT_FOUND_MESSAGE, STAFF_PHONE_TAKEN_MESSAGE, STAFF_STATES} from './manager.constants.js';
+import {
+    MANAGER_PHONE_NOT_REGISTERED_MESSAGE,
+    MANAGER_STORE_NOT_FOUND_MESSAGE,
+    MANAGER_STORE_STATE_LEAVE,
+    STAFF_LOGIN_ID_TAKEN_MESSAGE,
+    STAFF_NOT_FOUND_MESSAGE,
+    STAFF_PHONE_TAKEN_MESSAGE,
+    STAFF_STATES,
+} from './manager.constants.js';
 import {MANAGER_REPOSITORY} from './manager.symbols.js';
-import {buildStaffListWhere, staffRegisteredText, toManagerAuthUserResult, toStaffDetail, toStaffListItem} from './manager.util.js';
+import {buildStaffListWhere, staffRegisteredText, toAccountDetail, toAccountFilter, toAccountListItem, toManagerAuthUserResult, toStaffDetail, toStaffListItem} from './manager.util.js';
 
 /**
  * 매니저 도메인 비즈니스 로직 (헥사고날의 안쪽) — 매니저 로그인 그룹(총매니저 HEAD_MANAGER · 매니저 MANAGER)만 다룬다.
  * 다른 그룹 계정은 조회 조건(login_scope = MANAGER)에서 걸러져 없는 계정과 같다. 매니저 계정은 업체 안에서만 유일해 로그인 · 계정 찾기는 업체코드로 업체를 먼저 찾는다.
  * 업체 관리자 계정 관리는 업체 총관리자만 부른다(게이트웨이 RolesGuard) — service 는 actor 로 업체 총관리자를 다시 찾아 그 업체만 다룬다.
+ * 총관리자 · 관리자의 업체 관리자 관리(전체 업체 목록 · 상세 · 비밀번호 초기화)도 대상이 매니저 계정이라 여기 둔다(서버 안 도메인은 기능 대상별 — 사용자 결정 2026-11-09).
  * 내부 HTTP 컨트롤러와 RabbitMQ 핸들러가 같은 메서드를 호출한다. public 메서드 1개 = API 1개.
  */
 @Injectable()
@@ -598,7 +609,7 @@ export class ManagerService {
             throw new NotFoundException({message: STAFF_NOT_FOUND_MESSAGE});
         }
         if (!staff.phone) {
-            throw new BadRequestException({message: '휴대폰 번호가 등록되지 않은 계정입니다.'});
+            throw new BadRequestException({message: MANAGER_PHONE_NOT_REGISTERED_MESSAGE});
         }
 
         // 2. 임시 비밀번호 → SMS (마지막)
@@ -678,5 +689,63 @@ export class ManagerService {
         staffEntity.device_os = null;
         staffEntity.device_token = null;
         await this.managerRepository.updateStaff({user_id: staff.user_id}, staffEntity);
+    }
+
+    /**
+     * 업체 관리자 목록 (총관리자 · 관리자) — 전체 업체의 업체 총관리자 · 업체 관리자(삭제 제외), 업체 · 권한 · 상태 · 검색어, 등록 최신순.
+     * (내부 HTTP: GET /internal/v1/admin-service/manager/account)
+     *
+     * @param dto 페이지 · 필터 · 검색어
+     * @returns 목록 · 페이지 정보
+     */
+    async getAccountList(dto: ManagerAccountListDto): Promise<ManagerAccountListResultDto> {
+        const filter = toAccountFilter(dto);
+        const total_count = await this.managerRepository.countAccounts(filter);
+        const pagination = new Pagination({...dto, total_count});
+        const rows = await this.managerRepository.findAccountRows(filter, pagination.limit, pagination.offset);
+        return {list: rows.map(toAccountListItem), pagination: pagination.getPagination()};
+    }
+
+    /**
+     * 업체 관리자 상세 (총관리자 · 관리자) — 업체(상호명 · 업체코드 · 업체 상태)와 함께. (내부 HTTP: GET /internal/v1/admin-service/manager/account/:user_id)
+     *
+     * @param user_id 업체 총관리자 · 업체 관리자 회원 ID
+     * @returns 상세
+     */
+    async getAccount(user_id: string): Promise<ManagerAccountDetailResultDto> {
+        const account = await this.managerRepository.findAccountRow(user_id);
+        if (!account) {
+            throw new NotFoundException({message: STAFF_NOT_FOUND_MESSAGE});
+        }
+        return toAccountDetail(account);
+    }
+
+    /**
+     * 업체 관리자 비밀번호 초기화 (총관리자 · 관리자) — 임시 비밀번호(영문 + 숫자 10자리) + 변경 필요 표시, 그 휴대폰으로 SMS(마지막).
+     * 휴대폰 번호 없음 · 탈퇴 업체 계정은 400, 정지 계정도 초기화한다(로그인은 여전히 막힘). 업체 총관리자의 resetStaffPassword 와 같은 순서. (RabbitMQ: admin.manager.account-password-reset)
+     *
+     * @param user_id 업체 총관리자 · 업체 관리자 회원 ID
+     */
+    @Transactional()
+    async resetAccountPassword(user_id: string): Promise<void> {
+        // 1. 계정 · 초기화할 수 있는지
+        const account = await this.managerRepository.findAccountRow(user_id);
+        if (!account) {
+            throw new NotFoundException({message: STAFF_NOT_FOUND_MESSAGE});
+        }
+        if (account.store_state_id === MANAGER_STORE_STATE_LEAVE) {
+            throw new BadRequestException({message: '탈퇴한 업체의 계정입니다.'});
+        }
+        if (!account.phone) {
+            throw new BadRequestException({message: MANAGER_PHONE_NOT_REGISTERED_MESSAGE});
+        }
+
+        // 2. 임시 비밀번호 → SMS (마지막)
+        const temporaryPassword = generateTemporaryPassword();
+        const accountEntity = new UserEntity();
+        accountEntity.login_pw = await getBcrypt(temporaryPassword);
+        accountEntity.is_password_change_required = 1;
+        await this.managerRepository.updateManager({user_id: account.user_id}, accountEntity);
+        await this.smsSender.send({to: account.phone, text: temporaryPasswordText(temporaryPassword)});
     }
 }

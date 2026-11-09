@@ -17,6 +17,7 @@ import {
 import type {Response} from 'express';
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
+import {ManagerAccountPasswordResetParamDto} from '@app/contracts/manager/dto/manager-account-password-reset.dto.js';
 import {ManagerFindLoginIdConfirmDto, ManagerFindLoginIdConfirmResultDto} from '@app/contracts/manager/dto/manager-find-login-id-confirm.dto.js';
 import {ManagerFindLoginIdDto, ManagerFindLoginIdResultDto} from '@app/contracts/manager/dto/manager-find-login-id.dto.js';
 import {ManagerPasswordResetConfirmDto} from '@app/contracts/manager/dto/manager-password-reset-confirm.dto.js';
@@ -29,6 +30,7 @@ import {ManagerStaffUpdateDto, ManagerStaffUpdateParamDto} from '@app/contracts/
 import {ManagerStaffDto, ManagerStaffResultDto} from '@app/contracts/manager/dto/manager-staff.dto.js';
 import {MANAGER_COMMAND} from '@app/contracts/manager/manager.commands.js';
 import {AUTH_ID} from '@app/contracts/roles.js';
+import {PassportJwtAdminAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.admin.guard.js';
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
 import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
 import {Roles} from '../../../../../guards/roles/roles.decorator.js';
@@ -38,7 +40,8 @@ import {CommandStreamService} from '../../../../../modules/transport/command-str
 /**
  * 매니저 그룹(총매니저 · 매니저) 공개 API — 큐 경로(RabbitMQ `admin.manager.*` → admin-service + 요청 단위 SSE).
  * 비밀번호 변경(로그인) · 아이디 찾기 · 비밀번호 초기화(비로그인 — 업체코드 + 등록된 휴대폰 번호로, 이용자 라우트의 미러),
- * 업체 관리자 등록 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제(매니저 가드 + RolesGuard · @Roles(HEAD_MANAGER) — 업체 총관리자만).
+ * 업체 관리자 등록 · 수정 · 비밀번호 초기화 · 정지 · 해제 · 삭제(매니저 가드 + RolesGuard · @Roles(HEAD_MANAGER) — 업체 총관리자만),
+ * 총관리자 · 관리자의 업체 관리자 비밀번호 초기화(/account/:user_id/password-reset — 관리자 가드, 전체 업체).
  * 동기 경로(로그인 · 재발급)는 같은 경로 접두의 manager.controller.ts(ManagerController)에 둔다.
  */
 @ApiTags('매니저')
@@ -229,5 +232,22 @@ export class ManagerQueueController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async deleteStaff(@PassportActor() actor: Actor, @Param() param: ManagerStaffDeleteParamDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
         await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.STAFF_DELETE, actor, payload: param, client_ip: ip});
+    }
+
+    /**
+     * 업체 관리자 비밀번호 초기화 (총관리자 · 관리자) — 임시 비밀번호는 그 계정 휴대폰으로 SMS. 휴대폰 없음 · 탈퇴 업체 계정은 400. done 의 data 는 null.
+     */
+    @Patch('/account/:user_id/password-reset')
+    @UseGuards(PassportJwtAdminAuthGuard)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 비밀번호 초기화 (관리자)'})
+    @ApiProduces('text/event-stream')
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async resetAccountPassword(@PassportActor() actor: Actor, @Param() param: ManagerAccountPasswordResetParamDto, @Ip() ip: string, @Res() res: Response): Promise<void> {
+        await this.commandStream.dispatch(res, {type: MANAGER_COMMAND.ACCOUNT_PASSWORD_RESET, actor, payload: param, client_ip: ip});
     }
 }

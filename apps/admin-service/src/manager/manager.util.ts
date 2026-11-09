@@ -1,12 +1,14 @@
 import {ILike, In} from 'typeorm';
 import type {FindOptionsWhere} from 'typeorm';
 import {toContainsPattern} from '@app/common/utils/search.js';
+import type {ManagerAccountDetailResultDto} from '@app/contracts/manager/dto/manager-account-detail.dto.js';
+import type {ManagerAccountListDto, ManagerAccountListItemResultDto} from '@app/contracts/manager/dto/manager-account-list.dto.js';
 import {ManagerAuthUserResultDto} from '@app/contracts/manager/dto/manager-auth-user.dto.js';
 import type {ManagerStaffDetailResultDto} from '@app/contracts/manager/dto/manager-staff-detail.dto.js';
 import type {ManagerStaffListDto, ManagerStaffListItemResultDto} from '@app/contracts/manager/dto/manager-staff-list.dto.js';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
 import type {UserEntity} from '@app/database/entities/user/user.entity.js';
-import type {LoginManagerRow} from './interfaces/manager.repository.interface.js';
+import type {LoginManagerRow, ManagerAccountFilter, ManagerAccountRow} from './interfaces/manager.repository.interface.js';
 import {STAFF_STATES} from './manager.constants.js';
 
 /**
@@ -100,4 +102,47 @@ export function toStaffDetail(entity: UserEntity): ManagerStaffDetailResultDto {
  */
 export function staffRegisteredText(store_name: string, store_code: string, login_id: string, password: string): string {
     return `[roomless] ${store_name} 업체 관리자 계정이 등록되었습니다. 업체코드 ${store_code} 아이디 ${login_id} 임시 비밀번호 ${password} — 로그인 후 비밀번호를 바꿔주세요.`;
+}
+
+/**
+ * 업체 관리자 관리 필터 — 목록 query 를 repository 필터로(빈 값은 null).
+ *
+ * @param dto 목록 query
+ * @returns 필터
+ */
+export function toAccountFilter(dto: ManagerAccountListDto): ManagerAccountFilter {
+    return {user_id: null, keyword: dto.keyword || null, store_id: dto.store_id || null, auth_id: dto.auth_id || null, state_id: dto.state_id || null};
+}
+
+/**
+ * 업체 관리자 목록 항목 (총관리자 · 관리자)
+ *
+ * @param row 업체 관리자 행
+ * @returns 목록 항목
+ */
+export function toAccountListItem(row: ManagerAccountRow): ManagerAccountListItemResultDto {
+    return {
+        user_id: row.user_id,
+        store_id: row.store_id,
+        store_name: row.store_name,
+        store_code: row.store_code,
+        store_state_id: row.store_state_id,
+        login_id: row.login_id,
+        name: row.name,
+        phone: row.phone ?? null,
+        auth_id: row.auth_id,
+        state_id: row.state_id,
+        is_password_change_required: Number(row.is_password_change_required),
+        created_at: new Date(row.created_at).toISOString(),
+    };
+}
+
+/**
+ * 업체 관리자 상세 (총관리자 · 관리자)
+ *
+ * @param row 업체 관리자 행
+ * @returns 상세
+ */
+export function toAccountDetail(row: ManagerAccountRow): ManagerAccountDetailResultDto {
+    return {...toAccountListItem(row), gender: row.gender, birth: row.birth, block_comment: row.block_comment ?? null};
 }

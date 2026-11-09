@@ -41,7 +41,7 @@ describe('POST /internal/v1/user-service/user/login — 이용자 SNS 로그인 
     });
 
     describe('[SUCCESS]', () => {
-        it('ACTIVE 회원이면 세션 · refresh 를 만들고 토큰 4종 + 휴대폰 인증 여부(미인증 0) 반환, 클라이언트 IP 는 게이트웨이 헤더 값', async () => {
+        it('[CASES:member-state] ACTIVE 회원이면 세션 · refresh 를 만들고 토큰 4종 + 휴대폰 인증 여부(미인증 0) + 상태(ACTIVE · 제한 사유 null) 반환, 클라이언트 IP 는 게이트웨이 헤더 값', async () => {
             repo.findUser.mockResolvedValueOnce(ACTIVE_USER);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders('9.9.9.9')).send({sns_id: 'KAKAO', sns_user_id: 'kakao_1'});
@@ -53,6 +53,8 @@ describe('POST /internal/v1/user-service/user/login — 이용자 SNS 로그인 
                 access_token_expires_at: MOCK_ACCESS_EXPIRES_AT.toISOString(),
                 refresh_token_expires_at: MOCK_REFRESH_EXPIRES_AT.toISOString(),
                 is_phone_verified: 0,
+                state_id: 'ACTIVE',
+                block_comment: null,
             });
             expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'kakao_1', login_scope: 'USER', state_id: In(['ACTIVE', 'BLOCK'])});
             expect(repo.updateUser).not.toHaveBeenCalled();
@@ -126,14 +128,25 @@ describe('POST /internal/v1/user-service/user/login — 이용자 SNS 로그인 
             expect(repo.insertSession).not.toHaveBeenCalled();
         });
 
-        it('정지 회원이면 403 + block_comment, 세션 생성 없음', async () => {
-            repo.findUser.mockResolvedValueOnce({...ACTIVE_USER, state_id: 'BLOCK', block_comment: '운영정책 위반'});
+        it('[CASES:member-state] 이용 제한(BLOCK) 회원도 토큰을 준다(403 아님) — 결과 state_id BLOCK · 제한 사유, 기기 동기화 · 세션 · refresh 그대로 (사용자 결정 2026-11-09)', async () => {
+            repo.findUser.mockResolvedValueOnce({...ACTIVE_USER, state_id: 'BLOCK', block_comment: '부정 이용'});
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({sns_id: 'KAKAO', sns_user_id: 'kakao_1', device_os: 'AOS', device_token: 'tok'});
 
-            expect(res.status).toBe(403);
-            expect(res.body).toEqual({message: '이용이 제한된 계정입니다.', validation_errors: null, block_comment: '운영정책 위반'});
-            expect(repo.updateUser).not.toHaveBeenCalled();
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({access_token: MOCK_ACCESS_TOKEN, refresh_token: MOCK_REFRESH_TOKEN, state_id: 'BLOCK', block_comment: '부정 이용'});
+            expect(repo.updateUser).toHaveBeenCalledWith({user_id: ACTIVE_USER.user_id}, expect.objectContaining({device_os: 'AOS', device_token: 'tok'}));
+            expect(repo.insertSession).toHaveBeenCalledTimes(1);
+            expect(repo.insertSessionRefresh).toHaveBeenCalledTimes(1);
+        });
+
+        it('[CASES:member-state] 탈퇴 대기 · 탈퇴 회원은 조회 조건(state_id IN ACTIVE · BLOCK)에서 빠져 404, 세션 없음', async () => {
+            repo.findUser.mockResolvedValueOnce(null);
+
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({sns_id: 'KAKAO', sns_user_id: 'leaving'});
+
+            expect(res.status).toBe(404);
+            expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'leaving', login_scope: 'USER', state_id: In(['ACTIVE', 'BLOCK'])});
             expect(repo.insertSession).not.toHaveBeenCalled();
         });
     });

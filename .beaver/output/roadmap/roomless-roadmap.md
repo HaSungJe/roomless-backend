@@ -43,7 +43,7 @@ flowchart LR
   P5 --> P19
   P19 --> P26["Phase 26 · 연장 (2)"]:::done
   P17 --> P26
-  P6 --> P20["Phase 20 · 관리자 계정 관리 (2)"]:::todo
+  P6 --> P20["Phase 20 · 관리자 계정 관리 (2)"]:::inprog
   P10 --> P20
   P17 --> P21["Phase 21 · 통계 (1)"]:::todo
   P19 --> P21
@@ -83,7 +83,7 @@ flowchart LR
 - Phase 25 — 서버 위치 정리 · 유닛 3개 · 의존: Phase 9, Phase 15, Phase 17 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/{door,store}(새) · reservation(매니저 기능 빼기), apps/admin-service/src/reservation(새) · {room,store}(이용자 · 문 소켓 처리 빼기), apps/gateway/src/api/v1/{user-service/store(새), admin-service/reservation(새), admin-service/store, user-service/reservation}, apps/gateway/src/modules/door-socket, libs/contracts/src/{door,room,store,reservation}, README.md, AGENTS.md, docs/ · done
 - Phase 19 — 이용 · 유닛 6개 · 의존: Phase 5, Phase 15, Phase 17, Phase 25 · 푼다: Phase 21, 26 · 파일 집합: apps/scheduler/src/reservation(crontabs · repository · 모듈 SmsModule), apps/user-service/src/{reservation,door}, apps/admin-service/src/reservation, apps/gateway/src/api/v1/{user-service,admin-service}/reservation, libs/contracts/src/reservation, libs/database(entities · migrations · seeder), compose.scheduler.yml, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 26 — 연장 · 유닛 2개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/{reservation,discovery}, apps/scheduler/src/reservation, apps/admin-service/src/{room,store}, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/{reservation,room,discovery}, libs/database(entities · migrations), README.md, AGENTS.md, docs/ · done
-- Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/admin(이용자 · 업체 관리자 관리 — 공유 DB 의 t_user 를 관리자 도메인 repository 가 다룬다), apps/gateway/src/api/v1/admin-service/admin, libs/contracts/src/admin · todo
+- Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/{user(새 — 이용자 관리),manager(업체 관리자 관리)}, apps/user-service/src/{user,reservation}(이용 제한 이용자), apps/gateway/src/api/v1/admin-service/{user,manager}, libs/contracts/src/{user,manager}, README.md, AGENTS.md, docs/ · in-progress
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats, apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats · todo
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 - Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 14, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
@@ -91,7 +91,7 @@ flowchart LR
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 20
+지금: Phase 20 진행 중 · Next up: Phase 20
 
 ## 지금 할 일
 Phase 20 관리자 계정 관리 시작하기
@@ -473,10 +473,12 @@ build 완료 — report: `.beaver/output/report/reservation/reservation-extensio
 ### Phase 20 — 관리자 계정 관리 (총관리자) · depends: Phase 6, Phase 10
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 84 | 이용자 관리 | 목록 · 검색 · 상세 · 이용 제한 · 해제 (예약 · 결제 이력은 Phase 17 이후 추가) | — | 24 | todo |
-| 85 | 업체 관리자 관리 | 전체 업체의 관리자 목록 · 잠금 · 비밀번호 초기화 | 총관리자가 손댈 수 있는 범위 | 42 | todo |
+| 84 | 이용자 관리 | 목록(이름 · 닉네임 · 휴대폰 · 회원 식별 코드 검색, 상태 · SNS 필터) · 상세(예약 건수 요약) · 예약 이력 · 이용 제한 · 해제(ACTIVE ↔ BLOCK). 이용 제한 이용자는 로그인 · 재발급 · 기존 예약 이용은 되고 새 예약 · 연장만 불가 | 이용 제한의 뜻 — t_state 는 그대로, 이용자 그룹만 BLOCK 로그인 허용(사용자 결정 2026-11-09) | 24 | in-progress |
+| 85 | 업체 관리자 관리 | 전체 업체의 업체 총관리자 · 업체 관리자 목록(업체 · 권한 · 상태 · 검색) · 상세 · 비밀번호 초기화. 계정 정지는 두지 않는다 — 정지는 업체 단위(기존 업체 상태 변경) | 총관리자가 손댈 수 있는 범위 — 조회 · 비밀번호 초기화만(사용자 결정 2026-11-09) | 42 | in-progress |
 
-**Expected APIs** (가칭, 관리자 가드): `/api/v1/admin-service/admin/user`(#84), `/api/v1/admin-service/admin/store-staff`(#85).
+**Expected APIs** (spec `.beaver/output/spec/user/user-manage-spec.md`, 관리자 가드): `GET /api/v1/admin-service/user` · `/user/:user_id` · `/user/:user_id/reservation` · `PATCH /user/:user_id/state`(#84 — admin-service 새 `user` 도메인), `GET /api/v1/admin-service/manager/account` · `/manager/account/:user_id` · `PATCH /manager/account/:user_id/password-reset`(#85 — `manager` 도메인). 변경: 이용자 로그인(BLOCK 도 토큰 · 결과 `state_id` · `block_comment`) · 재발급 · 인증 확인 · 예약 · 연장(이용 제한 · 탈퇴 대기 400). 서버 안 도메인은 기능 대상별(사용자 결정 2026-11-09).
+
+build 완료 — report: `.beaver/output/report/user/user-manage-report.md`(전체 118파일 1298건 통과, 마이그레이션 없음).
 
 ### Phase 21 — 통계 (관리자 메인 화면) · depends: Phase 17, Phase 19
 | # | Unit | Goal | Key decision | Depends | Status |

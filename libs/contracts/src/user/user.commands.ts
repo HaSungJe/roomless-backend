@@ -38,3 +38,22 @@ export const USER_INTERNAL_PATH = {
     /** 로그인 이용자 조회(게이트웨이 jwt-user 전략) — 뒤에 `/<user_id>` */
     AUTH_USER: '/internal/v1/user-service/user/auth-user',
 } as const;
+
+/**
+ * 이용자 관리 RabbitMQ 명령 (총관리자 · 관리자 → admin-service, q.admin.cmd 가 `admin.#` 로 받는다).
+ * user-service 의 이용자 본인 명령(USER_COMMAND — `user.*`)과 같은 대상(이용자)이라 이 파일에 상수 이름으로 가른다.
+ */
+export const USER_ADMIN_COMMAND = {
+    /** 이용자 이용 제한 · 해제 */
+    STATE: 'admin.user.state',
+} as const;
+
+/** 이용자 관리 내부 HTTP 경로 (게이트웨이 → admin-service). 파라미터가 있는 경로는 함수로 만든다. */
+export const USER_ADMIN_INTERNAL_PATH = {
+    /** 이용자 목록 (GET) */
+    LIST: '/internal/v1/admin-service/user',
+    /** 이용자 상세 (GET) */
+    detail: (user_id: string) => `/internal/v1/admin-service/user/${encodeURIComponent(user_id)}`,
+    /** 이용자 예약 이력 (GET) */
+    reservations: (user_id: string) => `/internal/v1/admin-service/user/${encodeURIComponent(user_id)}/reservation`,
+} as const;

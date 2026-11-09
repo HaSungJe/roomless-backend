@@ -169,7 +169,31 @@ describe('ManagerRepository — TypeORM 오류 → HTTP 예외 매핑', () => {
 
         await expect((fakes.repository[method] as (...args: unknown[]) => Promise<unknown>)({}, new UserEntity())).rejects.toBeInstanceOf(InternalServerErrorException);
     });
+
+    it.each([
+        ['countAccounts', 'getCount', [ACCOUNT_FILTER]],
+        ['findAccountRows', 'getRawMany', [ACCOUNT_FILTER, 20, 0]],
+        ['findAccountRow', 'getRawOne', ['e1']],
+    ] as const)('[FAIL:repository] %s 는 buildAccountQuery 를 실행하고(%s), 실패는 통일 500', async (method, run, args) => {
+        const {repository} = makeRepository();
+        const failing = {[run]: vi.fn().mockRejectedValue(new Error('db')), orderBy: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(), offset: vi.fn().mockReturnThis()};
+        const spy = vi.spyOn(repository, 'buildAccountQuery').mockReturnValue(failing as never);
+
+        await expect((repository[method] as (...params: unknown[]) => Promise<unknown>)(...args)).rejects.toBeInstanceOf(InternalServerErrorException);
+        expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('[SUCCESS] findAccountRow 는 회원 ID 만 걸린 필터로 buildAccountQuery 를 부른다', async () => {
+        const {repository} = makeRepository();
+        const spy = vi.spyOn(repository, 'buildAccountQuery').mockReturnValue({getRawOne: vi.fn().mockResolvedValue(undefined)} as never);
+
+        await expect(repository.findAccountRow('e1')).resolves.toBeNull();
+        expect(spy).toHaveBeenCalledWith({user_id: 'e1', keyword: null, store_id: null, auth_id: null, state_id: null});
+    });
 });
+
+/** 업체 관리자 관리 필터 — 조건 없음 */
+const ACCOUNT_FILTER = {user_id: null, keyword: null, store_id: null, auth_id: null, state_id: null};
 
 describe('[SMOKE:data-access] findLoginManager · consumeSmsVerificationAttempt · 업체 인력 목록 쿼리 — DB 연결 없이 SQL 빌드', () => {
     let dataSource: DataSource;
@@ -235,6 +259,55 @@ describe('[SMOKE:data-access] findLoginManager · consumeSmsVerificationAttempt 
         expect(parameters).toEqual(['MANAGER', 's1', 'ACTIVE', 'BLOCK']);
         expect(sql.replace(/\s+/g, ' ')).toBe(
             `${USER_SELECT} WHERE (((("u"."login_scope" = $1) AND ("u"."store_id" = $2) AND ("u"."state_id" IN ($3, $4))))) ORDER BY "u"."auth_id" ASC, "u"."created_at" DESC LIMIT 20 OFFSET 0`,
+        );
+    });
+});
+
+describe('[SMOKE:data-access] 업체 관리자 관리(총관리자 · 관리자) — 매니저 계정 + 업체 조인 · 동적 조립, DB 연결 없이 SQL 빌드', () => {
+    let repository: ManagerRepository;
+
+    /** 빌드된 SQL(빌드 때 실행 출력으로 고정) */
+    const ACCOUNT_SELECT =
+        'SELECT "u"."user_id" AS "user_id", "u"."store_id" AS "store_id", "u"."login_id" AS "login_id", "u"."name" AS "name", "u"."phone" AS "phone", "u"."gender" AS "gender", "u"."birth" AS "birth", "u"."auth_id" AS "auth_id", "u"."state_id" AS "state_id", "u"."block_comment" AS "block_comment", "u"."is_password_change_required" AS "is_password_change_required", "u"."created_at" AS "created_at", "s"."store_name" AS "store_name", "s"."store_code" AS "store_code", "s"."store_state_id" AS "store_state_id" FROM "t_user" "u" INNER JOIN "t_store" "s" ON "s"."store_id" = "u"."store_id"';
+
+    beforeAll(async () => {
+        const dataSource = new DataSource({type: 'postgres', database: 'smoke', entities: ENTITIES});
+        await (dataSource as unknown as {buildMetadatas: () => Promise<void>}).buildMetadatas();
+        repository = new ManagerRepository({tx: dataSource.manager} as unknown as TransactionHost<TransactionalAdapterTypeOrm>);
+    });
+
+    it('필터 없음 — 매니저 그룹 · ACTIVE · BLOCK · 지워지지 않은 업체, 별칭 = ManagerAccountRow 키', () => {
+        const [sql, parameters] = repository.buildAccountQuery(ACCOUNT_FILTER).getQueryAndParameters();
+        const flat = sql.replace(/\s+/g, ' ');
+
+        expect(parameters).toEqual(['MANAGER', 'ACTIVE', 'BLOCK']);
+        expect([...flat.matchAll(/ AS "([a-z_]+)"/g)].map((match) => match[1]).sort()).toEqual([
+            'auth_id',
+            'birth',
+            'block_comment',
+            'created_at',
+            'gender',
+            'is_password_change_required',
+            'login_id',
+            'name',
+            'phone',
+            'state_id',
+            'store_code',
+            'store_id',
+            'store_name',
+            'store_state_id',
+            'user_id',
+        ]);
+        expect(flat).toBe(`${ACCOUNT_SELECT} WHERE "u"."login_scope" = $1 AND "u"."state_id" IN ($2, $3) AND "s"."is_deleted" = 0`);
+    });
+
+    it('모든 필터 + 검색어 — 회원 · 업체 · 권한 · 상태 AND, 검색어는 상호명 · 업체코드 · 아이디 · 이름 · 휴대폰 괄호 OR(같은 파라미터, 이스케이프)', () => {
+        const [sql, parameters] = repository.buildAccountQuery({user_id: 'e1', keyword: 'a_b', store_id: 's1', auth_id: 'HEAD_MANAGER', state_id: 'BLOCK'}).getQueryAndParameters();
+        const flat = sql.replace(/\s+/g, ' ');
+
+        expect(parameters).toEqual(['MANAGER', 'ACTIVE', 'BLOCK', 'e1', 's1', 'HEAD_MANAGER', 'BLOCK', '%a\\_b%']);
+        expect(flat).toBe(
+            `${ACCOUNT_SELECT} WHERE "u"."login_scope" = $1 AND "u"."state_id" IN ($2, $3) AND "s"."is_deleted" = 0 AND "u"."user_id" = $4 AND "u"."store_id" = $5 AND "u"."auth_id" = $6 AND "u"."state_id" = $7 AND ("s"."store_name" ILIKE $8 OR "s"."store_code" ILIKE $8 OR "u"."login_id" ILIKE $8 OR "u"."name" ILIKE $8 OR "u"."phone" ILIKE $8)`,
         );
     });
 });

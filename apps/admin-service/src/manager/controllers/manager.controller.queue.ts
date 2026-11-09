@@ -1,5 +1,6 @@
 import type {BadRequestException} from '@nestjs/common';
 import {Injectable} from '@nestjs/common';
+import type {ManagerAccountPasswordResetParamDto} from '@app/contracts/manager/dto/manager-account-password-reset.dto.js';
 import type {ManagerFindLoginIdConfirmDto, ManagerFindLoginIdConfirmResultDto} from '@app/contracts/manager/dto/manager-find-login-id-confirm.dto.js';
 import type {ManagerFindLoginIdDto, ManagerFindLoginIdResultDto} from '@app/contracts/manager/dto/manager-find-login-id.dto.js';
 import type {ManagerPasswordResetConfirmDto} from '@app/contracts/manager/dto/manager-password-reset-confirm.dto.js';
@@ -131,5 +132,15 @@ export class ManagerQueueController {
     @OnCommand(MANAGER_COMMAND.STAFF_DELETE)
     async deleteStaff(command: MessageEnvelope<ManagerStaffDeleteParamDto>): Promise<void> {
         return this.managerService.deleteStaff(requireActor(command).user_id, command.payload.user_id);
+    }
+
+    /**
+     * 업체 관리자 비밀번호 초기화 — 총관리자 · 관리자(관리자 가드는 게이트웨이, actor 를 service 에 넘기지 않는다)
+     *
+     * @param command 명령 봉투 (payload = path param)
+     */
+    @OnCommand(MANAGER_COMMAND.ACCOUNT_PASSWORD_RESET)
+    async resetAccountPassword(command: MessageEnvelope<ManagerAccountPasswordResetParamDto>): Promise<void> {
+        return this.managerService.resetAccountPassword(command.payload.user_id);
     }
 }

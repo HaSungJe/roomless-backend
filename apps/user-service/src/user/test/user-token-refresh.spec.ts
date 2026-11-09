@@ -86,6 +86,20 @@ describe('POST /internal/v1/user-service/user/token-refresh — 이용자 토큰
             expect(repo.updateSessionRefresh.mock.invocationCallOrder[0]).toBeLessThan(repo.insertSessionRefresh.mock.invocationCallOrder[0]);
         });
 
+        it('[CASES:member-state] 이용 제한(BLOCK) 회원도 재발급한다 — 이전 refresh 단축 · 새 refresh 저장 (사용자 결정 2026-11-09)', async () => {
+            jwt.verify.mockReturnValueOnce(PAYLOAD);
+            repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
+            repo.findSession.mockResolvedValueOnce({session_id: PAYLOAD.session_id, ip: '10.0.0.1'});
+            repo.findUser.mockResolvedValueOnce({user_id: PAYLOAD.user_id, state_id: 'BLOCK', login_scope: 'USER'});
+
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders('10.0.0.1')).send({refresh_token: OLD_REFRESH});
+
+            expect(res.status).toBe(200);
+            expect(res.body.access_token).toBe(MOCK_ACCESS_TOKEN);
+            expect(repo.updateSessionRefresh).toHaveBeenCalledWith({refresh_hash: OLD_HASH}, {expires_at: ONE_MINUTE_LATER});
+            expect(repo.insertSessionRefresh).toHaveBeenCalledTimes(1);
+        });
+
         it('세션에 저장된 ip 가 없으면 ip 비교를 건너뛴다', async () => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
             repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});
@@ -185,8 +199,9 @@ describe('POST /internal/v1/user-service/user/token-refresh — 이용자 토큰
 
         it.each([
             ['회원 없음', null],
-            ['탈퇴 대기 회원', {user_id: PAYLOAD.user_id, state_id: 'LEAVE_WAIT', login_scope: 'USER'}],
-            ['정지 회원', {user_id: PAYLOAD.user_id, state_id: 'BLOCK', login_scope: 'USER'}],
+            ['[CASES:member-state] 탈퇴 대기 회원', {user_id: PAYLOAD.user_id, state_id: 'LEAVE_WAIT', login_scope: 'USER'}],
+            ['[CASES:member-state] 탈퇴 회원', {user_id: PAYLOAD.user_id, state_id: 'LEAVE', login_scope: 'USER'}],
+            ['다른 그룹(매니저) 회원', {user_id: PAYLOAD.user_id, state_id: 'ACTIVE', login_scope: 'MANAGER'}],
         ])('%s — 안전망으로 refresh 를 1분 뒤 만료시키고 거부', async (_label, user) => {
             jwt.verify.mockReturnValueOnce(PAYLOAD);
             repo.findSessionRefresh.mockResolvedValueOnce({refresh_hash: OLD_HASH, expires_at: new Date(2026, 5, 1)});

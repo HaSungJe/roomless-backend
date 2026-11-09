@@ -18,3 +18,9 @@ export const PHONE_ALREADY_VERIFIED_MESSAGE = '이미 휴대폰 인증을 마쳤
 
 /** 이용자 그룹의 다른 계정이 이미 인증한 번호 — 번호 1개 = 계정 1개 (service 발송 확인 · repository UK_User_PhoneLoginScope) */
 export const PHONE_TAKEN_MESSAGE = '이미 가입된 번호입니다.';
+
+/** 이용자 로그인 · 토큰 재발급 가능 상태 — 이용 제한(BLOCK)도 로그인한다(새 예약 · 연장만 막힌다 — 사용자 결정 2026-11-09). 매니저 · 관리자 그룹의 BLOCK 은 로그인 불가 그대로 */
+export const USER_LOGIN_STATES = ['ACTIVE', 'BLOCK'];
+
+/** 이용자 인증 확인(게이트웨이 jwt-user 전략의 auth-user) 통과 상태 — 로그인 상태 + 탈퇴 대기(남은 access 토큰) */
+export const USER_AUTH_STATES = ['ACTIVE', 'BLOCK', 'LEAVE_WAIT'];

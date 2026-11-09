@@ -71,6 +71,7 @@ import {
     isStayBookable,
     isValidDate,
     judgeExtension,
+    judgeReservationMember,
     judgeReservationQr,
     judgeUsageTransition,
     listStays,
@@ -184,6 +185,13 @@ export class ReservationService {
      */
     @Transactional()
     async createReservation(user_id: string, dto: ReservationDto): Promise<ReservationResultDto> {
+        // 0. 예약할 수 있는 회원 — 이용 제한 · 탈퇴 대기는 400(쓰기 없음, 사용자 결정 2026-11-09)
+        const member = await this.reservationRepository.findReservationUser({user_id});
+        const memberReason = judgeReservationMember(member?.state_id ?? null);
+        if (memberReason) {
+            throw new BadRequestException({message: memberReason});
+        }
+
         // 1. 날짜 · 지금 바로(시간 이용 · 오늘만)
         if (!isValidDate(dto.date)) {
             throw new BadRequestException({message: RESERVATION_DATE_INVALID_MESSAGE, validation_errors: createValidationError('date', RESERVATION_DATE_INVALID_MESSAGE)});
@@ -859,8 +867,9 @@ export class ReservationService {
             throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
         }
 
-        // 2. 재료 — 구간 · 업체 · 호실 · 예약 상품 설정(연장 설정 · 연박 최대 박수) · 요금 상품(업체 설정 · 그룹 상품 · 기간 가격)
+        // 2. 재료 — 회원 상태 · 구간 · 업체 · 호실 · 예약 상품 설정(연장 설정 · 연박 최대 박수) · 요금 상품(업체 설정 · 그룹 상품 · 기간 가격)
         const now = nowKst();
+        const member = await this.reservationRepository.findReservationUser({user_id});
         const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id});
         const store = await this.reservationRepository.findReservationStore({store_id: reservation.store_id});
         const room = await this.reservationRepository.findReservationRoom({room_id: reservation.room_id});
@@ -889,6 +898,7 @@ export class ReservationService {
 
         // 4. 판정 · 금액
         const reason = judgeExtension({
+            member_state_id: member?.state_id ?? null,
             now,
             reservation,
             details,
@@ -924,8 +934,9 @@ export class ReservationService {
             throw new NotFoundException({message: RESERVATION_NOT_FOUND_MESSAGE});
         }
 
-        // 2. 재료 — 구간 · 업체 · 호실 · 예약 상품 설정(연장 설정 · 연박 최대 박수) · 요금 상품(업체 설정 · 그룹 상품 · 기간 가격)
+        // 2. 재료 — 회원 상태 · 구간 · 업체 · 호실 · 예약 상품 설정(연장 설정 · 연박 최대 박수) · 요금 상품(업체 설정 · 그룹 상품 · 기간 가격)
         const now = nowKst();
+        const member = await this.reservationRepository.findReservationUser({user_id});
         const details = await this.reservationRepository.findReservationDetails({reservation_id: reservation.reservation_id});
         const store = await this.reservationRepository.findReservationStore({store_id: reservation.store_id});
         const room = await this.reservationRepository.findReservationRoom({room_id: reservation.room_id});
@@ -954,6 +965,7 @@ export class ReservationService {
 
         // 4. 판정 · 금액
         const reason = judgeExtension({
+            member_state_id: member?.state_id ?? null,
             now,
             reservation,
             details,

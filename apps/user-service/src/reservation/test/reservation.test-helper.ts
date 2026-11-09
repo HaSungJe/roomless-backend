@@ -73,6 +73,7 @@ export type DoorStoreMock = {setQr: Mock; revokeQr: Mock};
  */
 export function createReservationRepositoryMock(): ReservationRepositoryMock {
     return {
+        findReservationUser: vi.fn().mockResolvedValue({user_id: USER_ACTOR.user_id, state_id: 'ACTIVE'}),
         findReservationStore: vi.fn().mockResolvedValue(storeEntity()),
         findReservationRoom: vi.fn().mockResolvedValue(roomEntity()),
         findReservationRoomGroup: vi.fn().mockResolvedValue({room_group_id: ROOM_GROUP_ID, store_id: STORE_ID, room_group_name: '스탠다드', is_deleted: 0}),

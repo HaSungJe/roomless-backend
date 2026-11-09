@@ -1,4 +1,5 @@
-import {INestApplication, ValidationPipe} from '@nestjs/common';
+import {BadRequestException, INestApplication, ValidationPipe} from '@nestjs/common';
+import type {Type} from '@nestjs/common';
 import {APP_GUARD, APP_INTERCEPTOR, DiscoveryModule} from '@nestjs/core';
 import {JwtService} from '@nestjs/jwt';
 import {Test, TestingModule} from '@nestjs/testing';
@@ -65,6 +66,9 @@ export function createManagerRepositoryMock(): ManagerRepositoryMock {
         findStaffList: vi.fn(),
         insertStaff: vi.fn(),
         updateStaff: vi.fn(),
+        countAccounts: vi.fn().mockResolvedValue(0),
+        findAccountRows: vi.fn().mockResolvedValue([]),
+        findAccountRow: vi.fn().mockResolvedValue(null),
         insertSession: vi.fn(),
         findSession: vi.fn(),
         insertSessionRefresh: vi.fn(),
@@ -211,6 +215,50 @@ export function staffRow(override: Record<string, unknown> = {}): Record<string,
         is_password_change_required: 1,
         created_at: FIXED_TIME,
         updated_at: FIXED_TIME,
+        ...override,
+    };
+}
+
+/**
+ * 게이트웨이 ValidationPipe 로 본문(또는 path param)을 검증한다.
+ *
+ * @param metatype DTO 클래스
+ * @param body 입력
+ * @returns 실패 본문 또는 null
+ */
+export async function validateBody(metatype: Type<unknown>, body: unknown): Promise<Record<string, unknown> | null> {
+    const pipe = new ValidationPipe({transform: true, forbidNonWhitelisted: true, exceptionFactory: validationExceptionFactory});
+    try {
+        await pipe.transform(body, {type: 'body', metatype});
+        return null;
+    } catch (error) {
+        return (error as BadRequestException).getResponse() as Record<string, unknown>;
+    }
+}
+
+/**
+ * 업체 관리자 행 (총관리자 · 관리자 화면 — 매니저 계정 + 업체) — raw select 결과 모양
+ *
+ * @param override 바꿀 필드
+ * @returns 업체 관리자 행
+ */
+export function accountRow(override: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        user_id: STAFF_ID,
+        store_id: STORE_ID,
+        store_name: '룸리스 강남점',
+        store_code: STORE_CODE,
+        store_state_id: 'ACTIVE',
+        login_id: 'staff01',
+        name: '김직원',
+        phone: '01022223333',
+        gender: 'M',
+        birth: '1995-05-05',
+        auth_id: 'MANAGER',
+        state_id: 'ACTIVE',
+        block_comment: null,
+        is_password_change_required: 0,
+        created_at: FIXED_TIME,
         ...override,
     };
 }

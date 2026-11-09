@@ -14,12 +14,15 @@ import {
 } from '@nestjs/swagger';
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
 import type {Actor} from '@app/contracts/actor.js';
+import {ManagerAccountDetailParamDto, ManagerAccountDetailResultDto} from '@app/contracts/manager/dto/manager-account-detail.dto.js';
+import {ManagerAccountListDto, ManagerAccountListResultDto} from '@app/contracts/manager/dto/manager-account-list.dto.js';
 import {ManagerLoginDto, ManagerLoginResultDto} from '@app/contracts/manager/dto/manager-login.dto.js';
 import {ManagerStaffDetailParamDto, ManagerStaffDetailResultDto} from '@app/contracts/manager/dto/manager-staff-detail.dto.js';
 import {ManagerStaffListDto, ManagerStaffListResultDto} from '@app/contracts/manager/dto/manager-staff-list.dto.js';
 import {ManagerTokenRefreshDto, ManagerTokenRefreshResultDto} from '@app/contracts/manager/dto/manager-token-refresh.dto.js';
 import {MANAGER_INTERNAL_PATH} from '@app/contracts/manager/manager.commands.js';
 import {AUTH_ID} from '@app/contracts/roles.js';
+import {PassportJwtAdminAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.admin.guard.js';
 import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
 import {PassportJwtManagerAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.manager.guard.js';
 import {Roles} from '../../../../../guards/roles/roles.decorator.js';
@@ -29,6 +32,7 @@ import {InternalHttpClient} from '../../../../../modules/transport/internal-http
 /**
  * 매니저 그룹(총매니저 · 매니저) 공개 API — 동기 경로(내부 HTTP → admin-service 매니저 도메인). 로그인(업체코드 + 아이디 · 비밀번호) · 토큰 재발급 · 업체 관리자 목록 · 상세.
  * 업체 관리자 라우트는 매니저 가드 + RolesGuard · @Roles(HEAD_MANAGER) — 업체 총관리자만(업체 관리자 토큰은 403).
+ * 총관리자 · 관리자의 업체 관리자 관리(/account — 전체 업체 목록 · 상세)는 관리자 가드다(대상이 매니저 계정이라 같은 도메인 — 사용자 결정 2026-11-09).
  * 큐 경로(비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화 · 업체 관리자 쓰기)는 같은 경로 접두의 manager.controller.queue.ts(ManagerQueueController)에 둔다.
  */
 @ApiTags('매니저')
@@ -111,5 +115,41 @@ export class ManagerController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async getStaff(@PassportActor() actor: Actor, @Param() param: ManagerStaffDetailParamDto): Promise<ManagerStaffDetailResultDto> {
         return this.internalHttp.request<ManagerStaffDetailResultDto>('admin', 'GET', MANAGER_INTERNAL_PATH.staff(param.user_id), {actor});
+    }
+
+    /**
+     * 업체 관리자 목록 (총관리자 · 관리자) — 전체 업체의 업체 총관리자 · 업체 관리자, 업체 · 권한 · 상태 · 검색어(상호명 · 업체코드 · 아이디 · 이름 · 휴대폰)
+     */
+    @Get('/account')
+    @UseGuards(PassportJwtAdminAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 목록 (관리자)'})
+    @ApiOkResponse({type: ManagerAccountListResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getAccountList(@PassportActor() actor: Actor, @Query() query: ManagerAccountListDto): Promise<ManagerAccountListResultDto> {
+        const dto = new ManagerAccountListDto(query);
+        return this.internalHttp.request<ManagerAccountListResultDto>('admin', 'GET', MANAGER_INTERNAL_PATH.ACCOUNT_LIST, {actor, query: dto});
+    }
+
+    /**
+     * 업체 관리자 상세 (총관리자 · 관리자)
+     */
+    @Get('/account/:user_id')
+    @UseGuards(PassportJwtAdminAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '업체 관리자 상세 (관리자)'})
+    @ApiOkResponse({type: ManagerAccountDetailResultDto})
+    @ApiBadRequestResponse({type: ApiFailResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getAccount(@PassportActor() actor: Actor, @Param() param: ManagerAccountDetailParamDto): Promise<ManagerAccountDetailResultDto> {
+        return this.internalHttp.request<ManagerAccountDetailResultDto>('admin', 'GET', MANAGER_INTERNAL_PATH.account(param.user_id), {actor});
     }
 }

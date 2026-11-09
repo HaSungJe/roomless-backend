@@ -21,6 +21,7 @@ import {StoreBreakEntity} from '@app/database/entities/store/store-break.entity.
 import {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js';
 import {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
+import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
 import {isExclusionViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {BookableRoomRow, ReservationListRow, ReservationRepositoryInterface, ReservationSegmentRow} from '../interfaces/reservation.repository.interface.js';
@@ -72,6 +73,11 @@ export class ReservationRepository implements ReservationRepositoryInterface {
         return this.txHost.tx.getRepository(StoreEntity);
     }
 
+    /** t_user */
+    private get users(): Repository<UserEntity> {
+        return this.txHost.tx.getRepository(UserEntity);
+    }
+
     /** t_room */
     private get rooms(): Repository<RoomEntity> {
         return this.txHost.tx.getRepository(RoomEntity);
@@ -115,6 +121,20 @@ export class ReservationRepository implements ReservationRepositoryInterface {
     /** t_room_qr */
     private get roomQrs(): Repository<RoomQrEntity> {
         return this.txHost.tx.getRepository(RoomQrEntity);
+    }
+
+    /**
+     * 예약하는 회원 — 이용 제한 · 탈퇴 대기 판정(t_user 는 is_deleted 가 없다)
+     *
+     * @param where 조회 조건
+     * @returns 회원 또는 null
+     */
+    async findReservationUser(where: FindOptionsWhere<UserEntity>): Promise<UserEntity | null> {
+        try {
+            return await this.users.findOne({where, loadRelationIds: true});
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
     }
 
     /**

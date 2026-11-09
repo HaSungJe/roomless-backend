@@ -42,4 +42,10 @@ export class UserLoginResultDto {
 
     @ApiProperty({description: '휴대폰 SMS 인증 여부(0: 미인증, 1: 인증) — 0 이면 휴대폰 인증 화면으로'})
     is_phone_verified: number;
+
+    @ApiProperty({description: '회원 상태 (ACTIVE: 정상, BLOCK: 이용 제한 — 로그인 · 기존 예약 이용은 되고 새 예약 · 연장만 막힌다)'})
+    state_id: string;
+
+    @ApiProperty({description: '이용 제한 사유 (없으면 null)', nullable: true, type: String})
+    block_comment: string | null;
 }

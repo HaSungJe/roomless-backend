@@ -12,3 +12,9 @@ export const STAFF_PHONE_TAKEN_MESSAGE = '이미 다른 계정에 등록된 휴�
 
 /** 업체 총관리자의 소속 업체가 없을 때(데이터 이상) */
 export const MANAGER_STORE_NOT_FOUND_MESSAGE = '소속 업체를 찾을 수 없습니다.';
+
+/** 휴대폰 번호가 없는 계정 — 임시 비밀번호를 보낼 수 없다(업체 총관리자 · 총관리자의 비밀번호 초기화) */
+export const MANAGER_PHONE_NOT_REGISTERED_MESSAGE = '휴대폰 번호가 등록되지 않은 계정입니다.';
+
+/** 탈퇴 업체 상태 — 그 업체 계정은 비밀번호를 초기화하지 않는다 */
+export const MANAGER_STORE_STATE_LEAVE = 'LEAVE';

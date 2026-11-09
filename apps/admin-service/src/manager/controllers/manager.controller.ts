@@ -1,5 +1,7 @@
 import {Body, Controller, Get, HttpCode, Param, Post, Query} from '@nestjs/common';
 import {ClientIp, InternalActor} from '@app/common/internal/internal-request.decorator.js';
+import {ManagerAccountDetailParamDto, ManagerAccountDetailResultDto} from '@app/contracts/manager/dto/manager-account-detail.dto.js';
+import {ManagerAccountListDto, ManagerAccountListResultDto} from '@app/contracts/manager/dto/manager-account-list.dto.js';
 import {ManagerAuthUserParamDto, ManagerAuthUserResultDto} from '@app/contracts/manager/dto/manager-auth-user.dto.js';
 import {ManagerLoginDto, ManagerLoginResultDto} from '@app/contracts/manager/dto/manager-login.dto.js';
 import {ManagerStaffDetailParamDto, ManagerStaffDetailResultDto} from '@app/contracts/manager/dto/manager-staff-detail.dto.js';
@@ -62,5 +64,24 @@ export class ManagerController {
     @HttpCode(200)
     async getStaff(@InternalActor('user_id') user_id: string, @Param() param: ManagerStaffDetailParamDto): Promise<ManagerStaffDetailResultDto> {
         return this.managerService.getStaff(user_id, param.user_id);
+    }
+
+    /**
+     * 업체 관리자 목록 (총관리자 · 관리자 — 전체 업체)
+     */
+    @Get('/account')
+    @HttpCode(200)
+    async getAccountList(@Query() query: ManagerAccountListDto): Promise<ManagerAccountListResultDto> {
+        const dto = new ManagerAccountListDto(query);
+        return this.managerService.getAccountList(dto);
+    }
+
+    /**
+     * 업체 관리자 상세 (총관리자 · 관리자)
+     */
+    @Get('/account/:user_id')
+    @HttpCode(200)
+    async getAccount(@Param() param: ManagerAccountDetailParamDto): Promise<ManagerAccountDetailResultDto> {
+        return this.managerService.getAccount(param.user_id);
     }
 }

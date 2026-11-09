@@ -253,15 +253,16 @@ describe('[SMOKE:data-access] findLoginUser · consumeSmsVerificationAttempt 쿼
         repository = new UserRepository({tx: dataSource.manager} as unknown as TransactionHost<TransactionalAdapterTypeOrm>);
     });
 
-    it('회원 · 상태 · 회원설정을 조인하고 이용자 그룹 · 로그인 가능 조건으로 거른다', () => {
+    it('[CASES:member-state] 회원 · 상태 · 회원설정을 조인하고 이용자 그룹 · 인증 통과 상태(ACTIVE · BLOCK · LEAVE_WAIT — is_login_allowed 조건 없음)로 거른다', () => {
         const [sql, parameters] = repository.buildLoginUserQuery('u1').getQueryAndParameters();
 
-        expect(parameters).toEqual(['u1', 'USER']);
+        expect(parameters).toEqual(['u1', 'USER', 'ACTIVE', 'BLOCK', 'LEAVE_WAIT']);
+        expect(sql).not.toContain('"s"."is_login_allowed" = 1');
         expect(sql.replace(/\s+/g, ' ')).toBe(
             'SELECT "u"."user_id" AS "user_id", "u"."login_id" AS "login_id", "u"."name" AS "name", "u"."gender" AS "gender", "u"."birth" AS "birth", "u"."nickname" AS "nickname", ' +
                 '"u"."auth_id" AS "auth_id", "u"."store_id" AS "store_id", "u"."state_id" AS "state_id", "u"."phone_verified_at" AS "phone_verified_at", "s"."is_login_allowed" AS "is_login_allowed" ' +
                 'FROM "t_user" "u" INNER JOIN "t_state" "s" ON "s"."state_id" = "u"."state_id" INNER JOIN "t_user_setting" "us" ON "us"."user_id" = "u"."user_id" ' +
-                'WHERE "u"."user_id" = $1 AND "u"."login_scope" = $2 AND "s"."is_login_allowed" = 1',
+                'WHERE "u"."user_id" = $1 AND "u"."login_scope" = $2 AND "u"."state_id" IN ($3, $4, $5)',
         );
     });
 

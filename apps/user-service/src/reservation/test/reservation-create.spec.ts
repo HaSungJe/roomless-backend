@@ -188,6 +188,33 @@ describe('user.reservation.create — 예약 생성 (큐 경로)', () => {
         });
     });
 
+    describe('[CASES:member-state] 예약하는 회원 상태 — 정상만 (사용자 결정 2026-11-09)', () => {
+        it('정상(ACTIVE) — 회원을 먼저 읽고(이용자 ID) 예약을 진행한다', async () => {
+            const {result} = await runCreate(HOURLY);
+
+            expect(result?.error).toBeNull();
+            expect(repo.findReservationUser).toHaveBeenCalledWith({user_id: USER_ACTOR.user_id});
+            expect(repo.findReservationUser.mock.invocationCallOrder[0]).toBeLessThan(repo.findReservationRoom.mock.invocationCallOrder[0]);
+            expect(repo.insertReservation).toHaveBeenCalledTimes(1);
+        });
+
+        it.each([
+            ['이용 제한(BLOCK)', 'BLOCK', '이용이 제한된 계정입니다.'],
+            ['탈퇴 대기(LEAVE_WAIT)', 'LEAVE_WAIT', '탈퇴 신청 중에는 예약할 수 없습니다.'],
+        ])('%s → 400, 호실 조회 · 쓰기 없음', async (_label, state_id, message) => {
+            repo.findReservationUser.mockResolvedValueOnce({user_id: USER_ACTOR.user_id, state_id, block_comment: '부정 이용'});
+
+            const {decision, result} = await runCreate(HOURLY);
+
+            expect(decision.action).toBe('ack');
+            expect(result?.error).toEqual({status_code: 400, body: {message, validation_errors: null}});
+            expect(repo.findReservationRoom).not.toHaveBeenCalled();
+            expect(repo.insertPayment).not.toHaveBeenCalled();
+            expect(repo.insertReservation).not.toHaveBeenCalled();
+            expect(repo.insertReservationDetail).not.toHaveBeenCalled();
+        });
+    });
+
     describe('[FAIL:service]', () => {
         it('호실이 없으면 404, 쓰기 없음', async () => {
             repo.findReservationRoom.mockResolvedValueOnce(null);

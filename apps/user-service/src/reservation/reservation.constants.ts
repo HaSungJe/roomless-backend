@@ -78,3 +78,9 @@ export const RESERVATION_EXTENSION_TIME_MESSAGE = '연장할 수 없는 시간�
 
 /** 연장 — 다음 예약과 겹침(정비시간 포함 — 판정 · 배타 제약 EXC_Reservation_RoomIdBlockedRange) */
 export const RESERVATION_EXTENSION_NEXT_RESERVATION_MESSAGE = '다음 예약이 있어 연장할 수 없습니다.';
+
+/** 탈퇴 신청 중인 이용자의 예약 · 연장 — 정지 회원이 탈퇴 신청으로 제한을 피하지 못하게(사용자 결정 2026-11-09) */
+export const RESERVATION_MEMBER_LEAVING_MESSAGE = '탈퇴 신청 중에는 예약할 수 없습니다.';
+
+/** 예약할 수 있는 회원 상태 · 이용 제한 상태 */
+export const RESERVATION_MEMBER_STATE = {ACTIVE: 'ACTIVE', BLOCK: 'BLOCK'} as const;

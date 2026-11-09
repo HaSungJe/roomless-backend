@@ -5,7 +5,6 @@ import {In, MoreThanOrEqual} from 'typeorm';
 import {
     ACCOUNT_NOT_FOUND_MESSAGE,
     ACCOUNT_RECOVERY_STATES,
-    BLOCKED_ACCOUNT_MESSAGE,
     INVALID_LOGIN_MESSAGE,
     INVALID_TOKEN_MESSAGE,
     SMS_ATTEMPTS_EXCEEDED_MESSAGE,
@@ -43,7 +42,7 @@ import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {SMS_SENDER} from '@app/integration/integration.symbols.js';
 import type {SmsSenderInterface} from '@app/integration/interfaces/integration.interface.js';
 import type {UserRepositoryInterface} from './interfaces/user.repository.interface.js';
-import {NO_MATCHING_USER_MESSAGE, PHONE_ALREADY_VERIFIED_MESSAGE, PHONE_TAKEN_MESSAGE, UNDERAGE_MESSAGE} from './user.constants.js';
+import {NO_MATCHING_USER_MESSAGE, PHONE_ALREADY_VERIFIED_MESSAGE, PHONE_TAKEN_MESSAGE, UNDERAGE_MESSAGE, USER_LOGIN_STATES} from './user.constants.js';
 import {USER_REPOSITORY} from './user.symbols.js';
 import {generateSnsLoginId, isAdult, toUserAuthUserResult} from './user.util.js';
 
@@ -148,7 +147,7 @@ export class UserService {
     /**
      * 이용자 SNS 로그인 (내부 HTTP: POST /internal/v1/user-service/user/login)
      * - (sns_id, sns_user_id) + login_scope USER + state_id IN (ACTIVE, BLOCK) 로 조회, 미존재 → 404
-     * - BLOCK → 403 + block_comment
+     * - 이용 제한(BLOCK)도 토큰을 준다 — 결과의 state_id · block_comment 로 앱이 알리고, 새 예약 · 연장은 예약 도메인이 막는다(사용자 결정 2026-11-09)
      * - device_os/device_token 둘 다 입력된 경우에만 t_user 동기화(마지막 로그인 기기 유지)
      *
      * @param dto 로그인 정보
@@ -157,18 +156,13 @@ export class UserService {
      */
     @Transactional()
     async login(dto: UserLoginDto, ip: string): Promise<UserLoginResultDto> {
-        // 1. 회원 조회 (ACTIVE / BLOCK 만)
-        const user = await this.userRepository.findUser({sns_id: dto.sns_id, sns_user_id: dto.sns_user_id, login_scope: LOGIN_SCOPE.USER, state_id: In(['ACTIVE', 'BLOCK'])});
+        // 1. 회원 조회 (ACTIVE / BLOCK — 이용 제한도 로그인)
+        const user = await this.userRepository.findUser({sns_id: dto.sns_id, sns_user_id: dto.sns_user_id, login_scope: LOGIN_SCOPE.USER, state_id: In(USER_LOGIN_STATES)});
         if (!user) {
             throw new NotFoundException({message: INVALID_LOGIN_MESSAGE});
         }
 
-        // 2. BLOCK 차단
-        if (user.state_id === 'BLOCK') {
-            throw new HttpException({message: BLOCKED_ACCOUNT_MESSAGE, block_comment: user.block_comment}, HttpStatus.FORBIDDEN);
-        }
-
-        // 3. device 정보 입력 시 t_user 동기화 — 미입력이면 기존값 보존(null 초기화 ❌)
+        // 2. device 정보 입력 시 t_user 동기화 — 미입력이면 기존값 보존(null 초기화 ❌)
         if (dto.device_os && dto.device_token) {
             const userDeviceEntity = new UserEntity();
             userDeviceEntity.device_os = dto.device_os;
@@ -176,7 +170,7 @@ export class UserService {
             await this.userRepository.updateUser({user_id: user.user_id}, userDeviceEntity);
         }
 
-        // 4. session 생성
+        // 3. session 생성
         const session_id = generateId();
         const sessionEntity = new SessionEntity();
         sessionEntity.session_id = session_id;
@@ -187,10 +181,10 @@ export class UserService {
         sessionEntity.is_deleted = 0;
         await this.userRepository.insertSession(sessionEntity);
 
-        // 5. 토큰 발급
+        // 4. 토큰 발급
         const tokens = issueAccessAndRefresh(this.jwtService, {user_id: user.user_id, session_id});
 
-        // 6. refresh 저장
+        // 5. refresh 저장
         const sessionRefreshEntity = new SessionRefreshEntity();
         sessionRefreshEntity.session_id = session_id;
         sessionRefreshEntity.refresh_hash = sha256Hex(tokens.refreshToken);
@@ -205,6 +199,8 @@ export class UserService {
             access_token_expires_at: tokens.accessTokenExpiresAt.toISOString(),
             refresh_token_expires_at: tokens.refreshTokenExpiresAt.toISOString(),
             is_phone_verified: user.phone_verified_at ? 1 : 0,
+            state_id: user.state_id,
+            block_comment: user.block_comment ?? null,
         };
     }
 
@@ -252,9 +248,9 @@ export class UserService {
             throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 
-        // 4. 회원 state · 이용자 그룹 재검증 — 안전망: expires_at 단축
+        // 4. 회원 state · 이용자 그룹 재검증 — 정상 · 이용 제한만(안전망: expires_at 단축)
         const user = await this.userRepository.findUser({user_id: payload.user_id});
-        if (!user || user.state_id !== 'ACTIVE' || user.login_scope !== LOGIN_SCOPE.USER) {
+        if (!user || !USER_LOGIN_STATES.includes(user.state_id) || user.login_scope !== LOGIN_SCOPE.USER) {
             const expireEntity = new SessionRefreshEntity();
             expireEntity.expires_at = dayjs().add(1, 'minute').toDate();
             await this.userRepository.updateSessionRefresh({refresh_hash}, expireEntity);

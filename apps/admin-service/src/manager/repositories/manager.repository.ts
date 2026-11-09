@@ -1,8 +1,10 @@
 import {BadRequestException, Injectable, InternalServerErrorException} from '@nestjs/common';
 import {TransactionHost} from '@nestjs-cls/transactional';
 import type {TransactionalAdapterTypeOrm} from '@nestjs-cls/transactional-adapter-typeorm';
+import {Brackets} from 'typeorm';
 import type {FindOptionsWhere, Repository, SelectQueryBuilder, UpdateQueryBuilder} from 'typeorm';
 import {USER_NOT_EXIST_MESSAGE} from '@app/account/account.constants.js';
+import {toContainsPattern} from '@app/common/utils/search.js';
 import {LOGIN_SCOPE} from '@app/contracts/roles.js';
 import {StoreEntity} from '@app/database/entities/store/store.entity.js';
 import {SessionRefreshEntity} from '@app/database/entities/user/session-refresh.entity.js';
@@ -12,8 +14,8 @@ import {StateEntity} from '@app/database/entities/user/state.entity.js';
 import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
-import type {LoginManagerRow, ManagerRepositoryInterface} from '../interfaces/manager.repository.interface.js';
-import {STAFF_LOGIN_ID_TAKEN_MESSAGE, STAFF_PHONE_TAKEN_MESSAGE} from '../manager.constants.js';
+import type {LoginManagerRow, ManagerAccountFilter, ManagerAccountRow, ManagerRepositoryInterface} from '../interfaces/manager.repository.interface.js';
+import {STAFF_LOGIN_ID_TAKEN_MESSAGE, STAFF_PHONE_TAKEN_MESSAGE, STAFF_STATES} from '../manager.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
@@ -209,6 +211,107 @@ export class ManagerRepository implements ManagerRepositoryInterface {
                 throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
             }
         }
+    }
+
+    /**
+     * 업체 관리자 수 (총관리자 · 관리자)
+     *
+     * @param filter 필터
+     * @returns 개수
+     */
+    async countAccounts(filter: ManagerAccountFilter): Promise<number> {
+        try {
+            return await this.buildAccountQuery(filter).getCount();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 업체 관리자 목록 (총관리자 · 관리자)
+     *
+     * @param filter 필터
+     * @param limit 개수
+     * @param offset 건너뛸 개수
+     * @returns 행 (등록 최신순)
+     */
+    async findAccountRows(filter: ManagerAccountFilter, limit: number, offset: number): Promise<ManagerAccountRow[]> {
+        try {
+            return await this.buildAccountQuery(filter).orderBy('u.created_at', 'DESC').limit(limit).offset(offset).getRawMany<ManagerAccountRow>();
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 업체 관리자 단건 (총관리자 · 관리자)
+     *
+     * @param user_id 회원 ID
+     * @returns 행 또는 null
+     */
+    async findAccountRow(user_id: string): Promise<ManagerAccountRow | null> {
+        try {
+            return (await this.buildAccountQuery({user_id, keyword: null, store_id: null, auth_id: null, state_id: null}).getRawOne<ManagerAccountRow>()) ?? null;
+        } catch {
+            throw new InternalServerErrorException({message: SERVER_ERROR_MESSAGE});
+        }
+    }
+
+    /**
+     * 업체 관리자 쿼리 — 매니저 그룹 · ACTIVE · BLOCK(삭제 LEAVE 제외) · 지워지지 않은 업체 조인, 필터는 값이 있을 때만 더한다.
+     * 검색어는 상호명 · 업체코드 · 아이디 · 이름 · 휴대폰 번호 부분 일치(괄호로 묶은 OR, `%` · `_` · `\` 이스케이프).
+     * 매핑 민감(조인 · raw select — 별칭이 ManagerAccountRow 키와 같다 · 동적 조립 · OR 괄호)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     *
+     * @param filter 필터
+     * @returns 쿼리 빌더
+     */
+    buildAccountQuery(filter: ManagerAccountFilter): SelectQueryBuilder<UserEntity> {
+        const query = this.users
+            .createQueryBuilder('u')
+            .select('u.user_id', 'user_id')
+            .addSelect('u.store_id', 'store_id')
+            .addSelect('s.store_name', 'store_name')
+            .addSelect('s.store_code', 'store_code')
+            .addSelect('s.store_state_id', 'store_state_id')
+            .addSelect('u.login_id', 'login_id')
+            .addSelect('u.name', 'name')
+            .addSelect('u.phone', 'phone')
+            .addSelect('u.gender', 'gender')
+            .addSelect('u.birth', 'birth')
+            .addSelect('u.auth_id', 'auth_id')
+            .addSelect('u.state_id', 'state_id')
+            .addSelect('u.block_comment', 'block_comment')
+            .addSelect('u.is_password_change_required', 'is_password_change_required')
+            .addSelect('u.created_at', 'created_at')
+            .innerJoin(StoreEntity, 's', 's.store_id = u.store_id')
+            .where('u.login_scope = :login_scope', {login_scope: LOGIN_SCOPE.MANAGER})
+            .andWhere('u.state_id IN (:...states)', {states: STAFF_STATES})
+            .andWhere('s.is_deleted = 0');
+        if (filter.user_id !== null) {
+            query.andWhere('u.user_id = :user_id', {user_id: filter.user_id});
+        }
+        if (filter.store_id !== null) {
+            query.andWhere('u.store_id = :store_id', {store_id: filter.store_id});
+        }
+        if (filter.auth_id !== null) {
+            query.andWhere('u.auth_id = :auth_id', {auth_id: filter.auth_id});
+        }
+        if (filter.state_id !== null) {
+            query.andWhere('u.state_id = :state_id', {state_id: filter.state_id});
+        }
+        if (filter.keyword !== null) {
+            const pattern = toContainsPattern(filter.keyword);
+            query.andWhere(
+                new Brackets((qb) => {
+                    qb.where('s.store_name ILIKE :pattern', {pattern})
+                        .orWhere('s.store_code ILIKE :pattern')
+                        .orWhere('u.login_id ILIKE :pattern')
+                        .orWhere('u.name ILIKE :pattern')
+                        .orWhere('u.phone ILIKE :pattern');
+                }),
+            );
+        }
+        return query;
     }
 
     /**

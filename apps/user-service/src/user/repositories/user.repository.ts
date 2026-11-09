@@ -13,7 +13,7 @@ import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginUserRow, UserRepositoryInterface} from '../interfaces/user.repository.interface.js';
-import {PHONE_TAKEN_MESSAGE} from '../user.constants.js';
+import {PHONE_TAKEN_MESSAGE, USER_AUTH_STATES} from '../user.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
@@ -151,7 +151,7 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * 로그인 이용자 조회 — 이용자 그룹이고 로그인 가능 상태(is_login_allowed = 1)이며 회원 설정이 있는 회원만.
+     * 로그인 이용자 조회 — 이용자 그룹이고 인증 통과 상태(ACTIVE · BLOCK · LEAVE_WAIT)이며 회원 설정이 있는 회원만.
      *
      * @param user_id 회원 ID
      * @returns 로그인 회원 또는 null
@@ -165,7 +165,8 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * 로그인 이용자 조회 쿼리 — 매핑 민감(조인 · raw select)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
+     * 로그인 이용자 조회 쿼리 — 이용자 그룹은 is_login_allowed 대신 상태 목록(USER_AUTH_STATES)으로 거른다 — 이용 제한(BLOCK)도 로그인한다(사용자 결정 2026-11-09).
+     * 매핑 민감(조인 · raw select · IN)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param user_id 회원 ID
      * @returns 쿼리 빌더
@@ -188,7 +189,7 @@ export class UserRepository implements UserRepositoryInterface {
             .innerJoin(UserSettingEntity, 'us', 'us.user_id = u.user_id')
             .where('u.user_id = :user_id', {user_id})
             .andWhere('u.login_scope = :login_scope', {login_scope: LOGIN_SCOPE.USER})
-            .andWhere('s.is_login_allowed = 1');
+            .andWhere('u.state_id IN (:...states)', {states: USER_AUTH_STATES});
     }
 
     /**

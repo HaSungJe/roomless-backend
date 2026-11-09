@@ -155,6 +155,18 @@ describe('user.reservation.extend — 연장 신청 (큐 경로)', () => {
             expect(repo.updateReservationHold).not.toHaveBeenCalled();
         });
 
+        it('[CASES:member-state] 이용 제한(BLOCK) 회원 → 400 이용이 제한된 계정입니다., 결제 · 구간 · 잡아 두기 없음', async () => {
+            repo.findReservationUser.mockResolvedValueOnce({user_id: USER_ACTOR.user_id, state_id: 'BLOCK', block_comment: '부정 이용'});
+
+            const {result} = await runExtend();
+
+            expect(result?.error).toEqual({status_code: 400, body: {message: '이용이 제한된 계정입니다.', validation_errors: null}});
+            expect(repo.findReservationUser).toHaveBeenCalledWith({user_id: USER_ACTOR.user_id});
+            expect(repo.insertPayment).not.toHaveBeenCalled();
+            expect(repo.insertReservationDetail).not.toHaveBeenCalled();
+            expect(repo.updateReservationHold).not.toHaveBeenCalled();
+        });
+
         it('내 예약이 아니면 404, 쓰기 없음', async () => {
             repo.findReservation.mockResolvedValueOnce(null);
 

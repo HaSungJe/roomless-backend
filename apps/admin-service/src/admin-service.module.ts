@@ -14,14 +14,15 @@ import {ManagerModule} from './manager/manager.module.js';
 import {ReservationModule} from './reservation/reservation.module.js';
 import {RoomModule} from './room/room.module.js';
 import {StoreModule} from './store/store.module.js';
+import {UserModule} from './user/user.module.js';
 
 /**
- * admin-service 루트 모듈 — 업체 관리자 · 업체 총관리자 · 관리자 · 총관리자 전용 기능(사용자 결정 2026-11-07): 매니저(총매니저 · 매니저) · 관리자(총관리자 · 관리자) · store(업체 · 입점 신청 관리 · 업체 정보 파일 · 내 업체 설정) · room(업체 상품 설정 · 객실 그룹 · 호실) · reservation(업체 예약 현황 · 업체 취소 · 호실 이동) 도메인. 게이트웨이를 거친 요청만 받는다.
+ * admin-service 루트 모듈 — 업체 관리자 · 업체 총관리자 · 관리자 · 총관리자 전용 기능(사용자 결정 2026-11-07): 매니저(총매니저 · 매니저) · 관리자(총관리자 · 관리자) · store(업체 · 입점 신청 관리 · 업체 정보 파일 · 내 업체 설정) · room(업체 상품 설정 · 객실 그룹 · 호실) · reservation(업체 예약 현황 · 업체 취소 · 호실 이동) · user(이용자 관리 — 총관리자 · 관리자) 도메인. 서버 안 도메인은 기능 대상별이다(사용자 결정 2026-11-09). 게이트웨이를 거친 요청만 받는다.
  * - APP_GUARD(InternalAuthGuard): 모든 HTTP 요청에 게이트웨이의 내부 토큰을 요구한다
  * - APP_INTERCEPTOR(ReturnedExceptionInterceptor): 내부 HTTP 컨트롤러가 반환한 HttpException 을 실패 응답으로 바꾼다(커밋 뒤 실패 — 큐 경로는 CommandDispatcher)
  * - DatabaseModule: TypeORM(PostgreSQL, user-service 와 같은 DB · 엔티티) + `@Transactional()` (nestjs-cls)
  * - MessagingModule.forService: q.admin.cmd(`admin.#`) 소비 → `@OnCommand` 핸들러 디스패치 (user_id 가 gateway 인 명령만 처리)
- * - SmsModule: SMS 발송 포트(SMS_SENDER, Amazon SNS) — 매니저 아이디 찾기 · 비밀번호 초기화 · 입점 승인 안내 · 업체 취소 · 호실 이동 안내 · 이용 중 취소 요청 승인 링크
+ * - SmsModule: SMS 발송 포트(SMS_SENDER, Amazon SNS) — 매니저 아이디 찾기 · 비밀번호 초기화(업체 총관리자 · 총관리자) · 입점 승인 안내 · 업체 취소 · 호실 이동 안내 · 이용 중 취소 요청 승인 링크
  * - StorageModule: 파일 저장소 포트(STORAGE_GATEWAY, Amazon S3 · CloudFront 공개 주소) — 업체 정보 파일 · 객실 그룹 사진
  * - DoorStoreModule: 문 정보 포트(DOOR_STORE, Redis — RedisModule 연결 포함) — 호실 목록 문 상태 · 바로 열기 · 문 시크릿 변경 때 소켓 끊기
  * 마이그레이션 · 기본 데이터 시드는 DB 를 소유한 user-service 묶음이 맡는다(이 서비스에는 migrate · SeederService 가 없다).
@@ -38,6 +39,7 @@ import {StoreModule} from './store/store.module.js';
         StoreModule,
         RoomModule,
         ReservationModule,
+        UserModule,
     ],
     providers: [
         {provide: APP_GUARD, useClass: InternalAuthGuard},

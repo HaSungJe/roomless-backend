@@ -1,3 +1,4 @@
+import {BLOCKED_ACCOUNT_MESSAGE, USER_NOT_FOUND_MESSAGE} from '@app/account/account.constants.js';
 import type {ReservationCancelRequestResultDto} from '@app/contracts/reservation/dto/reservation-cancel-request.dto.js';
 import type {ReservationAvailabilityGroupResultDto, ReservationAvailabilityRoomResultDto, ReservationAvailabilitySlotResultDto} from '@app/contracts/reservation/dto/reservation-availability.dto.js';
 import type {ReservationDetailResultDto} from '@app/contracts/reservation/dto/reservation-detail.dto.js';
@@ -32,6 +33,8 @@ import {
     RESERVATION_EXTENSION_UNAVAILABLE_MESSAGE,
     RESERVATION_HOURLY_STEP_MINUTES,
     RESERVATION_IMMEDIATE_MINUTES,
+    RESERVATION_MEMBER_LEAVING_MESSAGE,
+    RESERVATION_MEMBER_STATE,
     RESERVATION_ORDER_NAME_MAX_LENGTH,
     RESERVATION_PLAN_TYPE,
     RESERVATION_PLAN_TYPE_NAME,
@@ -747,6 +750,25 @@ export function toCancelRequest(request: ReservationCancelRequestEntity, row: Re
     };
 }
 
+/**
+ * 예약 · 연장할 수 있는 회원인가 — 정상(ACTIVE)만. 이용 제한(BLOCK)은 '이용이 제한된 계정입니다.', 그 밖(탈퇴 대기)은 탈퇴 문구(사용자 결정 2026-11-09).
+ *
+ * @param state_id 회원 상태(없는 회원 null)
+ * @returns 못 하는 사유 또는 null
+ */
+export function judgeReservationMember(state_id: string | null): string | null {
+    if (state_id === null) {
+        return USER_NOT_FOUND_MESSAGE;
+    }
+    if (state_id === RESERVATION_MEMBER_STATE.ACTIVE) {
+        return null;
+    }
+    if (state_id === RESERVATION_MEMBER_STATE.BLOCK) {
+        return BLOCKED_ACCOUNT_MESSAGE;
+    }
+    return RESERVATION_MEMBER_LEAVING_MESSAGE;
+}
+
 /** 연장 구간 — 요금 상품(HOURLY · NIGHT) · 요금 기준일(연장 시작의 한국 날짜) · 시작(= 지금 끝) · 끝 */
 export interface ExtensionStay {
     room_plan_type_id: string;
@@ -757,6 +779,7 @@ export interface ExtensionStay {
 
 /** 연장 판정 재료 — 예약 상품 행(연장 설정 · 연박 최대 박수) · 요금 상품 행(판매 여부) · 그룹 상품 · 연장 구간 · 영업시간 · 브레이크 · 일시 예약불가 · 그 호실의 다른 점유 예약 */
 export interface ExtensionContext {
+    member_state_id: string | null;
     now: Dayjs;
     reservation: Pick<ReservationEntity, 'reservation_state_id' | 'start_at' | 'end_at' | 'maintenance_minutes'>;
     details: Pick<ReservationDetailEntity, 'reservation_detail_type_id' | 'reservation_state_id'>[];
@@ -853,6 +876,10 @@ function isExtensionWithinStoreHours(stay: ExtensionStay, is_always_open: number
  * @returns 못 하는 사유 또는 null
  */
 export function judgeExtension(ctx: ExtensionContext): string | null {
+    const member = judgeReservationMember(ctx.member_state_id);
+    if (member) {
+        return member;
+    }
     const state = ctx.reservation.reservation_state_id;
     const in_use = (state === RESERVATION_STATE.CONFIRMED || state === RESERVATION_STATE.CHECKED_IN) && !ctx.now.isBefore(ctx.reservation.start_at) && ctx.now.isBefore(ctx.reservation.end_at);
     if (!in_use) {

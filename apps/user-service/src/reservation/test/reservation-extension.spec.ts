@@ -37,6 +37,7 @@ const NEXT = '다음 예약이 있어 연장할 수 없습니다.';
 
 /** 연장 판정 재료 — 기본은 시간 이용 이용 중 예약 13:00 ~ 16:00 · 정비 30분, 지금 15:00, 영업 10:00 ~ 22:00 · 이용 시간 4 · 시간 이용 30,000 · 1박 50,000 */
 interface Scenario {
+    member?: string;
     now?: string;
     reservation?: Record<string, unknown>;
     details?: Record<string, unknown>[];
@@ -74,6 +75,7 @@ describe('GET /internal/v1/user-service/reservation/:reservation_id/extension �
      */
     function arrange(scenario: Scenario): void {
         vi.setSystemTime(kst(scenario.now ?? '2026-11-10 15:00'));
+        repo.findReservationUser.mockResolvedValueOnce({user_id: USER_ACTOR.user_id, state_id: scenario.member ?? 'ACTIVE'});
         repo.findReservation.mockResolvedValueOnce(
             reservationEntity({reservation_state_id: 'CHECKED_IN', start_at: kst('2026-11-10 13:00'), end_at: kst('2026-11-10 16:00'), total_price: 30000, ...scenario.reservation}),
         );
@@ -218,6 +220,22 @@ describe('GET /internal/v1/user-service/reservation/:reservation_id/extension �
 
             expect(res.status).toBe(200);
             expect(res.body).toMatchObject({reservation_id: RESERVATION_ID, is_extendable: reason === null ? 1 : 0, reason});
+        });
+    });
+
+    describe('[CASES:member-state] 연장하는 회원 상태 — 정상만, 판정의 맨 앞 (사용자 결정 2026-11-09)', () => {
+        it.each([
+            ['이용 제한(BLOCK) → 불가', 'BLOCK', '이용이 제한된 계정입니다.'],
+            ['탈퇴 대기(LEAVE_WAIT) → 불가', 'LEAVE_WAIT', '탈퇴 신청 중에는 예약할 수 없습니다.'],
+            ['이용 제한 · 이용 중 아님(시작 전)이 겹쳐도 회원 사유가 먼저', 'BLOCK', '이용이 제한된 계정입니다.'],
+        ])('%s', async (label, member, reason) => {
+            arrange({member, ...(label.includes('시작 전') ? {reservation: {reservation_state_id: 'CONFIRMED', start_at: kst('2026-11-10 15:30')}} : {})});
+
+            const res = await getExtension();
+
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({reservation_id: RESERVATION_ID, is_extendable: 0, reason});
+            expect(repo.findReservationUser).toHaveBeenCalledWith({user_id: USER_ACTOR.user_id});
         });
     });
 

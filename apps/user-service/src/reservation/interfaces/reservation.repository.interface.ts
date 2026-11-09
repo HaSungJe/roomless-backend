@@ -13,6 +13,7 @@ import type {StoreBreakEntity} from '@app/database/entities/store/store-break.en
 import type {StoreHourEntity} from '@app/database/entities/store/store-hour.entity.js';
 import type {StoreUnavailablePeriodEntity} from '@app/database/entities/store/store-unavailable-period.entity.js';
 import type {StoreEntity} from '@app/database/entities/store/store.entity.js';
+import type {UserEntity} from '@app/database/entities/user/user.entity.js';
 
 /** 예약 가능 호실 행 — 지워지지 않은 호실 · 그룹(QueryBuilder raw — 그룹 조인) */
 export interface BookableRoomRow {
@@ -74,6 +75,8 @@ export interface ReservationSegmentRow {
  * is_deleted 가 있는 표의 조회에는 repository 가 is_deleted = 0 을 붙인다(service 는 넣지 않는다).
  */
 export interface ReservationRepositoryInterface {
+    /** 예약하는 회원 (t_user — 이용 제한 · 탈퇴 대기 판정) */
+    findReservationUser(where: FindOptionsWhere<UserEntity>): Promise<UserEntity | null>;
     /** 예약 업체 — 지워지지 않은 업체 */
     findReservationStore(where: FindOptionsWhere<StoreEntity>): Promise<StoreEntity | null>;
     /** 예약 호실 — 지워지지 않은 호실 */
