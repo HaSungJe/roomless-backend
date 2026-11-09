@@ -15,5 +15,5 @@
   - **Redis 장애** — 조회는 DB 로 넘어가 캐시 없이 동작한다.
 - Scope: global
 - Rationale: User feedback 2026-10-24 — "정지/탈퇴/수정 등의 행위가 이루어질 때, 캐시에 그 해당 회원에 대한 정보도 같이 수정해줘야겠지. 그런 전략을 메모해놔. 나중에 캐싱할 곳을 정할 때 도입해야함" (로드맵 Phase 23 — 캐시는 Redis, 결정 2026-10-24)
-- AGENTS.md application: unapplied (code rule — 캐시 코드가 아직 없다. 첫 캐시 도입(Phase 23 #95 · #96) 때 docs · AGENTS.md 에 옮길 후보)
+- AGENTS.md application: unapplied (code rule — 캐시 코드가 아직 없다. Phase 23 은 dropped(사용자 결정 2026-11-10 — 측정 전 캐시는 효율보다 복잡도가 큼). 측정 뒤 캐시를 다시 도입할 때 docs · AGENTS.md 에 옮길 후보.)
 - Priority: takes precedence over AGENTS.md/defaults

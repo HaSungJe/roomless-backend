@@ -47,9 +47,6 @@ flowchart LR
   P10 --> P20
   P17 --> P21["Phase 21 · 통계 (1)"]:::done
   P19 --> P21
-  P6 --> P23["Phase 23 · 캐시 Redis (3)"]:::todo
-  P14 --> P23
-  P18 --> P23
   P17 --> P24["Phase 24 · 스토리 테스트 (2)"]:::todo
   P18 --> P24
   P6 -. 동시 가능 .- P7
@@ -79,25 +76,24 @@ flowchart LR
 - Phase 16 — reservation 기반 · 유닛 4개 · 의존: Phase 12 · 푼다: Phase 17 · 파일 집합: libs/database/src/entities/{reservation,payment}, libs/database/src/migrations, libs/integration/src/payment · done
 - Phase 17 — 예약·결제 · 유닛 8개 · 의존: Phase 13, 16 (+ Phase 3, 11) · 푼다: Phase 15, 18, 19, 21, 25, 26 · 파일 집합: apps/user-service/src/reservation, apps/scheduler/src/reservation, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/reservation, libs/integration/src/payment, apps/admin-service/src/{store,room}(환불 규정 · 연박 박수 · 삭제 금지), libs/database(entities · migrations) · done
 - Phase 15 — 문 관리·QR 확인 · 유닛 5개 · 의존: Phase 14, 17 · 푼다: Phase 19, 25 · 파일 집합: apps/admin-service/src/{room,store}(문 상태 · 바로 열기 · 소켓 처리 · 시크릿), apps/user-service/src/{reservation,door 삭제}(내 예약 QR), apps/scheduler/src/reservation(QR 맞추기), apps/gateway/src/modules/door-socket, libs/integration/src/door, libs/database(t_room_qr · door_secret), libs/contracts/src/{door,room,store,reservation} · done
-- Phase 18 — discovery · 유닛 5개 · 의존: Phase 17 · 푼다: Phase 23 · 파일 집합: apps/user-service/src/{discovery,reservation}, apps/gateway/src/api/v1/user-service/discovery, libs/contracts/src/{discovery,reservation} · done
+- Phase 18 — discovery · 유닛 5개 · 의존: Phase 17 · 푼다: — · 파일 집합: apps/user-service/src/{discovery,reservation}, apps/gateway/src/api/v1/user-service/discovery, libs/contracts/src/{discovery,reservation} · done
 - Phase 25 — 서버 위치 정리 · 유닛 3개 · 의존: Phase 9, Phase 15, Phase 17 · 푼다: Phase 19 · 파일 집합: apps/user-service/src/{door,store}(새) · reservation(매니저 기능 빼기), apps/admin-service/src/reservation(새) · {room,store}(이용자 · 문 소켓 처리 빼기), apps/gateway/src/api/v1/{user-service/store(새), admin-service/reservation(새), admin-service/store, user-service/reservation}, apps/gateway/src/modules/door-socket, libs/contracts/src/{door,room,store,reservation}, README.md, AGENTS.md, docs/ · done
 - Phase 19 — 이용 · 유닛 6개 · 의존: Phase 5, Phase 15, Phase 17, Phase 25 · 푼다: Phase 21, 26 · 파일 집합: apps/scheduler/src/reservation(crontabs · repository · 모듈 SmsModule), apps/user-service/src/{reservation,door}, apps/admin-service/src/reservation, apps/gateway/src/api/v1/{user-service,admin-service}/reservation, libs/contracts/src/reservation, libs/database(entities · migrations · seeder), compose.scheduler.yml, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 26 — 연장 · 유닛 2개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/{reservation,discovery}, apps/scheduler/src/reservation, apps/admin-service/src/{room,store}, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/{reservation,room,discovery}, libs/database(entities · migrations), README.md, AGENTS.md, docs/ · done
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/{user(새 — 이용자 관리),manager(업체 관리자 관리)}, apps/user-service/src/{user,reservation}(이용 제한 이용자), apps/gateway/src/api/v1/admin-service/{user,manager}, libs/contracts/src/{user,manager}, README.md, AGENTS.md, docs/ · done
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · done
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(modules/api-log — 미들웨어 · 로그 전용 적재), apps/scheduler(api-log), libs/database(api-log-partition · typeorm.config · migrations), libs/common(예외 필터) · done
-- Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 14, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
+- Phase 23 — 캐시(Redis) · 유닛 3개 · dropped — 측정 전 캐시는 효율보다 복잡도가 커서 만들지 않음(사용자 결정 2026-11-10)
 - Phase 24 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18 · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 23
+지금: 진행 중 없음 · Next up: Phase 24
 
 ## 지금 할 일
-Phase 23 캐시 시작하기
-- #95 Redis 캐시 포트 · 어댑터
-- #96 로그인 회원 확인 캐시
-- #97 discovery 캐시 (필요 시)
+Phase 24 스토리 테스트 시작하기
+- #104 스토리 시나리오
+- #105 스토리 자동 실행
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) · `USER_WEB_URL`(이용자 프론트 주소 — scheduler QR 확인 링크 SMS · admin-service 이용 중 취소 요청 승인 링크, 비면 링크 SMS 안 보냄 · 취소 요청 503) · AWS 키는 scheduler 에도 넘어간다(QR 링크 SMS — SNS 권한) · `BCRYPT_CODE` 는 user-service · admin-service 가 같은 값(문 시크릿 확인 · 업체 총관리자 비밀번호 해시를 Phase 25 부터 user-service 도 한다) · `DATABASE_URL` 은 이제 gateway 에도 넘어간다(Phase 22 API 로그 — compose 필수값, 값은 그대로) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
@@ -499,16 +495,18 @@ build 완료 — report: `.beaver/output/report/stats/stats-report.md`. 조회�
 
 build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마이그레이션 `ApiLogPartition` · 게이트웨이 `DATABASE_URL` 필요.
 
-### Phase 23 — 캐시 (Redis 공유 캐시) · depends: Phase 6, Phase 14, Phase 18
+### Phase 23 — 캐시 (Redis 공유 캐시) · depends: Phase 6, Phase 14, Phase 18 · dropped
+
+> dropped — 측정 전 캐시는 효율보다 복잡도가 커서 만들지 않음(사용자 결정 2026-11-10). 배포 뒤 API 로그(Phase 22)의 처리 시간 · 호출 수로 느리고 자주 불리는 경로가 확인되면 그 경로만 대상으로 다시 기획한다. 캐시 초안 spec(`spec/platform/cache-spec.md`)은 지웠다 — 필요하면 git 이력에서 본다.
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 95 | Redis 캐시 포트 · 어댑터 | `CACHE_STORE` 포트(get · set(TTL) · delete) + 실제 Redis 어댑터 · 전역 `CacheModule` — Redis 연결(`RedisModule`) · `compose.redis.yml` · `docs/guides/redis-setup.md` · `REDIS_URL` 은 Phase 14 #107 에서 들어온다(캐시는 Redis 가 없으면 캐시 없이 동작 — 문 정보와 다르다) | 키 규칙 · TTL · 문 정보와 같은 Redis 를 쓸지(DB 번호 · 접두) | 107 | todo |
-| 96 | 로그인 회원 확인 캐시 | 게이트웨이 그룹 전략이 요청마다 하는 auth-user 조회(내부 HTTP + DB)를 짧은 TTL 로 캐시, 회원 상태 · 권한이 바뀌는 쓰기(정지 · 탈퇴 · 권한 변경 · 계정 삭제)에서 키 삭제 | 캐시 위치(게이트웨이 전략 · 서비스 auth-user) · TTL · 무효화 지점 목록 | 95 | todo |
-| 97 | discovery 캐시 (필요 시) | 지도 · 주변 · 업체 상세 조회 결과 — 업체 정보 · 영업 설정이 바뀌면 삭제. `t_api_log.duration_ms` 로 느린 경로를 확인한 뒤 대상 결정 | 캐시 대상 · 무효화 | 95, 74, 75, 76 | todo |
+| 95 | Redis 캐시 포트 · 어댑터 | `CACHE_STORE` 포트(get · set(TTL) · delete) + 실제 Redis 어댑터 · 전역 `CacheModule` — Redis 연결(`RedisModule`) · `compose.redis.yml` · `docs/guides/redis-setup.md` · `REDIS_URL` 은 Phase 14 #107 에서 들어온다(캐시는 Redis 가 없으면 캐시 없이 동작 — 문 정보와 다르다) | 키 규칙 · TTL · 문 정보와 같은 Redis 를 쓸지(DB 번호 · 접두) | 107 | dropped(측정 전 캐시는 효율보다 복잡도가 커서 만들지 않음 — 사용자 결정 2026-11-10) |
+| 96 | 로그인 회원 확인 캐시 | 게이트웨이 그룹 전략이 요청마다 하는 auth-user 조회(내부 HTTP + DB)를 짧은 TTL 로 캐시, 회원 상태 · 권한이 바뀌는 쓰기(정지 · 탈퇴 · 권한 변경 · 계정 삭제)에서 키 삭제 | 캐시 위치(게이트웨이 전략 · 서비스 auth-user) · TTL · 무효화 지점 목록 | 95 | dropped(측정 전 캐시는 효율보다 복잡도가 커서 만들지 않음 — 사용자 결정 2026-11-10) |
+| 97 | discovery 캐시 (필요 시) | 지도 · 주변 · 업체 상세 조회 결과 — 업체 정보 · 영업 설정이 바뀌면 삭제. `t_api_log.duration_ms` 로 느린 경로를 확인한 뒤 대상 결정 | 캐시 대상 · 무효화 | 95, 74, 75, 76 | dropped(측정 전 캐시는 효율보다 복잡도가 커서 만들지 않음 — 사용자 결정 2026-11-10) |
 
 **Expected entry points**: `CACHE_STORE`(`libs/integration/src/cache/`) · `CacheModule`(전역) — Redis 연결 · Docker 묶음 · 가이드는 Phase 14 것을 쓴다. 룩업 테이블은 캐싱하지 않는다(Cross-Cutting "캐시").
 
-무효화 원칙은 `.beaver/memory/cache.md` 에 있다 — 캐시한 데이터를 바꾸는 쓰기(정지 · 탈퇴 · 수정 …)는 그 키도 함께 고친다. 캐싱 전략 초안(어떻게 캐시하나 · 무효화 문제 8가지 · 무효화 지점 표 · 열린 결정 7개)은 `.beaver/output/spec/platform/cache-spec.md` — Phase 23 기획은 이 spec 에서 출발한다.
+무효화 원칙은 `.beaver/memory/cache.md` 에 있다 — 캐시한 데이터를 바꾸는 쓰기(정지 · 탈퇴 · 수정 …)는 그 키도 함께 고친다. 캐시를 다시 도입할 때 적용한다(Phase 23 dropped 2026-11-10).
 
 ### Phase 24 — 스토리 테스트 (전체 흐름 시나리오 · 자동 실행) · depends: Phase 17, Phase 18
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -527,8 +525,8 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 110/115 units done (24/26 phases)
-**Next up**: Phase 23 캐시 — 의존(Phase 6) 모두 완료
+**Progress**: 110/112 units done (24/25 phases)
+**Next up**: Phase 24 스토리 테스트 — 의존(Phase 17) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
 
@@ -558,7 +556,7 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 - **발송 채널 · 외부 연동** — 발송은 SMS(AWS SNS) 하나 — 이메일 · 알림톡 · 푸시는 쓰지 않는다. 외부 연동은 mock 없이 실제 서비스에 붙이고 세팅 가이드(`docs/guides/`)를 남긴다 — SMS · 이미지 = AWS(Phase 3), 결제 = 토스(테스트 키), 문 정보 = Redis(Phase 14 — 기기 플랫폼 연동 없음)
 - **목록 · 시드 · 규약** — 모든 목록 API 는 `PaginationDto`(Phase 3 이후). 룩업 기본 데이터는 seeder.targets.ts 한 곳. 규약은 [AGENTS.md](../../../AGENTS.md) 전면 준수
 - **영업시간 단위** — 요일 반복만(특정 날짜 임시휴무 · 특별영업은 후순위). 24시간 연중무휴는 업체 단위 `is_always_open`, 영업중 여부 `is_open`(0 이면 연중무휴여도 영업중 아님)
-- **캐시** — Redis(공유 캐시) 하나. 인스턴스 메모리 캐시는 두지 않는다(로드밸런싱 — 인스턴스 로컬 상태 금지). 룩업 테이블(`t_auth` · `t_state` · `t_store_state` …)은 캐싱하지 않는다 — ID 는 코드 상수, 이름은 같은 쿼리의 PK 조인. 캐시는 짧은 TTL + 상태가 바뀌는 쓰기에서 키 삭제, 대상은 `t_api_log.duration_ms` 로 느린 경로를 본 뒤 정한다 (결정 2026-10-24 · Phase 23)
+- **캐시** — Redis(공유 캐시) 하나. 인스턴스 메모리 캐시는 두지 않는다(로드밸런싱 — 인스턴스 로컬 상태 금지). 룩업 테이블(`t_auth` · `t_state` · `t_store_state` …)은 캐싱하지 않는다 — ID 는 코드 상수, 이름은 같은 쿼리의 PK 조인. 캐시는 짧은 TTL + 상태가 바뀌는 쓰기에서 키 삭제, 대상은 `t_api_log.duration_ms` 로 느린 경로를 본 뒤 정한다 (결정 2026-10-24 · Phase 23) — 지금은 캐시를 두지 않는다(Phase 23 dropped 2026-11-10, 측정 뒤 다시)
 - **삭제 · 조회** — 삭제는 항상 소프트 삭제(`is_deleted = 1`, DB 만 — 파일은 S3 객체만 실제로 지운다). `is_deleted` 가 있는 테이블의 조회 · 개수 · 수정에는 repository 가 `notDeleted` 로 `is_deleted = 0` 을 항상 붙이고, 유일성 · 배타 제약도 지워지지 않은 행끼리다. 종류마다 반드시 있는 행(업체 상품 설정 · 그룹 상품)은 지우지 않고 `is_used` 로 판매 여부를 바꾼다 (사용자 결정 2026-10-31)
 
 ## Open Decisions (roadmap-level)
@@ -582,14 +580,14 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 - [x] **SMS 발송 업체 = AWS(Amazon SNS)** — 서울 리전. 한국은 AWS 전용 발신번호가 없어 국제 경로로만 나간다(수신 화면 국제발신, 발신번호 지정 불가, 한글 70자 단위 과금, 단가는 사용량 보고서로 확인). 새 계정은 샌드박스 · 월 한도 USD 1 — 운영 전 해제 요청. (결정 2026-10-20)
 - [x] **휴대폰 인증 규칙 · 비밀번호 초기화 방식** — 6자리 · 5분 · 3회, 같은 번호 하루 10번(env), 확인은 인증 ID + 인증번호. 초기화는 아이디 + 번호 인증 후 영문 + 숫자 10자리 임시 비밀번호 SMS(다음 로그인 때 변경 필요). (결정 2026-10-20)
 - [x] **이미지 저장소 = AWS S3** — 업로드는 presigned URL(클라이언트가 직접 올림). (결정 2026-10-20)
-- [x] **캐시 저장소 = Redis** — 인스턴스가 여러 대라 공유 캐시로만 한다. 룩업 테이블은 캐싱하지 않는다(행이 적고 같은 쿼리의 PK 조인이라 이득이 없다). 첫 대상은 요청마다 하는 로그인 회원 확인, discovery 는 측정 후. 로드맵 마지막 Phase 23 (결정 2026-10-24)
+- [x] **캐시 저장소 = Redis** — 인스턴스가 여러 대라 공유 캐시로만 한다. 룩업 테이블은 캐싱하지 않는다(행이 적고 같은 쿼리의 PK 조인이라 이득이 없다). 첫 대상은 요청마다 하는 로그인 회원 확인, discovery 는 측정 후. 로드맵 마지막 Phase 23 (결정 2026-10-24) — Phase 23 은 dropped(2026-11-10), 저장소 결정은 다시 캐시를 기획할 때 쓴다
 
 ## Notes / Risks
 
 - **스토리 테스트(Phase 24)와 실행 규칙** — 실제 서버 · DB · 브로커를 띄워야 해서 단위 spec(실 DB · 외부 IO 금지)과 따로 두고, 실행은 사용자가 한다(AGENTS.md — 서버 · 인프라 기동은 사용자 몫). 외부 연동(SNS · SMS · S3 · 토스)을 mock 어댑터 없이 어떻게 통과시킬지가 기획의 핵심이다.
 - **마이그레이션 Phase 는 동시에 돌리지 않는다** — `libs/database/src/migrations.ts`(MIGRATIONS) · `entities.ts`(ENTITIES) 를 같이 고친다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 - **배타 제약과 오프라인 검사** — 풀렸다(Phase 12): PGlite 에 `btree_gist` contrib 를 실어 `db:check` · `db:generate` 가 돈다(기간 가격 `EXC_RoomGroupPlanPrice_…`). Phase 16 `t_reservation` 의 점유 구간 배타 제약도 같은 확장을 쓴다. 운영 DB 는 적용 계정에 확장 생성 권한이 필요하다.
-- **캐시와 회원 상태** — 로그인 회원 확인을 캐시하면 정지 · 탈퇴 회원이 TTL 동안 통과할 수 있다. 상태를 바꾸는 쓰기마다 키를 지우는 지점을 Phase 23 기획에서 빠짐없이 정한다. Redis 는 새 인프라(compose 묶음 · `.env` 접속정보 · 세팅 가이드)다.
+- **캐시와 회원 상태** — 로그인 회원 확인을 캐시하면 정지 · 탈퇴 회원이 TTL 동안 통과할 수 있다. 상태를 바꾸는 쓰기마다 키를 지우는 지점을 Phase 23 기획에서 빠짐없이 정한다(Phase 23 dropped 2026-11-10 — 캐시가 없어 지금은 해당 없음). Redis 는 새 인프라(compose 묶음 · `.env` 접속정보 · 세팅 가이드)다.
 - **서비스별 DB 분리 전 단계** — 지금은 공유 DB 다. Open Decisions 의 "계정 생성 위치" · "객실 데이터 읽는 방법" 은 나중 DB 분리 비용을 정한다.
 - **6개월 사전 예약** — 날짜별 휴무 · 영업시간 변경의 영향이 커진다. 날짜별 휴무(후순위)를 앞당길지 Phase 17 전에 다시 본다.
 - **store 는 새로 만든다** — `.back` 의 store 구현과 `.beaver/output/{spec,plan,report}/store/` 문서는 참고만 한다(옛 모델: 입점 신청 · 상태 · 소개 없음).
