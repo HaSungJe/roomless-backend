@@ -172,7 +172,7 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - **로그인 그룹 3개(`t_user.login_scope`) = 도메인 3개** — 그룹마다 경로 접두 · 서비스 · 로그인 · 토큰 재발급 API 가 따로다.
   | 그룹 `LOGIN_SCOPE` | 권한(`AUTH_ID`, `t_auth` PK) | 경로 접두 · 서비스 | 로그인 |
   |---|---|---|---|
-  | `USER` | `USER`(이용자) | `/api/v1/user-service/user` · user-service | SNS 만(`/login`) — 이용자는 SNS 로만 가입하고 비밀번호가 없다. 이용 제한(BLOCK)도 로그인 · 재발급(상태 목록 `USER_LOGIN_STATES` — `is_login_allowed` 를 쓰지 않는다), 새 예약 · 연장만 막힌다 |
+  | `USER` | `USER`(이용자) | `/api/v1/user-service/user` · user-service | SNS 만(`/login`) — 이용자는 SNS 로만 가입하고 비밀번호가 없다. 이용 제한(BLOCK) · 탈퇴 대기(LEAVE_WAIT)도 로그인 · 재발급 · 인증 확인(상태 목록 `USER_LOGIN_STATES` — `is_login_allowed` 를 쓰지 않는다), 새 예약 · 연장만 막힌다(탈퇴 대기는 14일 안에 철회) |
   | `MANAGER` | `HEAD_MANAGER` · `MANAGER`(총매니저 · 매니저) | `/api/v1/admin-service/manager` · admin-service | **업체코드(`t_store.store_code`)** + 아이디 · 비밀번호 — 비밀번호 변경 · 아이디 찾기 · 비밀번호 초기화(업체코드 + 등록된 휴대폰) |
   | `ADMIN` | `SUPER_ADMIN` · `ADMIN`(총관리자 · 관리자) | `/api/v1/admin-service/admin` · admin-service | 아이디 · 비밀번호 — 비밀번호 변경만 |
   - 다른 그룹 계정은 로그인에서 없는 계정과 같은 404, 재발급에서 401(refresh 만료 단축). 각 도메인 service 가 자기 그룹 조건으로 찾는다(`findManager({..., login_scope: LOGIN_SCOPE.MANAGER})`).

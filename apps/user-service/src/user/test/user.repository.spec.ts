@@ -253,7 +253,7 @@ describe('[SMOKE:data-access] findLoginUser · consumeSmsVerificationAttempt 쿼
         repository = new UserRepository({tx: dataSource.manager} as unknown as TransactionHost<TransactionalAdapterTypeOrm>);
     });
 
-    it('[CASES:member-state] 회원 · 상태 · 회원설정을 조인하고 이용자 그룹 · 인증 통과 상태(ACTIVE · BLOCK · LEAVE_WAIT — is_login_allowed 조건 없음)로 거른다', () => {
+    it('[CASES:member-state] 회원 · 상태 · 회원설정을 조인하고 이용자 그룹 · 로그인 상태(ACTIVE · BLOCK · LEAVE_WAIT — 로그인 · 재발급과 같은 목록, is_login_allowed 조건 없음)로 거른다', () => {
         const [sql, parameters] = repository.buildLoginUserQuery('u1').getQueryAndParameters();
 
         expect(parameters).toEqual(['u1', 'USER', 'ACTIVE', 'BLOCK', 'LEAVE_WAIT']);

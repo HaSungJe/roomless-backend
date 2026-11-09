@@ -43,9 +43,12 @@ export class UserLoginResultDto {
     @ApiProperty({description: '휴대폰 SMS 인증 여부(0: 미인증, 1: 인증) — 0 이면 휴대폰 인증 화면으로'})
     is_phone_verified: number;
 
-    @ApiProperty({description: '회원 상태 (ACTIVE: 정상, BLOCK: 이용 제한 — 로그인 · 기존 예약 이용은 되고 새 예약 · 연장만 막힌다)'})
+    @ApiProperty({description: '회원 상태 (ACTIVE: 정상, BLOCK: 이용 제한, LEAVE_WAIT: 탈퇴 대기 — 둘 다 로그인 · 기존 예약 이용은 되고 새 예약 · 연장만 막힌다, 탈퇴 대기는 철회할 수 있다)'})
     state_id: string;
 
     @ApiProperty({description: '이용 제한 사유 (없으면 null)', nullable: true, type: String})
     block_comment: string | null;
+
+    @ApiProperty({description: '탈퇴 예정 시각 (YYYY-MM-DD HH:mm:ss — 탈퇴 대기가 아니면 null). 이 시각이 지나면 탈퇴 처리된다', nullable: true, type: String})
+    leave_reserved_at: string | null;
 }

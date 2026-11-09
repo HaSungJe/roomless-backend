@@ -146,8 +146,9 @@ export class UserService {
 
     /**
      * 이용자 SNS 로그인 (내부 HTTP: POST /internal/v1/user-service/user/login)
-     * - (sns_id, sns_user_id) + login_scope USER + state_id IN (ACTIVE, BLOCK) 로 조회, 미존재 → 404
-     * - 이용 제한(BLOCK)도 토큰을 준다 — 결과의 state_id · block_comment 로 앱이 알리고, 새 예약 · 연장은 예약 도메인이 막는다(사용자 결정 2026-11-09)
+     * - (sns_id, sns_user_id) + login_scope USER + state_id IN (ACTIVE, BLOCK, LEAVE_WAIT) 로 조회, 미존재 · 탈퇴 → 404
+     * - 이용 제한(BLOCK) · 탈퇴 대기(LEAVE_WAIT)도 토큰을 준다 — 결과의 state_id · block_comment · leave_reserved_at 으로 앱이 알리고(탈퇴 대기는 철회 화면),
+     *   새 예약 · 연장은 예약 도메인이 막는다(사용자 결정 2026-11-09)
      * - device_os/device_token 둘 다 입력된 경우에만 t_user 동기화(마지막 로그인 기기 유지)
      *
      * @param dto 로그인 정보
@@ -156,7 +157,7 @@ export class UserService {
      */
     @Transactional()
     async login(dto: UserLoginDto, ip: string): Promise<UserLoginResultDto> {
-        // 1. 회원 조회 (ACTIVE / BLOCK — 이용 제한도 로그인)
+        // 1. 회원 조회 (ACTIVE / BLOCK / LEAVE_WAIT — 이용 제한 · 탈퇴 대기도 로그인)
         const user = await this.userRepository.findUser({sns_id: dto.sns_id, sns_user_id: dto.sns_user_id, login_scope: LOGIN_SCOPE.USER, state_id: In(USER_LOGIN_STATES)});
         if (!user) {
             throw new NotFoundException({message: INVALID_LOGIN_MESSAGE});
@@ -201,6 +202,7 @@ export class UserService {
             is_phone_verified: user.phone_verified_at ? 1 : 0,
             state_id: user.state_id,
             block_comment: user.block_comment ?? null,
+            leave_reserved_at: user.leave_reserved_at ?? null,
         };
     }
 
@@ -248,7 +250,7 @@ export class UserService {
             throw new UnauthorizedException({message: INVALID_TOKEN_MESSAGE});
         }
 
-        // 4. 회원 state · 이용자 그룹 재검증 — 정상 · 이용 제한만(안전망: expires_at 단축)
+        // 4. 회원 state · 이용자 그룹 재검증 — 정상 · 이용 제한 · 탈퇴 대기만(탈퇴 · 다른 그룹은 안전망: expires_at 단축)
         const user = await this.userRepository.findUser({user_id: payload.user_id});
         if (!user || !USER_LOGIN_STATES.includes(user.state_id) || user.login_scope !== LOGIN_SCOPE.USER) {
             const expireEntity = new SessionRefreshEntity();
@@ -333,7 +335,7 @@ export class UserService {
 
     /**
      * 로그인 이용자 조회 — 게이트웨이 jwt-user 전략이 매 인증 요청마다 호출한다. (내부 HTTP: GET /internal/v1/user-service/user/auth-user/:user_id)
-     * 이용자 그룹이고 로그인 가능 상태(is_login_allowed = 1)이며 회원 설정이 있는 회원만 돌려준다 — 매니저 · 관리자 토큰은 여기서 404(게이트웨이 401).
+     * 이용자 그룹이고 로그인 상태(ACTIVE · BLOCK · LEAVE_WAIT — USER_LOGIN_STATES)이며 회원 설정이 있는 회원만 돌려준다 — 매니저 · 관리자 토큰 · 탈퇴 회원은 여기서 404(게이트웨이 401).
      *
      * @param user_id 토큰의 회원 ID
      * @returns 로그인 회원 정보

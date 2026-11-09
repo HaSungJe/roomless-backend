@@ -13,7 +13,7 @@ import {UserEntity} from '@app/database/entities/user/user.entity.js';
 import {notDeleted} from '@app/database/soft-delete.js';
 import {isForeignKeyViolation, isUniqueViolation} from '@app/database/typeorm-error.js';
 import type {LoginUserRow, UserRepositoryInterface} from '../interfaces/user.repository.interface.js';
-import {PHONE_TAKEN_MESSAGE, USER_AUTH_STATES} from '../user.constants.js';
+import {PHONE_TAKEN_MESSAGE, USER_LOGIN_STATES} from '../user.constants.js';
 
 /** DB 최종 실패 메시지 */
 const SERVER_ERROR_MESSAGE = '서버에서 오류가 발생했습니다. 관리자에게 문의해주세요.';
@@ -165,7 +165,7 @@ export class UserRepository implements UserRepositoryInterface {
     }
 
     /**
-     * 로그인 이용자 조회 쿼리 — 이용자 그룹은 is_login_allowed 대신 상태 목록(USER_AUTH_STATES)으로 거른다 — 이용 제한(BLOCK)도 로그인한다(사용자 결정 2026-11-09).
+     * 로그인 이용자 조회 쿼리 — 이용자 그룹은 is_login_allowed 대신 로그인 상태 목록(USER_LOGIN_STATES — 로그인 · 재발급과 같다)으로 거른다 — 이용 제한(BLOCK) · 탈퇴 대기(LEAVE_WAIT)도 로그인한다(사용자 결정 2026-11-09).
      * 매핑 민감(조인 · raw select · IN)이라 Data-Access Smoke spec 으로 SQL 을 고정한다.
      *
      * @param user_id 회원 ID
@@ -189,7 +189,7 @@ export class UserRepository implements UserRepositoryInterface {
             .innerJoin(UserSettingEntity, 'us', 'us.user_id = u.user_id')
             .where('u.user_id = :user_id', {user_id})
             .andWhere('u.login_scope = :login_scope', {login_scope: LOGIN_SCOPE.USER})
-            .andWhere('u.state_id IN (:...states)', {states: USER_AUTH_STATES});
+            .andWhere('u.state_id IN (:...states)', {states: USER_LOGIN_STATES});
     }
 
     /**

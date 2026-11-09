@@ -55,8 +55,9 @@ describe('POST /internal/v1/user-service/user/login — 이용자 SNS 로그인 
                 is_phone_verified: 0,
                 state_id: 'ACTIVE',
                 block_comment: null,
+                leave_reserved_at: null,
             });
-            expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'kakao_1', login_scope: 'USER', state_id: In(['ACTIVE', 'BLOCK'])});
+            expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'kakao_1', login_scope: 'USER', state_id: In(['ACTIVE', 'BLOCK', 'LEAVE_WAIT'])});
             expect(repo.updateUser).not.toHaveBeenCalled();
             expect(repo.insertSession).toHaveBeenCalledWith({
                 session_id: expect.stringMatching(ID_PATTERN),
@@ -140,13 +141,24 @@ describe('POST /internal/v1/user-service/user/login — 이용자 SNS 로그인 
             expect(repo.insertSessionRefresh).toHaveBeenCalledTimes(1);
         });
 
-        it('[CASES:member-state] 탈퇴 대기 · 탈퇴 회원은 조회 조건(state_id IN ACTIVE · BLOCK)에서 빠져 404, 세션 없음', async () => {
+        it('[CASES:member-state] 탈퇴 대기(LEAVE_WAIT) 회원도 토큰을 준다 — 결과 state_id LEAVE_WAIT · 탈퇴 예정 시각(철회 화면), 세션 · refresh 그대로 (사용자 결정 2026-11-09)', async () => {
+            repo.findUser.mockResolvedValueOnce({...ACTIVE_USER, state_id: 'LEAVE_WAIT', leave_reserved_at: '2026-01-15 09:00:00'});
+
+            const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({sns_id: 'KAKAO', sns_user_id: 'kakao_1'});
+
+            expect(res.status).toBe(200);
+            expect(res.body).toMatchObject({access_token: MOCK_ACCESS_TOKEN, state_id: 'LEAVE_WAIT', block_comment: null, leave_reserved_at: '2026-01-15 09:00:00'});
+            expect(repo.insertSession).toHaveBeenCalledTimes(1);
+            expect(repo.insertSessionRefresh).toHaveBeenCalledTimes(1);
+        });
+
+        it('[CASES:member-state] 탈퇴(LEAVE) 회원은 조회 조건(state_id IN ACTIVE · BLOCK · LEAVE_WAIT)에서 빠져 404, 세션 없음', async () => {
             repo.findUser.mockResolvedValueOnce(null);
 
             const res = await request(app.getHttpServer()).post(PATH).set(internalHeaders()).send({sns_id: 'KAKAO', sns_user_id: 'leaving'});
 
             expect(res.status).toBe(404);
-            expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'leaving', login_scope: 'USER', state_id: In(['ACTIVE', 'BLOCK'])});
+            expect(repo.findUser).toHaveBeenCalledWith({sns_id: 'KAKAO', sns_user_id: 'leaving', login_scope: 'USER', state_id: In(['ACTIVE', 'BLOCK', 'LEAVE_WAIT'])});
             expect(repo.insertSession).not.toHaveBeenCalled();
         });
     });
