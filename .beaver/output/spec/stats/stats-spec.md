@@ -2,6 +2,9 @@
 # One-line feature summary (e.g. "Admin user sign-up")
 feature_goal: "통계(Phase 21) — 월 단위 기간(기본 이번 달 포함 최근 3개월, 최대 12개월)의 이용자 수(이용 완료한 서로 다른 이용자) · 이용 건수 · 결제액 · 환불액 · 수익(결제 − 환불)을 합계 · 월별 추이로 보여 준다. 총관리자 · 관리자는 전체 + 업체별 목록, 업체 관리자는 자기 업체만. 결제 환경(LIVE · TEST)을 고른다"
 
+# Roadmap phase this spec belongs to (spec board focus)
+roadmap_phase: 21
+
 # Domain/module name (see AGENTS.md for the project directory structure)
 domain: "stats — admin-service stats(새 도메인 — 총관리자 · 관리자 전체 통계, 업체 관리자 자기 업체 통계), gateway api/v1/admin-service/stats, libs/contracts/src/stats. 공유 DB 의 t_reservation · t_reservation_detail · t_payment · t_store 읽기만. 스키마 변경 없음"
 

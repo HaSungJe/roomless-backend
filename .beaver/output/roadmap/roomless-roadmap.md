@@ -45,7 +45,7 @@ flowchart LR
   P17 --> P26
   P6 --> P20["Phase 20 · 관리자 계정 관리 (2)"]:::done
   P10 --> P20
-  P17 --> P21["Phase 21 · 통계 (1)"]:::inprog
+  P17 --> P21["Phase 21 · 통계 (1)"]:::done
   P19 --> P21
   P6 --> P23["Phase 23 · 캐시 Redis (3)"]:::todo
   P14 --> P23
@@ -84,28 +84,28 @@ flowchart LR
 - Phase 19 — 이용 · 유닛 6개 · 의존: Phase 5, Phase 15, Phase 17, Phase 25 · 푼다: Phase 21, 26 · 파일 집합: apps/scheduler/src/reservation(crontabs · repository · 모듈 SmsModule), apps/user-service/src/{reservation,door}, apps/admin-service/src/reservation, apps/gateway/src/api/v1/{user-service,admin-service}/reservation, libs/contracts/src/reservation, libs/database(entities · migrations · seeder), compose.scheduler.yml, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 26 — 연장 · 유닛 2개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/{reservation,discovery}, apps/scheduler/src/reservation, apps/admin-service/src/{room,store}, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/{reservation,room,discovery}, libs/database(entities · migrations), README.md, AGENTS.md, docs/ · done
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/{user(새 — 이용자 관리),manager(업체 관리자 관리)}, apps/user-service/src/{user,reservation}(이용 제한 이용자), apps/gateway/src/api/v1/admin-service/{user,manager}, libs/contracts/src/{user,manager}, README.md, AGENTS.md, docs/ · done
-- Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · in-progress
+- Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · done
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 - Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 14, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
 - Phase 24 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18 · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: Phase 21 진행 중 · Next up: Phase 21
+지금: 진행 중 없음 · Next up: Phase 22
 
 ## 지금 할 일
-Phase 21 통계 시작하기
-- #86 통계
+Phase 22 api-log 시작하기
+- #87 요청 로그 적재
 - 시작 전에 정하기
-  통계 정의 — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 21)
+  api-log 적재 위치 — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) · `USER_WEB_URL`(이용자 프론트 주소 — scheduler QR 확인 링크 SMS · admin-service 이용 중 취소 요청 승인 링크, 비면 링크 SMS 안 보냄 · 취소 요청 503) · AWS 키는 scheduler 에도 넘어간다(QR 링크 SMS — SNS 권한) · `BCRYPT_CODE` 는 user-service · admin-service 가 같은 값(문 시크릿 확인 · 업체 총관리자 비밀번호 해시를 Phase 25 부터 user-service 도 한다) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
 - 사용자 — 인프라: `npm run docker:network` → `npm run docker:rabbitmq`(admin-service 브로커 계정 생성) → `npm run docker:redis`. 로컬 실행은 hosts 에 `127.0.0.1 redis`(docs/guides/redis-setup.md), admin-service 는 `npm run start:admin-service`(:4002)
 - 사용자 — 마이그레이션 13개를 순서대로(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 남은 것을 순서대로 적용): `LoginScopeStoreDetail` → `StoreSchema` → `StoreFile` → `StoreCodeManagerScope` → `StoreOperation` → `StoreReservationPolicy` → `RoomSchema`(적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한 — RDS 13+ 는 DB 의 CREATE 권한) → `RoomState` → `ReservationSchema` → `ReservationBooking` → `RoomQrDoorSecret` → `ReservationUsage` → `ReservationExtension`
 - 사용자 — 마이그레이션이 바꾸는 기존 데이터: 회원 `login_scope` 를 권한으로 채움 · 기존 업체는 영업중지 · 좌표 0 · 업체코드 채움 · `t_store_image` 삭제 · `head_manager_phone` → `owner_phone` · 매니저 아이디 · 휴대폰 유일성은 업체 단위 · 기존 브레이크는 매일 · 업체 예약 가능 72시간 · 100% 환불 마감 60분(1시간 × 60) · 마감 뒤 환불 50% · 업체 상품 설정 3행(연박 1 ~ 30박 · 연장 가능 · 최대 3회) · 편의시설 `store_detail` 삭제 · 스탠바이 호실 → 예약가능 · 이용중 → 사용중 · 예약에 환불 비율 50 저장. 이미 있던 입점 신청은 업체 총관리자 아이디 · 비밀번호가 비어 있어 반려 후 다시 신청. 예약의 `checked_in_at` · `completed_at` 삭제(쓰던 코드 없음 — 값 없음). 새로 생기는 것: 업체 정보 파일 · 일시 예약불가 · 예약 · 구간 · 결제(+ 룩업 3) · `t_room_qr` · `t_door_open_log` · `t_reservation_cancel_request`(+ 요청 상태 룩업 — 시드는 user-service 부팅) 테이블, 정지 사유 · `door_secret` · 예약 `qr_link_sent_at` 컬럼, store 테이블 5개 소프트 삭제(`is_deleted`), 결제 부분 환불 CHECK, 예약 구간 결제 대기 부분 유니크(예약당 1개)
-- 사용자 — 앱을 새 이미지로 다시 띄우기: user-service(migrate 포함) → admin-service → scheduler → gateway(`npm run docker:up` 순서 — gateway-lb 는 `/ws/` 설정 때문에 다시 만든다. gateway 는 반드시 마지막 — 옮긴 명령 `user.store.application*` · `admin.reservation.*` · 새 명령 `admin.user.state` · `admin.manager.account-password-reset`(Phase 20) 을 서비스가 먼저 받게). scheduler crontab(결제 대기 만료(연장 구간 포함) · 늦은 승인 · 환불 · QR 동기화 · 이용 시작 · 종료 전환 · QR 확인 링크 SMS)은 `NODE_ENV=production` 에서만 돈다. 첫 회차에 이미 시작한 확정 예약은 이용 중 · 호실 사용중이 되고, 끝 전 예약에는 링크 SMS 가 한 번 간다
-- 사용자 — 프론트: 관리자 화면의 이용자 관리 `/api/v1/admin-service/user`(목록 · 상세 · 예약 이력 · 이용 제한 · 해제) · 업체 관리자 관리 `/api/v1/admin-service/manager/account`(목록 · 상세 · 비밀번호 초기화 — Phase 20), 이용자 로그인은 이용 제한(BLOCK)이어도 200 — 결과 `state_id` · `block_comment` 로 이용 제한 안내 · 예약 · 연장 버튼 막기(서버도 400, 전에는 403 이었다), 업체 예약 규정 `refund_deadline_hours` → `refund_deadline_minutes` + `late_refund_percent`, 업체 상품 설정 연박 `min_nights` · `max_nights` · 연장 `is_extendable` · `max_extensions`(Phase 26 — 상품 설정 PUT 에 필수, 1 ~ 10회), 이용 중 예약의 연장 버튼(Phase 26 — `GET /api/v1/user-service/reservation/:reservation_id/extension` 으로 가능 여부 · 사유 · 새 끝 · 금액 → `POST …/:reservation_id/extension` → done 의 `payment_id` 를 orderId 로 토스 결제창(5분 안) → 같은 `/payment-confirm`, 결제하지 않으면 그 예약은 다시 연장 불가), 결제창 orderId = 예약 결과의 `payment_id` → 토스 승인 뒤 `POST /api/v1/user-service/reservation/payment-confirm`, 내 예약 QR `GET /api/v1/user-service/reservation/:reservation_id/qr`(Phase 19 — 이용 중에만, 시작 시각부터 · 시작 전은 400), 예약 1건 화면 `/reservation/<id>`(QR 링크 SMS 가 여는 주소 — "QR 확인" 버튼) · 취소 동의 화면 `/reservation/<id>/cancel-request`(로그인 후 `GET …/cancel-request` → `PATCH …/cancel-request/approve` · `…/reject`) · 사용중지 전액 환불 취소 버튼(목록 · 상세 `is_room_disabled` 1 이면 이용 중이어도 기존 취소 API), 업체 화면의 이용 중 예약 취소 요청 `POST /api/v1/admin-service/reservation/:reservation_id/use-cancel-request` · 현황의 `cancel_request_state_id`(업체 취소 `store-cancel` 은 시작 전 예약만), 결제 확인 결과 상태가 이미 시작한 예약이면 `CHECKED_IN`, 호실 목록의 문 상태 · 바로 열기, 업체 총관리자 문 시크릿 설정, 업체 둘러보기 API 3개(지도 중심 + 같은 반경으로 다시 조회 · is_truncated 면 반경 줄이기 안내), 예약 가능 시간 응답이 그룹 → 시간대 → 호수(금액은 그룹 price · 지금 바로는 is_now 1 시간대), 지금 바로 예약은 is_now: 1(시작 시각 없이 · 오늘), 경로 10개 변경(Phase 25 — 요청 · 응답 같음): 입점 신청 7개 `/api/v1/admin-service/store/application…` → `/api/v1/user-service/store/application…`, 업체 예약 현황 · 업체 취소 · 호실 이동 `/api/v1/user-service/reservation/{store, :id/store-cancel, :id/room}` → `/api/v1/admin-service/reservation/…`
+- 사용자 — 앱을 새 이미지로 다시 띄우기: user-service(migrate 포함) → admin-service → scheduler → gateway(`npm run docker:up` 순서 — gateway-lb 는 `/ws/` 설정 때문에 다시 만든다. gateway 는 반드시 마지막 — 옮긴 명령 `user.store.application*` · `admin.reservation.*` · 새 명령 `admin.user.state` · `admin.manager.account-password-reset`(Phase 20) 을 서비스가 먼저 받게 — 통계 `/api/v1/admin-service/stats`(Phase 21)는 admin-service · gateway 새 이미지면 된다, 마이그레이션 없음). scheduler crontab(결제 대기 만료(연장 구간 포함) · 늦은 승인 · 환불 · QR 동기화 · 이용 시작 · 종료 전환 · QR 확인 링크 SMS)은 `NODE_ENV=production` 에서만 돈다. 첫 회차에 이미 시작한 확정 예약은 이용 중 · 호실 사용중이 되고, 끝 전 예약에는 링크 SMS 가 한 번 간다
+- 사용자 — 프론트: 관리자 메인 통계 `GET /api/v1/admin-service/stats`(Phase 21 — `start_month` · `end_month`(YYYY-MM, 비우면 최근 3개월 · 최대 12개월) · `environment` LIVE · TEST · `has_activity` 1 활동 업체 · 0 모든 업체 → 합계 · 월별 · 업체별 목록) · 업체 관리자 메인 `GET …/stats/mine`(자기 업체 합계 · 월별), 이용자 로그인은 탈퇴 대기(LEAVE_WAIT)여도 200 — 결과 `leave_reserved_at`(탈퇴 예정 시각)으로 탈퇴 철회 안내(`PATCH /api/v1/user-service/user/leave`) · 예약 · 연장 막기(서버도 400), 관리자 화면의 이용자 관리 `/api/v1/admin-service/user`(목록 · 상세 · 예약 이력 · 이용 제한 · 해제) · 업체 관리자 관리 `/api/v1/admin-service/manager/account`(목록 · 상세 · 비밀번호 초기화 — Phase 20), 이용자 로그인은 이용 제한(BLOCK)이어도 200 — 결과 `state_id` · `block_comment` 로 이용 제한 안내 · 예약 · 연장 버튼 막기(서버도 400, 전에는 403 이었다), 업체 예약 규정 `refund_deadline_hours` → `refund_deadline_minutes` + `late_refund_percent`, 업체 상품 설정 연박 `min_nights` · `max_nights` · 연장 `is_extendable` · `max_extensions`(Phase 26 — 상품 설정 PUT 에 필수, 1 ~ 10회), 이용 중 예약의 연장 버튼(Phase 26 — `GET /api/v1/user-service/reservation/:reservation_id/extension` 으로 가능 여부 · 사유 · 새 끝 · 금액 → `POST …/:reservation_id/extension` → done 의 `payment_id` 를 orderId 로 토스 결제창(5분 안) → 같은 `/payment-confirm`, 결제하지 않으면 그 예약은 다시 연장 불가), 결제창 orderId = 예약 결과의 `payment_id` → 토스 승인 뒤 `POST /api/v1/user-service/reservation/payment-confirm`, 내 예약 QR `GET /api/v1/user-service/reservation/:reservation_id/qr`(Phase 19 — 이용 중에만, 시작 시각부터 · 시작 전은 400), 예약 1건 화면 `/reservation/<id>`(QR 링크 SMS 가 여는 주소 — "QR 확인" 버튼) · 취소 동의 화면 `/reservation/<id>/cancel-request`(로그인 후 `GET …/cancel-request` → `PATCH …/cancel-request/approve` · `…/reject`) · 사용중지 전액 환불 취소 버튼(목록 · 상세 `is_room_disabled` 1 이면 이용 중이어도 기존 취소 API), 업체 화면의 이용 중 예약 취소 요청 `POST /api/v1/admin-service/reservation/:reservation_id/use-cancel-request` · 현황의 `cancel_request_state_id`(업체 취소 `store-cancel` 은 시작 전 예약만), 결제 확인 결과 상태가 이미 시작한 예약이면 `CHECKED_IN`, 호실 목록의 문 상태 · 바로 열기, 업체 총관리자 문 시크릿 설정, 업체 둘러보기 API 3개(지도 중심 + 같은 반경으로 다시 조회 · is_truncated 면 반경 줄이기 안내), 예약 가능 시간 응답이 그룹 → 시간대 → 호수(금액은 그룹 price · 지금 바로는 is_now 1 시간대), 지금 바로 예약은 is_now: 1(시작 시각 없이 · 오늘), 경로 10개 변경(Phase 25 — 요청 · 응답 같음): 입점 신청 7개 `/api/v1/admin-service/store/application…` → `/api/v1/user-service/store/application…`, 업체 예약 현황 · 업체 취소 · 호실 이동 `/api/v1/user-service/reservation/{store, :id/store-cancel, :id/room}` → `/api/v1/admin-service/reservation/…`
 - 사용자 — 문 쪽 프로그램에 연동 규격 변경 알리기(HTTP 문 열기 · 닫기 → 문 소켓 — README "문 소켓"), 업체 총관리자가 시크릿을 먼저 정한다. 확인: 토스는 docs/guides/toss-setup.md 6절, 문 소켓은 `.beaver/output/report/door/door-manage-report.md` 의 7단계
 
 ## Scope & Actors
@@ -484,7 +484,7 @@ build 완료 — report: `.beaver/output/report/user/user-manage-report.md`(전�
 ### Phase 21 — 통계 (관리자 메인 화면) · depends: Phase 17, Phase 19
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 86 | 통계 | 월 단위 기간(기본 이번 달 포함 3개월 · 최대 12개월) · 결제 환경(LIVE · TEST)의 이용자 수(이용 완료한 서로 다른 이용자) · 이용 건수 · 결제액 · 환불액 · 수익(결제 − 환불)을 합계 · 월별로. 총관리자는 전체 + 업체별(기본 활동 있는 업체, 필터로 모든 업체), 업체 관리자는 자기 업체만 | 이용자 수 · 수익 정의(사용자 결정 2026-11-09) | 71, 83 | in-progress |
+| 86 | 통계 | 월 단위 기간(기본 이번 달 포함 3개월 · 최대 12개월) · 결제 환경(LIVE · TEST)의 이용자 수(이용 완료한 서로 다른 이용자) · 이용 건수 · 결제액 · 환불액 · 수익(결제 − 환불)을 합계 · 월별로. 총관리자는 전체 + 업체별(기본 활동 있는 업체, 필터로 모든 업체), 업체 관리자는 자기 업체만 | 이용자 수 · 수익 정의(사용자 결정 2026-11-09) | 71, 83 | done(f99c72e) |
 
 **Expected APIs** (spec `.beaver/output/spec/stats/stats-spec.md`): `GET /api/v1/admin-service/stats`(#86, 관리자 가드 — 전체 · 업체별) · `/stats/mine`(매니저 가드 — 자기 업체), 동기 조회만. admin-service 새 `stats` 도메인이 공유 DB 의 예약 · 결제를 직접 읽는다.
 
@@ -525,8 +525,8 @@ build 완료 — report: `.beaver/output/report/stats/stats-report.md`. 조회�
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 108/115 units done (22/26 phases)
-**Next up**: Phase 21 통계 — 의존(Phase 17) 모두 완료
+**Progress**: 109/115 units done (23/26 phases)
+**Next up**: Phase 22 api-log — 의존(Phase 1) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
 
