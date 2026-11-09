@@ -111,6 +111,17 @@ export class UserSettingEntity {
 - **기존 행이 있는 테이블에 NOT NULL 컬럼을 더할 때**: 생성된 `ADD ... NOT NULL` 을 `DEFAULT <임시값>` 으로 추가 → `UPDATE` 로 실제 값 채우기 → `ALTER COLUMN ... DROP DEFAULT` 로 고친다(엔티티에 기본값이 없으면 `db:check` 가 일치로 본다). 예: `t_user.login_scope` 를 권한으로 채움(`1792682222497-LoginScopeStoreDetail.ts`). 값을 계산해 채울 때는 NULL 로 더한 뒤 `UPDATE` → `SET NOT NULL` 도 된다 — `t_store.store_code` 를 `replace(gen_random_uuid()::text, '-', '')` 로 채움(`1793027933626-StoreCodeManagerScope.ts`).
 - 마이그레이션 목록 테이블은 `t_migration`.
 
+### 월 파티션 테이블 (적용 — `t_api_log`)
+
+쌓이기만 하는 큰 기록 테이블은 시각 컬럼 RANGE **월 파티션**으로 둔다(사용자 결정 2026-11-10 — API 로그).
+
+- 경계는 **한국 달 1일 00:00**(`t_api_log_202611` = [2026-11-01 00:00 +09, 2026-12-01 00:00 +09)). 이름 `t_<table>_YYYYMM`, 범위 밖 행은 `t_<table>_default` 가 받아 insert 가 실패하지 않는다.
+- PostgreSQL 은 파티션 키를 PK 에 넣어야 한다 — `t_api_log` 의 PK 가 `(api_log_id, created_at)` 인 이유.
+- **손으로 쓴 마이그레이션** — `db:generate` 는 파티션 테이블을 만들지 못한다. 일반 테이블을 바꿀 때는 기존 테이블 · PK · 인덱스 · 시퀀스 이름을 옆으로 옮기고 → 같은 정의의 `PARTITION BY RANGE` 테이블 + 주석 + 인덱스 → 이번 달 + 3개월 · default 파티션 → 행 옮겨 담기 · `setval` → 비운 옛 테이블 DROP 순서다(`1794253561123-ApiLogPartition.ts`, down 은 반대로). TypeORM 은 파티션 부모만 테이블로 읽고(`relkind 'p'`) 자식 파티션은 뺀다 — `db:check` 를 그대로 쓴다.
+- 앞으로 쓸 달은 scheduler crontab 이 미리 만든다 — `api-log.partition`(매일 03:00 · 운영 전용 · `JobLockService`), 이번 달 + 3개월을 `CREATE TABLE IF NOT EXISTS … PARTITION OF`. 그 달 행이 이미 default 에 있으면 PostgreSQL 이 거부하므로 그 달만 건너뛴다.
+- 달 계산 · DDL 은 [api-log-partition.ts](../libs/database/src/api-log-partition.ts) 하나(`buildApiLogPartitions` · `toCreateApiLogPartitionSql`)를 마이그레이션과 scheduler 가 같이 쓴다.
+- **지우지 않는다** — 보관 기간 · 파티션 DROP 없음(소프트 삭제 규칙의 예외를 만들지 않는다). 지우는 동작이 없으므로 `is_deleted` 도 없다.
+
 ## Repository
 
 ```ts

@@ -14,7 +14,7 @@ flowchart LR
   P4 --> P5["Phase 5 · 서버 분할 (4)"]:::done
   P1 --> P7["Phase 7 · admin-service 기반 (4)"]:::done
   P1 --> P8["Phase 8 · store 스키마 (5)"]:::done
-  P1 --> P22["Phase 22 · api-log (1)"]:::todo
+  P1 --> P22["Phase 22 · api-log (1)"]:::inprog
   P3 --> P6["Phase 6 · 계정·인증 (4)"]:::done
   P7 --> P6
   P4 --> P6
@@ -85,13 +85,13 @@ flowchart LR
 - Phase 26 — 연장 · 유닛 2개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/{reservation,discovery}, apps/scheduler/src/reservation, apps/admin-service/src/{room,store}, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/{reservation,room,discovery}, libs/database(entities · migrations), README.md, AGENTS.md, docs/ · done
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/{user(새 — 이용자 관리),manager(업체 관리자 관리)}, apps/user-service/src/{user,reservation}(이용 제한 이용자), apps/gateway/src/api/v1/admin-service/{user,manager}, libs/contracts/src/{user,manager}, README.md, AGENTS.md, docs/ · done
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · done
-- Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
+- Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(modules/api-log — 미들웨어 · 로그 전용 적재), apps/scheduler(api-log), libs/database(api-log-partition · typeorm.config · migrations), libs/common(예외 필터) · in-progress
 - Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 14, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
 - Phase 24 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18 · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 22
+지금: Phase 22 진행 중 · Next up: Phase 22
 
 ## 지금 할 일
 Phase 22 api-log 시작하기
@@ -493,9 +493,11 @@ build 완료 — report: `.beaver/output/report/stats/stats-report.md`. 조회�
 ### Phase 22 — api-log (요청 로그 이식) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 87 | 요청 로그 적재 | 게이트웨이 요청 로그 · PostgreSQL 파티셔닝 마이그레이션(`t_api_log` 엔티티는 이미 있음) | 적재 위치(Open Decisions) | — | todo |
+| 87 | 요청 로그 적재 | 게이트웨이가 모든 HTTP 요청(성공 · 실패와 사유)을 로그 전용 DB 연결로 `t_api_log` 에 바로 적재 · 한국 달 월 파티션(scheduler 가 3개월 앞서 만들기, 지우지 않음) | 적재 위치 — 결정(2026-11-10) | — | in-progress |
 
-**Expected entry points**: 게이트웨이 전역 인터셉터 · `t_api_log` 월별 파티션.
+**Expected entry points** (spec `.beaver/output/spec/api-log/api-log-spec.md`): 게이트웨이 전역 미들웨어 · 로그 전용 적재(`modules/api-log` — 게이트웨이의 유일한 DB 사용) · scheduler crontab `api-log.partition` · `t_api_log` 월 파티션 마이그레이션.
+
+build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마이그레이션 `ApiLogPartition` · 게이트웨이 `DATABASE_URL` 필요.
 
 ### Phase 23 — 캐시 (Redis 공유 캐시) · depends: Phase 6, Phase 14, Phase 18
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -562,7 +564,7 @@ build 완료 — report: `.beaver/output/report/stats/stats-report.md`. 조회�
 ## Open Decisions (roadmap-level)
 
 - [x] **예약 · 조회가 객실 데이터를 읽는 방법** — 공유 DB 를 직접 읽는다: user-service 예약 repository 가 업체 · 객실 · 상품 · 영업시간 엔티티를 소유 도메인 어휘로 읽는다(`findReservationStore` · `findBookableRooms`). discovery(Phase 18)도 이 방식을 따른다. (사용자 결정 2026-11-03 · Phase 17)
-- [ ] **api-log 적재 위치** — 게이트웨이는 DB 를 쓰지 않는다는 구조와 "게이트웨이 요청 로그" 가 충돌한다. 게이트웨이가 큐로 넘겨 서비스가 적재할지, 로그 전용 저장소를 둘지. (Phase 22)
+- [x] **api-log 적재 위치** — 게이트웨이가 로그 전용 DB 연결로 직접 적재한다(게이트웨이 DB 사용은 이것만 — "DB 를 쓰지 않는다" 의 예외). 보관 기간 없음(지우지 않음). (Phase 22, 사용자 결정 2026-11-10)
 - [x] **입장 QR 확인 수단** — 문 쪽 타 업체 프로그램이 예약자 QR 화면(로그인 웹페이지)을 읽어 문 소켓으로 묻고(`door.verify`), 서버가 Redis 의 그 호실 현재 QR 과 비교해 답한다(`door.verified`). 서버는 Redis 만 바꾸고 문을 직접 움직이지 않는다. QR 은 이용 시작 때 예약 건마다 발급. (사용자 결정 2026-11-01 → 2026-11-04 갱신 · Phase 14 · 15 — HTTP 문 열기 API 에서 소켓으로)
 - [x] **취소 규정의 끝** — 마감(n분 전) 전 100%, 마감 뒤 시작 전까지 업체 비율(기본 50%) 환불, 시작 이후 · 노쇼는 취소 · 환불 없음. (사용자 결정 2026-10-29 → 2026-11-03 갱신 · Phase 17 #70)
 - [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 그대로 둔다(2026-11-03 갱신: 특수 표시도 두지 않는다 — 아래 설정 변경 결정과 같다). (사용자 결정 2026-10-27 · 2026-11-03 · #98)

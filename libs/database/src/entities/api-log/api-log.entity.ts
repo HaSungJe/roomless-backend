@@ -1,9 +1,9 @@
 import {BeforeInsert, Column, Entity, Index, PrimaryColumn, PrimaryGeneratedColumn} from 'typeorm';
 
 /**
- * API 호출 로그 (게이트웨이 이식 예정)
+ * API 호출 로그 — 게이트웨이가 모든 HTTP 요청을 응답이 끝난 뒤 로그 전용 연결로 넣는다(사용자 결정 2026-11-10).
+ * - created_at RANGE 월 파티션 테이블(한국 달 — `t_api_log_YYYYMM` + `t_api_log_default`, 1794253561123-ApiLogPartition). 파티션은 scheduler 가 3개월 앞서 만들고 지우지 않는다.
  * - PK 가 (api_log_id, created_at) 복합인 이유: PostgreSQL RANGE 파티셔닝은 파티션 키(created_at)가 PK 에 포함되어야 한다.
- * - 파티셔닝은 api-log 를 게이트웨이에 이식할 때 별도 마이그레이션으로 전환한다.
  */
 @Entity({name: 't_api_log', comment: 'API 호출 로그'})
 @Index('IDX_ApiLog_CreatedAt', ['created_at'])
@@ -19,7 +19,7 @@ export class ApiLogEntity {
     @Column({name: 'method', length: 10, nullable: false, comment: 'HTTP 메서드'})
     method: string;
 
-    @Column({name: 'path', length: 500, nullable: false, comment: '요청 경로 (실제 URL)'})
+    @Column({name: 'path', length: 500, nullable: false, comment: '요청 경로 (라우트 패턴, 없는 경로는 실제 경로)'})
     path: string;
 
     @Column({name: 'request_param', type: 'jsonb', nullable: true, comment: 'path param'})

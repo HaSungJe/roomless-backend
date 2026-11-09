@@ -18,7 +18,7 @@
 #   roomless-edge    : gateway-lb · gateway (외부 포트는 gateway-lb 만)
 #   roomless-service : user-service-lb · admin-service-lb 로 내부 HTTP (internal)
 #   roomless-broker  : 브로커로 나가는 길
-#   roomless-data    : Redis 로 나가는 길(문 소켓의 서버 명령 구독) — 게이트웨이는 DB 를 쓰지 않는다(DATABASE_URL 을 전달하지 않는다)
+#   roomless-data    : Redis(문 소켓의 서버 명령 구독) · PostgreSQL(API 로그 적재 — 로그 전용 연결, t_api_log 만)로 나가는 길
 #
 # 문 소켓(/ws/v1/door): gateway-lb 의 /ws/ 가 WebSocket 업그레이드를 넘긴다. 연결 목록은 인스턴스 메모리라 어느 인스턴스에 붙어도 되고,
 #   바로 열기 명령은 Redis 채널을 인스턴스마다 구독해 자기 연결에만 보낸다 → sticky session 이 필요 없다
@@ -49,6 +49,8 @@ services:
             INTERNAL_API_TOKEN: '${INTERNAL_API_TOKEN:?.env 에 INTERNAL_API_TOKEN 이 필요합니다}'
             # 문 소켓의 서버 명령 구독(Redis 채널 door-commands) — user-service · admin-service 와 같은 Redis
             REDIS_URL: '${REDIS_URL:?.env 에 REDIS_URL 이 필요합니다}'
+            # API 로그 적재(로그 전용 연결 풀 5 — t_api_log 만) — user-service · admin-service 와 같은 DB
+            DATABASE_URL: '${DATABASE_URL:?.env 에 DATABASE_URL 이 필요합니다}'
             # 앞단 프록시 수 — .env 값, 없으면 1(gateway-lb 1단)
             TRUST_PROXY: '${TRUST_PROXY:-1}'
             # ── 서버 구성: 어느 환경이든 같다 ──
@@ -59,11 +61,10 @@ services:
             # 인스턴스마다 달라야 한다 — 비워 두면 컨테이너 호스트명으로 정한다(.env 에 값이 있어도 덮는다)
             GATEWAY_INSTANCE_ID: ''
             TZ: Asia/Seoul
-            # ── 쓰지 않는 비밀값은 전달하지 않는다 (게이트웨이는 DB · 비밀번호 해시 · 토큰 암호화 · AWS · 토스를 쓰지 않는다) ──
+            # ── 쓰지 않는 비밀값은 전달하지 않는다 (게이트웨이는 비밀번호 해시 · 토큰 암호화 · AWS · 토스를 쓰지 않는다 — DB 는 API 로그 적재만) ──
             RABBITMQ_USER_SERVICE_PASSWORD: ''
             RABBITMQ_ADMIN_SERVICE_PASSWORD: ''
             RABBITMQ_PASSWORD: ''
-            DATABASE_URL: ''
             REDIS_PASSWORD: ''
             POSTGRES_PASSWORD: ''
             BCRYPT_CODE: ''
