@@ -45,7 +45,7 @@ flowchart LR
   P17 --> P26
   P6 --> P20["Phase 20 · 관리자 계정 관리 (2)"]:::done
   P10 --> P20
-  P17 --> P21["Phase 21 · 통계 (1)"]:::todo
+  P17 --> P21["Phase 21 · 통계 (1)"]:::inprog
   P19 --> P21
   P6 --> P23["Phase 23 · 캐시 Redis (3)"]:::todo
   P14 --> P23
@@ -84,14 +84,14 @@ flowchart LR
 - Phase 19 — 이용 · 유닛 6개 · 의존: Phase 5, Phase 15, Phase 17, Phase 25 · 푼다: Phase 21, 26 · 파일 집합: apps/scheduler/src/reservation(crontabs · repository · 모듈 SmsModule), apps/user-service/src/{reservation,door}, apps/admin-service/src/reservation, apps/gateway/src/api/v1/{user-service,admin-service}/reservation, libs/contracts/src/reservation, libs/database(entities · migrations · seeder), compose.scheduler.yml, .env.example, README.md, AGENTS.md, docs/ · done
 - Phase 26 — 연장 · 유닛 2개 · 의존: Phase 19 · 푼다: — · 파일 집합: apps/user-service/src/{reservation,discovery}, apps/scheduler/src/reservation, apps/admin-service/src/{room,store}, apps/gateway/src/api/v1/user-service/reservation, libs/contracts/src/{reservation,room,discovery}, libs/database(entities · migrations), README.md, AGENTS.md, docs/ · done
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/{user(새 — 이용자 관리),manager(업체 관리자 관리)}, apps/user-service/src/{user,reservation}(이용 제한 이용자), apps/gateway/src/api/v1/admin-service/{user,manager}, libs/contracts/src/{user,manager}, README.md, AGENTS.md, docs/ · done
-- Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats, apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats · todo
+- Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · in-progress
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(인터셉터), libs/database/src/entities/api-log, libs/database/src/migrations · todo
 - Phase 23 — 캐시(Redis) · 유닛 3개 · 의존: Phase 6, 14, 18 · 푼다: — · 파일 집합: libs/integration/src/cache, apps/gateway/src/guards, apps/{user,admin}-service(무효화), apps/admin-service/src/discovery · todo
 - Phase 24 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18 · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 21
+지금: Phase 21 진행 중 · Next up: Phase 21
 
 ## 지금 할 일
 Phase 21 통계 시작하기
@@ -484,9 +484,11 @@ build 완료 — report: `.beaver/output/report/user/user-manage-report.md`(전�
 ### Phase 21 — 통계 (관리자 메인 화면) · depends: Phase 17, Phase 19
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 86 | 통계 | 기본 기간 3개월, 업체별 이용자 수 + 수익. 총관리자는 전체(합계 + 업체별), 업체 관리자는 자기 업체만 | 이용자 수 · 수익 정의(Open Decisions) | 71, 83 | todo |
+| 86 | 통계 | 월 단위 기간(기본 이번 달 포함 3개월 · 최대 12개월) · 결제 환경(LIVE · TEST)의 이용자 수(이용 완료한 서로 다른 이용자) · 이용 건수 · 결제액 · 환불액 · 수익(결제 − 환불)을 합계 · 월별로. 총관리자는 전체 + 업체별(기본 활동 있는 업체, 필터로 모든 업체), 업체 관리자는 자기 업체만 | 이용자 수 · 수익 정의(사용자 결정 2026-11-09) | 71, 83 | in-progress |
 
-**Expected APIs** (가칭): `GET /api/v1/admin-service/stats`(#86, 관리자 가드 — 전체) · `/stats/mine`(매니저 가드 — 자기 업체). 예약 데이터(user-service 도메인)를 읽는 방법은 Open Decisions "객실 데이터를 읽는 방법" 과 같이 정한다.
+**Expected APIs** (spec `.beaver/output/spec/stats/stats-spec.md`): `GET /api/v1/admin-service/stats`(#86, 관리자 가드 — 전체 · 업체별) · `/stats/mine`(매니저 가드 — 자기 업체), 동기 조회만. admin-service 새 `stats` 도메인이 공유 DB 의 예약 · 결제를 직접 읽는다.
+
+build 완료 — report: `.beaver/output/report/stats/stats-report.md`. 조회만 · 마이그레이션 없음.
 
 ### Phase 22 — api-log (요청 로그 이식) · depends: Phase 1
 | # | Unit | Goal | Key decision | Depends | Status |
@@ -565,7 +567,7 @@ build 완료 — report: `.beaver/output/report/user/user-manage-report.md`(전�
 - [x] **취소 규정의 끝** — 마감(n분 전) 전 100%, 마감 뒤 시작 전까지 업체 비율(기본 50%) 환불, 시작 이후 · 노쇼는 취소 · 환불 없음. (사용자 결정 2026-10-29 → 2026-11-03 갱신 · Phase 17 #70)
 - [x] **일시 예약불가에 걸리는 기존 예약** — 취소하지 않고 그대로 둔다(2026-11-03 갱신: 특수 표시도 두지 않는다 — 아래 설정 변경 결정과 같다). (사용자 결정 2026-10-27 · 2026-11-03 · #98)
 - [x] **영업중지 · 영업시간 변경 · 영업중 아님 전환 시 기존 예약** — 기존 예약은 그대로 둔다(자동 취소 · 특수 표시 없음). 필요하면 업체가 업체 취소(100% 환불 + SMS)로 정리한다. (사용자 결정 2026-11-03 · Phase 17)
-- [ ] **통계 정의** — 이용자 수(서로 다른 이용 완료자?) · 수익(결제 − 환불?). (Phase 21)
+- [x] **통계 정의** — 이용자 수 = 기간 안 이용 완료한 서로 다른 이용자(+ 이용 건수), 수익 = 승인 결제액 − 환불 신청액, 월 단위 기간 · 결제 환경 선택 (사용자 결정 2026-11-09 · Phase 21)
 - [x] **결제 수단** — 토스페이먼츠로 결제 · 환불을 모두 처리한다(개발은 테스트 키). (사용자 결정 2026-10-29)
 - [x] **결제 대기 유지 시간** — 5분. 만료는 scheduler 가 토스 조회로 확정 · 만료(금액 불일치는 환불), 만료 뒤 30분 재확인(늦은 승인 → 환불), 같은 이용자 · 같은 호실 10분 재예약 금지. (사용자 결정 2026-11-03 · Phase 17)
 - [x] **공개 · 내부 경로 규칙** — 서비스 이름으로 시작한다: 공개 `/api/v1/<service>/<domain>/<action>`, 내부 `/internal/v1/<service>/<domain>/<action>`(`/api/v1/user-service/user/login` · `/api/v1/admin-service/manager/login`). 로그인 그룹은 가드로만 가른다. (결정 2026-10-23 · Phase 6 리비전 261023-2)
