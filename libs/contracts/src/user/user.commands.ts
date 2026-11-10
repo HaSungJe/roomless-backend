@@ -37,6 +37,8 @@ export const USER_INTERNAL_PATH = {
     TOKEN_REFRESH: '/internal/v1/user-service/user/token-refresh',
     /** 로그인 이용자 조회(게이트웨이 jwt-user 전략) — 뒤에 `/<user_id>` */
     AUTH_USER: '/internal/v1/user-service/user/auth-user',
+    /** 내 정보 (GET — 로그인 이용자 본인) */
+    ME: '/internal/v1/user-service/user/me',
 } as const;
 
 /**

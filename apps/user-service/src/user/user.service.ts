@@ -29,6 +29,7 @@ import type {UserFindLoginIdConfirmDto, UserFindLoginIdConfirmResultDto} from '@
 import type {UserFindLoginIdDto, UserFindLoginIdResultDto} from '@app/contracts/user/dto/user-find-login-id.dto.js';
 import type {UserLeaveDto} from '@app/contracts/user/dto/user-leave.dto.js';
 import type {UserLoginDto, UserLoginResultDto} from '@app/contracts/user/dto/user-login.dto.js';
+import type {UserMeResultDto} from '@app/contracts/user/dto/user-me.dto.js';
 import type {UserPhoneVerificationConfirmDto} from '@app/contracts/user/dto/user-phone-verification-confirm.dto.js';
 import type {UserPhoneVerificationDto, UserPhoneVerificationResultDto} from '@app/contracts/user/dto/user-phone-verification.dto.js';
 import type {UserSignDto, UserSignResultDto} from '@app/contracts/user/dto/user-sign.dto.js';
@@ -44,7 +45,7 @@ import type {SmsSenderInterface} from '@app/integration/interfaces/integration.i
 import type {UserRepositoryInterface} from './interfaces/user.repository.interface.js';
 import {NO_MATCHING_USER_MESSAGE, PHONE_ALREADY_VERIFIED_MESSAGE, PHONE_TAKEN_MESSAGE, UNDERAGE_MESSAGE, USER_LOGIN_STATES} from './user.constants.js';
 import {USER_REPOSITORY} from './user.symbols.js';
-import {generateSnsLoginId, isAdult, toUserAuthUserResult} from './user.util.js';
+import {generateSnsLoginId, isAdult, toUserAuthUserResult, toUserMeResult} from './user.util.js';
 
 /**
  * 이용자 도메인 비즈니스 로직 (헥사고날의 안쪽) — 이용자 로그인 그룹(USER)만 다룬다. 매니저 · 관리자는 admin-service 도메인이다.
@@ -346,6 +347,21 @@ export class UserService {
             throw new NotFoundException({message: '로그인 정보를 찾을 수 없습니다.'});
         }
         return toUserAuthUserResult(row);
+    }
+
+    /**
+     * 내 정보 — 로그인한 이용자 본인의 회원 정보(마이페이지). (내부 HTTP: GET /internal/v1/user-service/user/me)
+     * 이용자 그룹 회원만 — 게이트웨이 jwt-user 가드를 지난 회원이라 보통 있고, 없으면 404.
+     *
+     * @param user_id 로그인 회원 ID
+     * @returns 내 정보
+     */
+    async getMe(user_id: string): Promise<UserMeResultDto> {
+        const user = await this.userRepository.findUser({user_id, login_scope: LOGIN_SCOPE.USER});
+        if (!user) {
+            throw new NotFoundException({message: USER_NOT_FOUND_MESSAGE});
+        }
+        return toUserMeResult(user);
     }
 
     /**

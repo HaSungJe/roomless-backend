@@ -47,11 +47,10 @@ flowchart LR
   P10 --> P20
   P17 --> P21["Phase 21 · 통계 (1)"]:::done
   P19 --> P21
-  P21 --> P27["Phase 27 · 프론트 인계 자료 (3)"]:::todo
+  P21 --> P27["Phase 27 · 프론트 인계 자료 (7)"]:::inprog
   P22 --> P27
   P26 --> P27
-  P27 --> P28["Phase 28 · 화면 설계 아티팩트 (3)"]:::todo
-  P28 --> P29["Phase 29 · 스토리 테스트 (2)"]:::todo
+  P27 --> P29["Phase 29 · 스토리 테스트 (2)"]:::todo
   P17 --> P29
   P18 --> P29
   P6 -. 동시 가능 .- P7
@@ -89,19 +88,19 @@ flowchart LR
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · done
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(modules/api-log — 미들웨어 · 로그 전용 적재), apps/scheduler(api-log), libs/database(api-log-partition · typeorm.config · migrations), libs/common(예외 필터) · done
 - Phase 23 — 캐시(Redis) · 유닛 3개 · todo
-- Phase 27 — 프론트 인계 자료 · 유닛 3개 · 의존: Phase 21, 22, 26 · 푼다: Phase 28 · 파일 집합: 프론트 인계 문서(화면 지도 · 화면별 API · 인계 문서 — 위치는 Phase 27 기획에서), README.md · todo
-- Phase 28 — 화면 설계 아티팩트 · 유닛 3개 · 의존: Phase 27 · 푼다: Phase 29 · 파일 집합: 화면 설계 아티팩트(이용자 · 업체 관리자 · 총관리자 — claude.ai 아티팩트), 인계 문서의 링크 · todo
-- Phase 29 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18, 28 · 프론트 화면 개발(별도 저장소) · 푼다: — · 파일 집합: 스토리 테스트 지침 문서(Claude in Chrome 세션용 — 시나리오 · 조작 지침 · 시작 상태 · 결과 보고 양식), README.md · todo
+- Phase 27 — 프론트 인계 자료 · 유닛 7개 · 의존: Phase 21, 22, 26 · 푼다: Phase 29 · 파일 집합: .beaver/output/frontend/(지침서 · 아티팩트 원본 · 수정 요청), claude.ai 화면 설계 아티팩트 3개, apps/user-service/src/user · apps/gateway/src/api/v1/user-service/user · libs/contracts/src/user(내 정보 API), AGENTS.md, README.md, docs/api.md · in-progress
+- Phase 29 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18, 27 · 프론트 화면 개발(별도 저장소) · 푼다: — · 파일 집합: 스토리 테스트 지침 문서(Claude in Chrome 세션용 — 시나리오 · 조작 지침 · 시작 상태 · 결과 보고 양식), README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 27
+지금: Phase 27 진행 중 · Next up: Phase 27
 
 ## 지금 할 일
-Phase 27 프론트 인계 자료 시작하기
-- #125 화면 지도
-- #126 화면별 API 정리
-- #127 인계 문서
+Phase 27 프론트 인계 자료 — 화면 설계 아티팩트 + 지침서
+- #125 화면 목록과 주소 · #126 API 목록과 호출 방식 · #127 화면 구성과 쓰는 API
+- #128 이용자 · #129 업체 관리자 · #130 관리자 화면 설계 아티팩트(지침서에 링크)
+- #131 내 정보 API(`GET /api/v1/user-service/user/me`) — 마이페이지
+- build 완료 — report: `.beaver/output/report/frontend/frontend-handoff-report.md` → /beaver:ship
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) · `USER_WEB_URL`(이용자 프론트 주소 — scheduler QR 확인 링크 SMS · admin-service 이용 중 취소 요청 승인 링크, 비면 링크 SMS 안 보냄 · 취소 요청 503) · AWS 키는 scheduler 에도 넘어간다(QR 링크 SMS — SNS 권한) · `BCRYPT_CODE` 는 user-service · admin-service 가 같은 값(문 시크릿 확인 · 업체 총관리자 비밀번호 해시를 Phase 25 부터 user-service 도 한다) · `DATABASE_URL` 은 이제 gateway 에도 넘어간다(Phase 22 API 로그 — compose 필수값, 값은 그대로) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
@@ -109,7 +108,7 @@ Phase 27 프론트 인계 자료 시작하기
 - 사용자 — 마이그레이션 14개를 순서대로(`npm run db:migrate` 또는 Docker migrate 컨테이너 — 남은 것을 순서대로 적용): `LoginScopeStoreDetail` → `StoreSchema` → `StoreFile` → `StoreCodeManagerScope` → `StoreOperation` → `StoreReservationPolicy` → `RoomSchema`(적용 계정에 PostgreSQL 확장 `btree_gist` 생성 권한 — RDS 13+ 는 DB 의 CREATE 권한) → `RoomState` → `ReservationSchema` → `ReservationBooking` → `RoomQrDoorSecret` → `ReservationUsage` → `ReservationExtension` → `ApiLogPartition`(Phase 22 — `t_api_log` 를 한국 달 월 파티션 테이블로, 적용한 달 + 3개월 · default 파티션)
 - 사용자 — 마이그레이션이 바꾸는 기존 데이터: 회원 `login_scope` 를 권한으로 채움 · 기존 업체는 영업중지 · 좌표 0 · 업체코드 채움 · `t_store_image` 삭제 · `head_manager_phone` → `owner_phone` · 매니저 아이디 · 휴대폰 유일성은 업체 단위 · 기존 브레이크는 매일 · 업체 예약 가능 72시간 · 100% 환불 마감 60분(1시간 × 60) · 마감 뒤 환불 50% · 업체 상품 설정 3행(연박 1 ~ 30박 · 연장 가능 · 최대 3회) · 편의시설 `store_detail` 삭제 · 스탠바이 호실 → 예약가능 · 이용중 → 사용중 · 예약에 환불 비율 50 저장. 이미 있던 입점 신청은 업체 총관리자 아이디 · 비밀번호가 비어 있어 반려 후 다시 신청. 예약의 `checked_in_at` · `completed_at` 삭제(쓰던 코드 없음 — 값 없음). 새로 생기는 것: 업체 정보 파일 · 일시 예약불가 · 예약 · 구간 · 결제(+ 룩업 3) · `t_room_qr` · `t_door_open_log` · `t_reservation_cancel_request`(+ 요청 상태 룩업 — 시드는 user-service 부팅) 테이블, 정지 사유 · `door_secret` · 예약 `qr_link_sent_at` 컬럼, store 테이블 5개 소프트 삭제(`is_deleted`), 결제 부분 환불 CHECK, 예약 구간 결제 대기 부분 유니크(예약당 1개), `t_api_log` 는 월 파티션 테이블로 바뀌고 기존 행은 옮겨 담는다(지우지 않음)
 - 사용자 — 앱을 새 이미지로 다시 띄우기: user-service(migrate 포함) → admin-service → scheduler → gateway(`npm run docker:up` 순서 — gateway-lb 는 `/ws/` 설정 때문에 다시 만든다. gateway 는 반드시 마지막 — 옮긴 명령 `user.store.application*` · `admin.reservation.*` · 새 명령 `admin.user.state` · `admin.manager.account-password-reset`(Phase 20) 을 서비스가 먼저 받게 — 통계 `/api/v1/admin-service/stats`(Phase 21)는 admin-service · gateway 새 이미지면 된다, 마이그레이션 없음). API 로그(Phase 22): gateway 가 모든 요청을 `t_api_log` 에 바로 넣는다 — gateway 인스턴스마다 DB 연결이 최대 5개 늘어나니 DB 최대 연결 수 여유 확인, scheduler 가 매일 03:00 앞으로 3개월 파티션을 만든다(운영 전용). scheduler crontab(결제 대기 만료(연장 구간 포함) · 늦은 승인 · 환불 · QR 동기화 · 이용 시작 · 종료 전환 · QR 확인 링크 SMS)은 `NODE_ENV=production` 에서만 돈다. 첫 회차에 이미 시작한 확정 예약은 이용 중 · 호실 사용중이 되고, 끝 전 예약에는 링크 SMS 가 한 번 간다
-- 사용자 — 프론트: 관리자 메인 통계 `GET /api/v1/admin-service/stats`(Phase 21 — `start_month` · `end_month`(YYYY-MM, 비우면 최근 3개월 · 최대 12개월) · `environment` LIVE · TEST · `has_activity` 1 활동 업체 · 0 모든 업체 → 합계 · 월별 · 업체별 목록) · 업체 관리자 메인 `GET …/stats/mine`(자기 업체 합계 · 월별), 이용자 로그인은 탈퇴 대기(LEAVE_WAIT)여도 200 — 결과 `leave_reserved_at`(탈퇴 예정 시각)으로 탈퇴 철회 안내(`PATCH /api/v1/user-service/user/leave`) · 예약 · 연장 막기(서버도 400), 관리자 화면의 이용자 관리 `/api/v1/admin-service/user`(목록 · 상세 · 예약 이력 · 이용 제한 · 해제) · 업체 관리자 관리 `/api/v1/admin-service/manager/account`(목록 · 상세 · 비밀번호 초기화 — Phase 20), 이용자 로그인은 이용 제한(BLOCK)이어도 200 — 결과 `state_id` · `block_comment` 로 이용 제한 안내 · 예약 · 연장 버튼 막기(서버도 400, 전에는 403 이었다), 업체 예약 규정 `refund_deadline_hours` → `refund_deadline_minutes` + `late_refund_percent`, 업체 상품 설정 연박 `min_nights` · `max_nights` · 연장 `is_extendable` · `max_extensions`(Phase 26 — 상품 설정 PUT 에 필수, 1 ~ 10회), 이용 중 예약의 연장 버튼(Phase 26 — `GET /api/v1/user-service/reservation/:reservation_id/extension` 으로 가능 여부 · 사유 · 새 끝 · 금액 → `POST …/:reservation_id/extension` → done 의 `payment_id` 를 orderId 로 토스 결제창(5분 안) → 같은 `/payment-confirm`, 결제하지 않으면 그 예약은 다시 연장 불가), 결제창 orderId = 예약 결과의 `payment_id` → 토스 승인 뒤 `POST /api/v1/user-service/reservation/payment-confirm`, 내 예약 QR `GET /api/v1/user-service/reservation/:reservation_id/qr`(Phase 19 — 이용 중에만, 시작 시각부터 · 시작 전은 400), 예약 1건 화면 `/reservation/<id>`(QR 링크 SMS 가 여는 주소 — "QR 확인" 버튼) · 취소 동의 화면 `/reservation/<id>/cancel-request`(로그인 후 `GET …/cancel-request` → `PATCH …/cancel-request/approve` · `…/reject`) · 사용중지 전액 환불 취소 버튼(목록 · 상세 `is_room_disabled` 1 이면 이용 중이어도 기존 취소 API), 업체 화면의 이용 중 예약 취소 요청 `POST /api/v1/admin-service/reservation/:reservation_id/use-cancel-request` · 현황의 `cancel_request_state_id`(업체 취소 `store-cancel` 은 시작 전 예약만), 결제 확인 결과 상태가 이미 시작한 예약이면 `CHECKED_IN`, 호실 목록의 문 상태 · 바로 열기, 업체 총관리자 문 시크릿 설정, 업체 둘러보기 API 3개(지도 중심 + 같은 반경으로 다시 조회 · is_truncated 면 반경 줄이기 안내), 예약 가능 시간 응답이 그룹 → 시간대 → 호수(금액은 그룹 price · 지금 바로는 is_now 1 시간대), 지금 바로 예약은 is_now: 1(시작 시각 없이 · 오늘), 경로 10개 변경(Phase 25 — 요청 · 응답 같음): 입점 신청 7개 `/api/v1/admin-service/store/application…` → `/api/v1/user-service/store/application…`, 업체 예약 현황 · 업체 취소 · 호실 이동 `/api/v1/user-service/reservation/{store, :id/store-cancel, :id/room}` → `/api/v1/admin-service/reservation/…`
+- 사용자 — 프론트: 아티팩트 3개 + 지침서 `.beaver/output/frontend/`(README 에 아티팩트 링크 · screens.md 화면 목록과 구성 · api.md API 목록 · dto/)를 프론트 세션에 넘긴다. 이후 백엔드 변경은 `changes/` 수정 요청 문서로 온다
 - 사용자 — 문 쪽 프로그램에 연동 규격 변경 알리기(HTTP 문 열기 · 닫기 → 문 소켓 — README "문 소켓"), 업체 총관리자가 시크릿을 먼저 정한다. 확인: 토스는 docs/guides/toss-setup.md 6절, 문 소켓은 `.beaver/output/report/door/door-manage-report.md` 의 7단계
 
 ## Scope & Actors
@@ -131,7 +130,7 @@ Phase 27 프론트 인계 자료 시작하기
 
 - **문 · 기기** — 도어락 · 문 쪽 QR 리더 프로그램(타 업체)은 업체 몫이고, 문을 여닫는 것도 그 프로그램이 한다. 우리는 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 두고 문 열기(QR) · 닫기 API 만 연다. 전등 · 에어컨 등 기기 제어 · 기기 플랫폼 연동은 하지 않는다 (사용자 결정 2026-11-01 · Phase 14).
 - **AWS 리소스 세팅** — IAM · S3 버킷 · SMS 샌드박스 해제 · 지출 한도는 사용자가 `docs/guides/aws-setup.md` 대로 한다. 코드는 처음부터 실제 연동이다(mock 없음). 이메일 · 알림톡 · 푸시는 쓰지 않는다.
-- **프론트엔드** — 관리자 페이지 · 이용자 페이지(Next.js)는 별도 레포. Next.js 앱 하나에 경로 세 묶음 — 이용자 `/`(지도 · 업체 상세 · 객실 그룹 · 예약 가능 시간은 로그인 없이) · 업체 관리자 `/manager` · 총관리자 · 관리자 `/admin`(사용자 결정 2026-11-10). API 입출력 모양은 백엔드 `libs/contracts` DTO 를 Swagger 데코레이터(`@ApiProperty`)만 뺀 사본으로 쓰고, `class-validator` 검증 · 한국어 메시지를 화면 입력 검증에 그대로 쓴다(옮기는 방법은 Phase 27 #126 — 사용자 결정 2026-11-10). 이 트랙은 인계 자료(Phase 27 · 28)까지 만든다.
+- **프론트엔드** — 관리자 페이지 · 이용자 페이지(Next.js)는 별도 레포. Next.js 앱 하나에 경로 세 묶음 — 이용자 `/`(지도 · 업체 상세 · 객실 그룹 · 예약 가능 시간은 로그인 없이) · 업체 관리자 `/manager` · 총관리자 · 관리자 `/admin`(사용자 결정 2026-11-10). API 입출력 모양은 백엔드 `libs/contracts` DTO 를 Swagger 데코레이터(`@ApiProperty`)만 뺀 사본으로 쓰고, `class-validator` 검증 · 한국어 메시지를 화면 입력 검증에 그대로 쓴다(옮기는 방법은 Phase 27 #126 — 사용자 결정 2026-11-10). 이 트랙은 인계 자료(Phase 27 — 화면 설계 아티팩트 + 지침서)까지 만든다.
 - **후순위(별도 기획)** — Phases & Units 끝의 "후순위" 표.
 
 ## Phases & Units
@@ -516,25 +515,20 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 
 무효화 원칙은 `.beaver/memory/cache.md` 에 있다 — 캐시한 데이터를 바꾸는 쓰기(정지 · 탈퇴 · 수정 …)는 그 키도 함께 고친다. 캐시를 다시 도입할 때 적용한다(Phase 23 dropped 2026-11-10).
 
-### Phase 27 — 프론트 인계 자료 (화면 지도 · 화면별 API · 인계 문서) · depends: Phase 21, Phase 22, Phase 26
+### Phase 27 — 프론트 인계 자료 (화면 설계 아티팩트 + 지침서 — Phase 28 을 합침) · depends: Phase 21, Phase 22, Phase 26
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 125 | 화면 지도 | 이용자 `/` · 업체 관리자 `/manager` · 총관리자 `/admin` 의 화면 목록 · 경로 · 로그인 필요 여부(이용자 공개 화면 구분) · 화면 이동 흐름(예약 → 토스 결제 → 결과, SMS 링크로 들어오는 `/reservation/<id>` · 취소 동의, 이용 제한 · 탈퇴 대기 안내, 첫 로그인 비밀번호 변경) | 경로 이름 · 화면 묶음 | — | todo |
-| 126 | 화면별 API 정리 | 화면마다 쓰는 게이트웨이 API · 요청 · 응답 · 실패 본문, 큐 경로(SSE accepted → done · failed · pending) 처리, 그룹별 토큰 · 재발급 · 401, 결제(결제창 orderId = `payment_id` → 결제 확인), 사진 올리기(업로드 주소에 PUT), DTO 사본(`libs/contracts` DTO 에서 `@ApiProperty` 만 뺌 — `class-validator` 검증 · 한국어 메시지 그대로)을 프론트로 옮기는 방법 | 문서 형식(화면 단위 표), DTO 사본 옮기는 방법(복사 스크립트 · 패키지) | 125 | todo |
-| 127 | 인계 문서 | 프론트 세션에 그대로 넘길 시작 문서 — 저장소 구성(Next.js 앱 하나 · 경로 세 묶음), 환경 변수(게이트웨이 주소 · 토스 클라이언트 키 등), 백엔드 쪽 설정(`CORS_ORIGINS` · `USER_WEB_URL`), 화면 지도 · API 정리 · 아티팩트 링크, 백엔드에 API 를 요청하는 절차 | 위치(백엔드 docs · 아티팩트) | 125, 126 | todo |
+| 125 | 화면 목록과 주소 | 이용자 `/` · 업체 관리자 `/manager` · 총관리자 `/admin` 의 화면 25개 · 주소 · 로그인 필요 여부(이용자 공개 화면 구분), 고정 주소 2개(SMS 링크가 여는 `/reservation/<id>` · 취소 동의) | 주소 이름 · 화면 묶음 | — | in-progress |
+| 126 | API 목록과 호출 방식 | 공개 API 107개(메서드 · 주소 · 동기/큐 · 로그인 · 요청 · 응답 DTO · 하는 일)와 호출 방식(그룹별 토큰 · 재발급 · 큐 SSE accepted → done · failed · pending · 실패 본문 · 파일 올리기), DTO 사본(`libs/contracts` DTO 에서 Swagger 데코레이터만 뺌 — `class-validator` 검증 · 한국어 메시지 그대로) | 문서 형식, DTO 사본 만드는 법(임시 스크립트) | 125 | in-progress |
+| 127 | 화면 구성과 쓰는 API | 화면마다 시안 위치 · 구성(덩어리 → API · 필드) · 들어올 때 부르는 API · 버튼별 API 순서 · 결과 처리 · 화면 주의(로드맵 사용자 할 일의 '프론트' 줄을 옮김), 이후 기능 변경의 프론트 수정 요청 규칙(`changes/` — AGENTS.md · 메모리). 서버 구성 · 환경 설정은 싣지 않는다(사용자 결정 2026-11-10) | 화면 단위 문서 모양 | 125, 126 | in-progress |
+| 128 | 이용자 화면 설계 | 모바일 — 지도 · 주변 업체 · 업체 상세 · 객실 그룹 · 예약(상품 · 날짜 · 시간대 · 호수) · 결제 결과 · 내 예약 · 예약 1건(QR) · 취소 동의 · 로그인 · 가입 · 마이페이지(탈퇴 · 철회) · 입점 신청 | 충실도 — 색 · 글꼴 · 실제 문구까지 갖춘 정적 시안(상태별 화면), 디자인 시스템 없음 → 세 아티팩트 공통 토큰 | 125, 127 | in-progress |
+| 129 | 업체 관리자 콘솔 설계 | PC — 로그인(업체코드) · 대시보드(내 업체 통계) · 예약 현황(업체 취소 · 호실 이동 · 이용 중 취소 요청) · 객실(상품 설정 · 그룹 · 기간 가격 · 호실 · 문) · 내 업체 설정 · 업체 관리자 관리 | 128 과 같은 토큰 | 125, 127 | in-progress |
+| 130 | 총관리자 콘솔 설계 | PC — 로그인 · 대시보드(전체 통계) · 입점 신청(승인 · 반려) · 업체 · 업체 관리자 계정 · 이용자(이용 제한) | 129 와 콘솔 틀 공유 | 125, 127 | in-progress |
+| 131 | 내 정보 조회 | 이용자 본인의 회원 정보(닉네임 · SNS · 휴대폰 · 인증 여부 · 성별 · 생년월일 · 가입일 · 회원 상태 · 이용 제한 사유 · 탈퇴 예정 시각)를 읽는 API `GET /api/v1/user-service/user/me` — 마이페이지 · 앱을 다시 열 때. 인계 문서를 쓰다 없음을 발견해 이번 Phase 에 넣음(사용자 결정 2026-11-10) | 조회만(기존 `findUser`) | 125 | in-progress |
 
-**Expected entry points**: 프론트 인계 문서(화면 지도 · 화면별 API · 시작 문서) — 백엔드 코드는 바꾸지 않는다.
+**Expected entry points**: 화면 설계 아티팩트 3개(claude.ai Design — 이용자 · 업체 관리자 · 관리자) + 지침서 `.beaver/output/frontend/`(README 목차 · screens.md 화면 목록과 구성 · api.md API 목록 · dto/ · design/ 아티팩트 원본 · changes/ 수정 요청). 새 API 하나 — 내 정보 `GET /api/v1/user-service/user/me`(#131). Phase 28(화면 설계 아티팩트)은 이 Phase 로 합쳤다 — 프론트가 아티팩트 + 지침서를 함께 보고 만든다(사용자 결정 2026-11-10).
 
-### Phase 28 — 화면 설계 아티팩트 · depends: Phase 27
-| # | Unit | Goal | Key decision | Depends | Status |
-|---|------|------|--------------|---------|--------|
-| 128 | 이용자 화면 설계 | 모바일 — 지도 · 주변 업체 · 업체 상세 · 객실 그룹 · 예약(상품 · 날짜 · 시간대 · 호수) · 결제 결과 · 내 예약 · 예약 1건(QR) · 취소 동의 · 로그인 · 가입 · 마이페이지(탈퇴 · 철회) · 입점 신청 | 충실도(와이어프레임 · 눌러 보는 시안) · 디자인 시스템 | 125 | todo |
-| 129 | 업체 관리자 콘솔 설계 | PC — 로그인(업체코드) · 대시보드(내 업체 통계) · 예약 현황(업체 취소 · 호실 이동 · 이용 중 취소 요청) · 객실(상품 설정 · 그룹 · 기간 가격 · 호실 · 문) · 내 업체 설정 · 업체 관리자 관리 | 128 과 같은 디자인 시스템 | 125 | todo |
-| 130 | 총관리자 콘솔 설계 | PC — 로그인 · 대시보드(전체 통계) · 입점 신청(승인 · 반려) · 업체 · 업체 관리자 계정 · 이용자(이용 제한) | 129 와 콘솔 틀 공유 | 125 | todo |
-
-**Expected entry points**: claude.ai 아티팩트(영역별 화면 설계) — 링크는 Phase 27 인계 문서에 모은다.
-
-### Phase 29 — 스토리 테스트 (Claude in Chrome 이 화면을 직접 조작 — 그 세션에 줄 지침) · depends: Phase 17, Phase 18, Phase 28 (+ 프론트 화면 개발 — 별도 저장소)
+### Phase 29 — 스토리 테스트 (Claude in Chrome 이 화면을 직접 조작 — 그 세션에 줄 지침) · depends: Phase 17, Phase 18, Phase 27 (+ 프론트 화면 개발 — 별도 저장소)
 
 > Phase 24 에서 옮김(사용자 결정 2026-11-10) — 프론트 인계 자료 · 화면 설계 · 프론트 화면 개발 뒤에 화면 흐름에 맞춰 다시 기획한다. 실행은 Claude in Chrome 에 브라우저 권한을 주고 화면을 직접 조작하게 한다(사용자 결정 2026-11-10) — 이 Phase 는 그 세션에 줄 지침을 만든다. 자동 실행기(`npm run test:story`)는 만들지 않는다.
 
@@ -554,7 +548,7 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 110/118 units done (24/27 phases)
+**Progress**: 110/119 units done (24/26 phases)
 **Next up**: Phase 27 프론트 인계 자료 — 의존(Phase 21) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.

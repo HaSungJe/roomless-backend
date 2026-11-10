@@ -1,6 +1,7 @@
-import {Body, Controller, HttpCode, Ip, Post} from '@nestjs/common';
+import {Body, Controller, Get, HttpCode, Ip, Post, UseGuards} from '@nestjs/common';
 import {
     ApiBadRequestResponse,
+    ApiBearerAuth,
     ApiBody,
     ApiForbiddenResponse,
     ApiInternalServerErrorResponse,
@@ -12,9 +13,13 @@ import {
     ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {ApiFailResultDto} from '@app/common/dto/global.result.dto.js';
+import type {Actor} from '@app/contracts/actor.js';
 import {UserLoginDto, UserLoginResultDto} from '@app/contracts/user/dto/user-login.dto.js';
+import {UserMeResultDto} from '@app/contracts/user/dto/user-me.dto.js';
 import {UserTokenRefreshDto, UserTokenRefreshResultDto} from '@app/contracts/user/dto/user-token-refresh.dto.js';
 import {USER_INTERNAL_PATH} from '@app/contracts/user/user.commands.js';
+import {PassportActor} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.decorator.js';
+import {PassportJwtAuthGuard} from '../../../../../guards/passport.jwt.auth/passport.jwt.auth.guard.js';
 import {InternalHttpClient} from '../../../../../modules/transport/internal-http.client.js';
 
 /**
@@ -62,5 +67,22 @@ export class UserController {
     @ApiInternalServerErrorResponse({type: ApiFailResultDto})
     async tokenRefresh(@Body() dto: UserTokenRefreshDto, @Ip() ip: string): Promise<UserTokenRefreshResultDto> {
         return this.internalHttp.request<UserTokenRefreshResultDto>('user', 'POST', USER_INTERNAL_PATH.TOKEN_REFRESH, {body: dto, client_ip: ip});
+    }
+
+    /**
+     * 내 정보 (이용자) — 마이페이지. 로그인 결과에 없는 회원 정보(SNS · 휴대폰 · 성별 · 생년월일 · 가입일)와 지금 상태를 다시 읽는다
+     */
+    @Get('/me')
+    @UseGuards(PassportJwtAuthGuard)
+    @HttpCode(200)
+    @ApiBearerAuth()
+    @ApiOperation({summary: '내 정보'})
+    @ApiOkResponse({type: UserMeResultDto})
+    @ApiUnauthorizedResponse({type: ApiFailResultDto})
+    @ApiNotFoundResponse({type: ApiFailResultDto})
+    @ApiServiceUnavailableResponse({type: ApiFailResultDto})
+    @ApiInternalServerErrorResponse({type: ApiFailResultDto})
+    async getMe(@PassportActor() actor: Actor): Promise<UserMeResultDto> {
+        return this.internalHttp.request<UserMeResultDto>('user', 'GET', USER_INTERNAL_PATH.ME, {actor});
     }
 }

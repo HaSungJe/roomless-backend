@@ -1,5 +1,7 @@
 import {dayjs, KST_TIMEZONE} from '@app/common/utils/dayjs.js';
 import {UserAuthUserResultDto} from '@app/contracts/user/dto/user-auth-user.dto.js';
+import {UserMeResultDto} from '@app/contracts/user/dto/user-me.dto.js';
+import type {UserEntity} from '@app/database/entities/user/user.entity.js';
 import type {LoginUserRow} from './interfaces/user.repository.interface.js';
 import {ADULT_AGE} from './user.constants.js';
 
@@ -43,5 +45,28 @@ export function toUserAuthUserResult(row: LoginUserRow): UserAuthUserResultDto {
     result.state_id = row.state_id;
     result.is_login_allowed = row.is_login_allowed;
     result.is_phone_verified = row.phone_verified_at ? 1 : 0;
+    return result;
+}
+
+/**
+ * 이용자 본인 회원 행을 내 정보 결과 DTO 로 바꾼다.
+ *
+ * @param entity 이용자
+ * @returns 내 정보
+ */
+export function toUserMeResult(entity: UserEntity): UserMeResultDto {
+    const result = new UserMeResultDto();
+    result.user_id = entity.user_id;
+    result.user_search_code = entity.user_search_code;
+    result.nickname = entity.nickname;
+    result.gender = entity.gender;
+    result.birth = entity.birth;
+    result.sns_id = entity.sns_id ?? null;
+    result.phone = entity.phone ?? null;
+    result.is_phone_verified = entity.phone_verified_at ? 1 : 0;
+    result.state_id = entity.state_id;
+    result.block_comment = entity.block_comment ?? null;
+    result.leave_reserved_at = entity.leave_reserved_at ?? null;
+    result.created_at = entity.created_at.toISOString();
     return result;
 }

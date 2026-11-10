@@ -216,6 +216,12 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 
 → 상세: [docs/realtime.md](docs/realtime.md)
 
+## 프론트 연계
+
+- **프론트는 별도 저장소**(Next.js 앱 하나 — `/` 이용자 · `/manager` 업체 관리자 · `/admin` 총관리자 · 관리자, 사용자 결정 2026-11-10). 인계 자료는 화면 설계 아티팩트 3개(이용자 · 업체 관리자 · 관리자 — 링크는 `.beaver/output/frontend/README.md`) + 지침서 `.beaver/output/frontend/` — 화면 목록과 주소 · 화면 구성과 쓰는 API `screens.md`, API 목록과 호출 방식 `api.md`, DTO 사본 `dto/`, 아티팩트 원본 `design/`, 수정 요청 `changes/`. 서버 구성 · 환경 설정은 싣지 않는다. 아티팩트는 처음 한 번만 만들고, 그 뒤 화면은 프론트 세션이 만든다.
+- **공개 API(주소 · 요청 · 응답 · 실패 · 동기/큐)나 사용자에게 보이는 동작이 바뀌면 같은 변경에서 `.beaver/output/frontend/changes/<YYYY-MM-DD>-<기능>.md` 를 만들고 `changes/README.md` 목록에 한 줄 더한다** — 바뀐 이유 · 영향 화면(screens.md 키) · API 변경(추가 · 변경 · 삭제) · 화면 구성과 쓰는 API 의 변경 · 바뀐 DTO 코드(`@nestjs/swagger` import · `@Api…` 데코레이터만 뺀 사본 — `class-validator` · 한국어 메시지 그대로, 필드 설명은 주석) · 반영 순서. 화면 배치 · 디자인은 쓰지 않는다. 기획이 plan 파일 목록에 넣고, build 가 쓰고, ship 리뷰가 빠졌는지 본다. 내부 API · 응답이 같은 리팩터링은 대상이 아니다. `screens.md` · `api.md` · `dto/` 는 처음 인계 기준점이라 고치지 않는다(바뀐 것은 수정 요청 문서가 싣는다).
+- 고정 주소: SMS 링크가 여는 `/reservation/<예약 ID>` · `/reservation/<예약 ID>/cancel-request` 는 백엔드(`USER_WEB_URL`)와 프론트가 같이 쓴다 — 바꾸면 수정 요청 문서로 알린다.
+
 ## Key Patterns
 
 - **Repository DI**: Symbol 토큰(`<domain>.symbols.ts`) + 모듈 `{provide: TOKEN, useClass: XRepository}` + service `@Inject(TOKEN) … : XRepositoryInterface`(인터페이스는 `import type`). 메시징 포트(`COMMAND_PUBLISHER` · `RESULT_SUBSCRIBER`) · 외부 연동 포트(`SMS_SENDER` · `STORAGE_GATEWAY`)도 같은 패턴.
@@ -275,3 +281,4 @@ scripts/          # db-schema.mjs(마이그레이션 생성 · 검사) · docker
 - [ ] 응답 필드 생략 금지 — 없으면 `null`
 - [ ] 날짜 · 시각: 파싱 · 비교 · 계산 · 시간대는 `@app/common/utils/dayjs.js` 의 dayjs(직접 계산 · `'dayjs'` 직접 import ❌)
 - [ ] 테스트: service 기능 spec(API 1개당 1개, repository · 외부 포트 · JwtService mock) + repository spec(오류 변환 · 매핑 민감 쿼리는 Smoke) 만 — controller · util · 라이브러리 · 인프라 spec 없음, 호출 횟수 · 인자 · 미호출 단언, 한국어 리터럴, `npm test` + `npm run typecheck` 통과
+- [ ] 프론트 연계: 공개 API · 사용자 동작이 바뀌면 `.beaver/output/frontend/changes/<날짜>-<기능>.md`(이유 · 영향 화면 · API 변경 · 화면 구성과 쓰는 API 의 변경 · 바뀐 DTO · 반영 순서) + 목록 한 줄

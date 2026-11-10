@@ -1,7 +1,8 @@
 import {Body, Controller, Get, HttpCode, Param, Post} from '@nestjs/common';
-import {ClientIp} from '@app/common/internal/internal-request.decorator.js';
+import {ClientIp, InternalActor} from '@app/common/internal/internal-request.decorator.js';
 import {UserAuthUserParamDto, UserAuthUserResultDto} from '@app/contracts/user/dto/user-auth-user.dto.js';
 import {UserLoginDto, UserLoginResultDto} from '@app/contracts/user/dto/user-login.dto.js';
+import {UserMeResultDto} from '@app/contracts/user/dto/user-me.dto.js';
 import {UserTokenRefreshDto, UserTokenRefreshResultDto} from '@app/contracts/user/dto/user-token-refresh.dto.js';
 import {UserService} from '../user.service.js';
 
@@ -41,5 +42,14 @@ export class UserController {
     @HttpCode(200)
     async authUser(@Param() param: UserAuthUserParamDto): Promise<UserAuthUserResultDto> {
         return this.userService.getLoginUser(param.user_id);
+    }
+
+    /**
+     * 내 정보 (이용자 본인)
+     */
+    @Get('/me')
+    @HttpCode(200)
+    async getMe(@InternalActor('user_id') user_id: string): Promise<UserMeResultDto> {
+        return this.userService.getMe(user_id);
     }
 }

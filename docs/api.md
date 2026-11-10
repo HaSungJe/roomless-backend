@@ -85,7 +85,7 @@ async leave(@PassportActor() actor: Actor, @Body() dto: UserLeaveDto, @Ip() ip: 
 
 | 그룹 · 서비스 | 접두 · 폴더 | 동기(내부 HTTP) | 큐(SSE) |
 |---|---|---|---|
-| 이용자 `USER` · user-service | `/api/v1/user-service/user` · `api/v1/user/` | `POST /login`(SNS) · `/token-refresh` → `/internal/v1/user-service/user/*` | `POST /sign` · `DELETE /leave` · `PATCH /leave` · `POST /phone-verification(+/confirm)` · `/find-login-id(+/confirm)` — `user.member.*` |
+| 이용자 `USER` · user-service | `/api/v1/user-service/user` · `api/v1/user/` | `POST /login`(SNS) · `/token-refresh` · `GET /me`(내 정보 — 이용자 가드) → `/internal/v1/user-service/user/*` | `POST /sign` · `DELETE /leave` · `PATCH /leave` · `POST /phone-verification(+/confirm)` · `/find-login-id(+/confirm)` — `user.member.*` |
 | 매니저 `MANAGER` · admin-service | `/api/v1/admin-service/manager` · `api/v1/manager/` | `POST /login` · `/token-refresh` → `/internal/v1/admin-service/manager/*` | `PATCH /password` · `POST /find-login-id(+/confirm)` · `/password-reset(+/confirm)` — `admin.manager.*` |
 | 관리자 `ADMIN` · admin-service | `/api/v1/admin-service/admin` · `api/v1/admin/` | `POST /login` · `/token-refresh` → `/internal/v1/admin-service/admin/*` | `PATCH /password` — `admin.admin.*` |
 

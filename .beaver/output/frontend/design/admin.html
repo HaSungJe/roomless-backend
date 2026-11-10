@@ -1,0 +1,1366 @@
+<title>roomless 관리자 콘솔</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* 관리자 PC 콘솔 시안 — 밝은 화면 한 벌 고정. 문서(머리 · 목차 · 묶음) 아래에 화면 틀(상단 바 + 왼쪽 메뉴 + 본문)을 세로로 잇는다 */
+:root{
+  --bg:#F4F5F7;--surface:#FFFFFF;--surface-2:#F9FAFB;--line:#E2E5EA;
+  --fg:#15171A;--muted:#5A6170;--faint:#6B7280;
+  --primary:#2457D6;--primary-strong:#1C46AE;--primary-soft:#E8EEFC;--on-primary:#FFFFFF;
+  --ok:#1C7A4B;--ok-soft:#E6F4EC;--warn:#A85A00;--warn-soft:#FDF1E2;--bad:#C0362C;--bad-soft:#FBE9E7;
+  --neutral:#4B5260;--neutral-soft:#EEF0F3;
+  --scrim:rgba(21,23,26,0.45);--shadow:0 1px 2px rgba(21,23,26,0.06);
+  --font:'Noto Sans KR',system-ui,sans-serif;--mono:ui-monospace,'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.5}
+a{color:var(--primary)}
+a:hover{color:var(--primary-strong)}
+.page{max-width:1520px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:40px 96px;display:flex;flex-direction:column;gap:64px}
+.num{font-variant-numeric:tabular-nums}
+.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic-sm{width:16px;height:16px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* 문서 머리 · 목차 · 묶음 */
+.doc-head{display:flex;flex-direction:column;gap:12px;max-width:1440px}
+.eyebrow{margin:0;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:0.02em}
+.doc-title{margin:0;font-size:28px;font-weight:700;line-height:1.3;text-wrap:balance}
+.doc-lede{margin:0;max-width:760px;color:var(--muted)}
+.group{display:flex;flex-direction:column;gap:40px}
+.group-title{margin:0;padding-bottom:12px;border-bottom:1px solid var(--line);font-size:22px;font-weight:700;max-width:1440px}
+.screen{display:flex;flex-direction:column;gap:16px;scroll-margin-top:16px}
+.screen-title{margin:0;font-size:16px;font-weight:700;overflow-wrap:anywhere}
+.screen-title .path{color:var(--muted);font-weight:500}
+.frame{width:100%;max-width:1440px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg);box-shadow:var(--shadow)}
+
+/* 콘솔 틀 */
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;min-height:64px;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;color:var(--fg);font-size:16px;font-weight:700;text-decoration:none}
+.brand:hover{color:var(--fg)}
+.brand-mark{display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--primary);color:var(--on-primary)}
+.acct{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.acct-id{font-weight:500}
+.shell{display:flex;flex-wrap:wrap;align-items:stretch}
+.side{flex:1 1 232px;padding:16px 12px;background:var(--surface);border-right:1px solid var(--line)}
+.side ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.nav-i{display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;border-radius:8px;color:var(--muted);font-size:14px;font-weight:500;text-decoration:none}
+.nav-i:hover{background:var(--surface-2);color:var(--fg)}
+.nav-i.on,.nav-i.on:hover{background:var(--primary-soft);color:var(--primary-strong);font-weight:700}
+.main{flex:999 1 560px;min-width:0;padding:32px 32px 48px;display:flex;flex-direction:column;gap:24px}
+
+/* 글자 · 카드 */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.pad{padding:24px}
+.stack{display:flex;flex-direction:column}
+.g4{gap:4px}.g8{gap:8px}.g12{gap:12px}.g16{gap:16px}.g20{gap:20px}.g24{gap:24px}
+.h1{margin:0;font-size:22px;font-weight:700;line-height:1.35}
+.h2{margin:0;font-size:16px;font-weight:700;line-height:1.4}
+.h3{margin:0;font-size:14px;font-weight:700}
+.sub{margin:0;font-size:13px;font-weight:500;color:var(--muted)}
+.cap{font-size:12px;font-weight:700;color:var(--muted)}
+.small{margin:0;font-size:13px;color:var(--muted)}
+.code{font-family:var(--mono);font-size:12px;color:var(--neutral)}
+.none{color:var(--faint)}
+.row{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+.col-2{flex:2 1 520px;min-width:0}
+.col-1{flex:1 1 300px;min-width:0}
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,480px),1fr));gap:24px}
+.title-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:16px}
+.title-line{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.back{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;color:var(--muted);font-size:13px;font-weight:500;text-decoration:none}
+.back:hover{color:var(--fg)}
+.divider{height:1px;background:var(--line)}
+
+/* 버튼 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 16px;border:1px solid transparent;border-radius:8px;font-family:inherit;font-size:14px;font-weight:500;line-height:1;text-decoration:none;white-space:nowrap;cursor:pointer}
+.btn-p{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.btn-p:hover{background:var(--primary-strong);border-color:var(--primary-strong);color:var(--on-primary)}
+.btn-s{background:var(--surface);border-color:var(--line);color:var(--fg)}
+.btn-s:hover{background:var(--surface-2);color:var(--fg)}
+.btn-d{background:var(--surface);border-color:var(--bad);color:var(--bad)}
+.btn-d:hover{background:var(--bad-soft);color:var(--bad)}
+.btn-x,.btn-x:hover{background:var(--line);border-color:var(--line);color:var(--muted);cursor:not-allowed}
+.btn-sm{height:32px;padding:0 12px;font-size:13px}
+.btn-wide{width:100%;height:44px;font-size:15px;font-weight:700}
+.btn-icon{width:32px;height:32px;padding:0;border:0;background:var(--surface);color:var(--muted)}
+.link-more{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;color:var(--primary-strong);font-size:13px;font-weight:500;text-decoration:none}
+
+/* 입력 */
+.lbl{display:block;margin-bottom:6px;font-size:13px;font-weight:700}
+.req{color:var(--bad)}
+.inp{display:block;width:100%;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-family:inherit;font-size:14px;color:var(--fg)}
+.inp::placeholder{color:var(--faint)}
+textarea.inp{height:auto;min-height:88px;padding:10px 12px;line-height:1.5;resize:vertical}
+.inp-err{border-color:var(--bad)}
+.inp-ro{background:var(--surface-2);color:var(--muted)}
+.inp:disabled{background:var(--surface-2);color:var(--muted)}
+.err{margin:6px 0 0;font-size:13px;color:var(--bad)}
+.hint{margin:6px 0 0;font-size:13px;color:var(--muted)}
+.count{margin:6px 0 0;font-size:13px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px}
+.span-all{grid-column:1 / -1}
+.radio-list{display:flex;flex-direction:column;gap:8px}
+.radio{display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.radio input{margin:3px 0 0;accent-color:var(--primary)}
+.radio.on{border-color:var(--primary);background:var(--primary-soft)}
+.radio strong{display:block;font-size:14px}
+.radio span{display:block;font-size:13px;color:var(--muted)}
+
+/* 배지 · 칩 · 나눔 버튼 · 스위치 */
+.badge{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:700;line-height:1;white-space:nowrap}
+.b-ok{background:var(--ok-soft);color:var(--ok)}
+.b-warn{background:var(--warn-soft);color:var(--warn)}
+.b-bad{background:var(--bad-soft);color:var(--bad)}
+.b-pri{background:var(--primary-soft);color:var(--primary-strong)}
+.b-neu{background:var(--neutral-soft);color:var(--neutral)}
+.b-solid{background:var(--primary-strong);color:var(--on-primary)}
+.badges{display:flex;flex-wrap:wrap;gap:6px}
+.chip{height:32px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--fg);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.chip.on{background:var(--primary-soft);border-color:var(--primary-soft);color:var(--primary-strong);font-weight:700}
+.seg{display:inline-flex;gap:2px;padding:3px;border-radius:8px;background:var(--neutral-soft)}
+.seg button{height:34px;padding:0 14px;border:0;border-radius:6px;background:transparent;color:var(--neutral);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.seg button.on{background:var(--surface);color:var(--fg);font-weight:700;box-shadow:var(--shadow)}
+.sw{position:relative;flex:none;width:44px;height:24px;padding:0;border:0;border-radius:999px;background:var(--primary);cursor:pointer}
+.sw::after{content:"";position:absolute;top:3px;left:23px;width:18px;height:18px;border-radius:999px;background:var(--surface)}
+.sw.off{background:var(--faint)}
+.sw.off::after{left:3px}
+
+/* 거르기 줄 · 표 · 페이지 탭 */
+.list-card{display:flex;flex-direction:column;overflow:hidden}
+.filter{display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;padding:16px 24px;border-bottom:1px solid var(--line)}
+.filter-group{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.filter-label{margin-right:4px;font-size:13px;font-weight:700;color:var(--muted)}
+.filter select.inp{width:auto;min-width:200px;height:32px;font-size:13px}
+.search{display:flex;gap:8px;align-items:center;margin-left:auto;flex:0 1 420px;min-width:0}
+.search-box{position:relative;flex:1 1 auto;min-width:0}
+.search-box .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.search-box .inp{height:32px;padding-left:38px;font-size:13px}
+.tbl-box{overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tbl th{padding:10px 12px;background:var(--surface-2);border-bottom:1px solid var(--line);color:var(--muted);font-size:12px;font-weight:700;text-align:left}
+.tbl td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:0}
+.tbl th:first-child,.tbl td:first-child{padding-left:24px}
+.tbl th:last-child,.tbl td:last-child{padding-right:24px}
+.tbl .r{text-align:right}
+.tbl .b{font-weight:700}
+.tbl .wrap{white-space:normal;min-width:200px}
+.tbl tr.total td{background:var(--surface-2);font-weight:700}
+.tbl-tight th:first-child,.tbl-tight td:first-child{padding-left:12px}
+.tbl-tight th:last-child,.tbl-tight td:last-child{padding-right:12px}
+.tlink{color:var(--primary-strong);font-weight:500;text-decoration:none}
+.tlink:hover{color:var(--primary-strong);text-decoration:underline}
+.cell-2{display:flex;align-items:center;gap:6px}
+.list-foot{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:12px 24px;border-top:1px solid var(--line)}
+.pager{display:flex;gap:4px;align-items:center}
+.pg{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);font-family:inherit;font-size:13px;cursor:pointer}
+.pg.on{background:var(--primary);border-color:var(--primary);color:var(--on-primary);font-weight:700}
+.pg:disabled{background:var(--surface-2);color:var(--muted);cursor:not-allowed}
+.empty{padding:40px 16px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+
+/* 알림 띠 · 정의 목록 · 자리표시 · 대화상자 */
+.note{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.55}
+.n-info{background:var(--primary-soft);color:var(--primary-strong)}
+.n-ok{background:var(--ok-soft);color:var(--ok)}
+.n-warn{background:var(--warn-soft);color:var(--warn)}
+.n-bad{background:var(--bad-soft);color:var(--bad)}
+.note strong{font-weight:700}
+.note .on-surface{color:var(--fg)}
+.dl{display:grid;grid-template-columns:140px minmax(0,1fr);gap:12px 16px;margin:0;font-variant-numeric:tabular-nums}
+.dl dt{color:var(--muted);font-size:13px;font-weight:500;padding-top:1px}
+.dl dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.dl.narrow{grid-template-columns:88px minmax(0,1fr)}
+.dl.small-text{font-size:13px;gap:8px 16px}
+.ph{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;max-width:100%;background:var(--neutral-soft);border-radius:8px;color:var(--neutral);font-size:12px;font-weight:500;text-align:center}
+.ph-doc{width:160px;height:210px}
+.ph-photo{aspect-ratio:4 / 3;width:100%}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.photos figure{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.photos figcaption{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.scrim{display:flex;align-items:center;justify-content:center;padding:32px 16px;border-radius:12px;background:var(--scrim)}
+.dialog{width:100%;max-width:440px;background:var(--surface);border-radius:12px;display:flex;flex-direction:column}
+.dialog-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:20px 20px 0}
+.dialog-body{padding:12px 20px 20px;display:flex;flex-direction:column;gap:12px}
+.dialog-body p{margin:0;color:var(--muted)}
+.dialog-foot{display:flex;justify-content:flex-end;gap:8px;padding:16px 20px;border-top:1px solid var(--line)}
+
+/* 같은 화면의 다른 상태 */
+.states{display:flex;flex-direction:column;gap:16px;max-width:1440px;padding:20px 24px 24px;border:1px dashed var(--faint);border-radius:12px}
+.states-title{margin:0;font-size:14px;font-weight:700}
+.state-grid{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.state{flex:1 1 300px;min-width:0;padding:20px;display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.state-wide{flex:1 1 440px}
+
+/* 대시보드 */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}
+.kpi{padding:20px;display:flex;flex-direction:column;gap:6px}
+.kpi-l{font-size:13px;font-weight:700;color:var(--muted)}
+.kpi-v{font-size:24px;font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums}
+.kpi-u{font-size:14px;font-weight:500;color:var(--muted)}
+.kpi-d{font-size:12px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;margin-right:6px;border-radius:2px;vertical-align:-1px}
+.chart{display:block;width:100%;height:auto}
+.chart .g{stroke:var(--line);stroke-width:1}
+.chart .base{stroke:var(--faint);stroke-width:1}
+.chart .p{fill:var(--primary)}
+.chart .w{fill:var(--warn)}
+.chart text{fill:var(--muted);font-size:11px;font-family:var(--font)}
+.chart .ax-y{text-anchor:end}
+.chart .ax-x{text-anchor:middle}
+
+/* 로그인 */
+.login{padding:72px 16px 64px;display:flex;justify-content:center;background:var(--bg)}
+.login-box{width:100%;max-width:400px;display:flex;flex-direction:column;gap:24px}
+.login-brand{display:flex;align-items:center;justify-content:center;gap:10px;font-size:18px;font-weight:700}
+
+/* 디자인 기준 */
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px 12px}
+.swatch{display:flex;flex-direction:column;gap:4px}
+.swatch i{display:block;height:48px;border-radius:8px;border:1px solid var(--line)}
+.swatch b{font-size:13px}
+.type-rows{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px 16px;align-items:center}
+.spec-row{display:grid;grid-template-columns:100px minmax(0,1fr);gap:14px 16px;align-items:center}
+.toc .tbl td:nth-child(3),.toc .tbl td:nth-child(4){font-family:var(--mono);font-size:12px;color:var(--neutral)}
+.rules{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+
+.btn:focus-visible,.chip:focus-visible,.pg:focus-visible,.nav-i:focus-visible,.inp:focus-visible,.sw:focus-visible,.seg button:focus-visible,.tlink:focus-visible,.brand:focus-visible,.back:focus-visible,.link-more:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="page">
+
+<header class="doc-head">
+<p class="eyebrow">roomless · 무인 객실 대여 서비스 · /admin · PC 폭 1440 기준</p>
+<h1 class="doc-title">roomless 관리자 콘솔</h1>
+<p class="doc-lede">총괄관리자 · 관리자가 쓰는 PC 콘솔의 화면 시안입니다. 디자인 기준 → 로그인 → 대시보드 → 입점 신청 · 업체 → 계정 관리 순서로 위에서 아래로 이어집니다. 프론트(Next.js)는 이 시안과 screens.md · api.md · dto/ 를 보고 화면을 그대로 만듭니다. 화면마다 아래의 점선 상자는 같은 주소의 다른 상태(오류 · 결과 · 대화상자)입니다.</p>
+<nav class="toc card list-card" aria-label="화면 목록">
+<div class="tbl-box">
+<table class="tbl">
+<thead><tr><th>키</th><th>시안 이름</th><th>주소</th><th>쓰는 API</th><th>로그인</th></tr></thead>
+<tbody>
+<tr><td>—</td><td><a class="tlink" href="#design">디자인 기준</a></td><td>—</td><td>—</td><td>—</td></tr>
+<tr><td>A1</td><td><a class="tlink" href="#A1-login">A1 로그인</a></td><td>/admin/login</td><td>POST …/admin/login · …/admin/token-refresh</td><td>공개</td></tr>
+<tr><td>A1</td><td><a class="tlink" href="#A1-password">A1 비밀번호 변경</a></td><td>/admin/password</td><td>PATCH …/admin/password (큐)</td><td>관리자</td></tr>
+<tr><td>A2</td><td><a class="tlink" href="#A2-dashboard">A2 대시보드</a></td><td>/admin</td><td>GET …/stats</td><td>관리자</td></tr>
+<tr><td>A3</td><td><a class="tlink" href="#A3-list">A3 입점 신청 목록</a></td><td>/admin/store-applications</td><td>GET …/store/application</td><td>관리자</td></tr>
+<tr><td>A3</td><td><a class="tlink" href="#A3-detail">A3 입점 신청 상세</a></td><td>/admin/store-applications/[store_application_id]</td><td>GET …/store/application/:id · PATCH …/approve · …/reject (큐)</td><td>관리자</td></tr>
+<tr><td>A4</td><td><a class="tlink" href="#A4-list">A4 업체 목록</a></td><td>/admin/stores</td><td>GET …/store</td><td>관리자</td></tr>
+<tr><td>A4</td><td><a class="tlink" href="#A4-detail">A4 업체 상세</a></td><td>/admin/stores/[store_id]</td><td>GET …/store/:store_id · PATCH …/:store_id · …/state · …/open (큐)</td><td>관리자</td></tr>
+<tr><td>A5</td><td><a class="tlink" href="#A5-list">A5 업체 관리자 목록</a></td><td>/admin/managers</td><td>GET …/manager/account</td><td>관리자</td></tr>
+<tr><td>A5</td><td><a class="tlink" href="#A5-detail">A5 업체 관리자 상세</a></td><td>/admin/managers/[user_id]</td><td>GET …/manager/account/:user_id · PATCH …/password-reset (큐)</td><td>관리자</td></tr>
+<tr><td>A6</td><td><a class="tlink" href="#A6-list">A6 이용자 목록</a></td><td>/admin/users</td><td>GET …/user</td><td>관리자</td></tr>
+<tr><td>A6</td><td><a class="tlink" href="#A6-detail">A6 이용자 상세</a></td><td>/admin/users/[user_id]</td><td>GET …/user/:user_id · …/:user_id/reservation · PATCH …/state (큐)</td><td>관리자</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small" style="padding:12px 24px;border-top:1px solid var(--line)">API 접두는 /api/v1/admin-service. 관리자 = 총괄관리자(SUPER_ADMIN) · 관리자(ADMIN) 둘 다이고 메뉴는 같다.</p>
+</nav>
+</header>
+
+<!-- ───────── 디자인 기준 ───────── -->
+<section class="group" id="design" aria-labelledby="design-t">
+<h2 class="group-title" id="design-t">디자인 기준</h2>
+
+<section class="card pad stack g16" style="max-width:1440px">
+<h3 class="h2">색</h3>
+<div class="swatches">
+<div class="swatch"><i style="background:var(--bg)"></i><b>바탕</b><span class="code">--bg #F4F5F7</span></div>
+<div class="swatch"><i style="background:var(--surface)"></i><b>면</b><span class="code">--surface #FFFFFF</span></div>
+<div class="swatch"><i style="background:var(--surface-2)"></i><b>옅은 면 · 표 머리</b><span class="code">--surface-2 #F9FAFB</span></div>
+<div class="swatch"><i style="background:var(--line)"></i><b>선 · 비활성 바탕</b><span class="code">--line #E2E5EA</span></div>
+<div class="swatch"><i style="background:var(--fg)"></i><b>글자</b><span class="code">--fg #15171A</span></div>
+<div class="swatch"><i style="background:var(--muted)"></i><b>보조 글자</b><span class="code">--muted #5A6170</span></div>
+<div class="swatch"><i style="background:var(--faint)"></i><b>흐린 글자 · 자리표시</b><span class="code">--faint #6B7280</span></div>
+<div class="swatch"><i style="background:var(--primary)"></i><b>주색</b><span class="code">--primary #2457D6</span></div>
+<div class="swatch"><i style="background:var(--primary-strong)"></i><b>주색 진하게</b><span class="code">--primary-strong #1C46AE</span></div>
+<div class="swatch"><i style="background:var(--primary-soft)"></i><b>주색 옅게</b><span class="code">--primary-soft #E8EEFC</span></div>
+<div class="swatch"><i style="background:var(--ok)"></i><b>성공</b><span class="code">--ok #1C7A4B</span></div>
+<div class="swatch"><i style="background:var(--ok-soft)"></i><b>성공 옅게</b><span class="code">--ok-soft #E6F4EC</span></div>
+<div class="swatch"><i style="background:var(--warn)"></i><b>주의</b><span class="code">--warn #A85A00</span></div>
+<div class="swatch"><i style="background:var(--warn-soft)"></i><b>주의 옅게</b><span class="code">--warn-soft #FDF1E2</span></div>
+<div class="swatch"><i style="background:var(--bad)"></i><b>위험</b><span class="code">--bad #C0362C</span></div>
+<div class="swatch"><i style="background:var(--bad-soft)"></i><b>위험 옅게</b><span class="code">--bad-soft #FBE9E7</span></div>
+<div class="swatch"><i style="background:var(--neutral)"></i><b>중립 배지 글자</b><span class="code">--neutral #4B5260</span></div>
+<div class="swatch"><i style="background:var(--neutral-soft)"></i><b>중립 배지 바탕 · 자리표시</b><span class="code">--neutral-soft #EEF0F3</span></div>
+</div>
+</section>
+
+<div class="grid-2" style="max-width:1440px">
+<section class="card pad stack g16">
+<h3 class="h2">글자 · 모서리 · 간격</h3>
+<div class="type-rows">
+<span class="sub">페이지 제목 22/700</span><span style="font-size:22px;font-weight:700;line-height:1.35">입점 신청 목록</span>
+<span class="sub">절 제목 16/700</span><span style="font-size:16px;font-weight:700">신청 내용</span>
+<span class="sub">본문 14/400</span><span>승인하면 업체와 업체 총관리자 계정이 만들어집니다.</span>
+<span class="sub">표 13/400</span><span style="font-size:13px">스테이 리프 강남역점 · 120-88-45678</span>
+<span class="sub">표 머리 12/700</span><span style="font-size:12px;font-weight:700;color:var(--muted)">사업자등록번호</span>
+<span class="sub">보조 13/500</span><span class="sub">열람 주소는 10분 동안만 열립니다.</span>
+<span class="sub">숫자 고정폭</span><span class="num" style="font-weight:700">136,996,000원 · 2026-11-09 21:14</span>
+</div>
+<div class="divider"></div>
+<p class="small">글꼴 Noto Sans KR(400 · 500 · 700). 모서리 — 입력 · 버튼 8 · 카드 12 · 배지 · 칩 999. 간격 4 · 8 · 12 · 16 · 24 · 32 만. 그림자는 카드 한 단(0 1px 2px)만.</p>
+<p class="small">콘솔 틀 — 상단 바 64(브랜드 · 로그인 아이디 + 권한 배지 · 비밀번호 변경 · 로그아웃) · 왼쪽 메뉴 232(지금 화면 항목은 주색 옅게) · 본문 여백 32 · 카드 사이 24. 메뉴는 고정(sticky)하지 않고, 폭이 좁으면 본문 위로 쌓인다.</p>
+</section>
+
+<section class="card pad stack g16">
+<h3 class="h2">버튼 · 칩 · 스위치</h3>
+<div class="stack g8"><span class="sub">기본 높이 40 — 주 · 보조 · 위험 · 비활성</span>
+<div class="actions"><button type="button" class="btn btn-p">승인</button><button type="button" class="btn btn-s">취소</button><button type="button" class="btn btn-d">반려</button><button type="button" class="btn btn-x" disabled>승인</button></div></div>
+<div class="stack g8"><span class="sub">큐 API 처리 중 — 결과(done · failed · pending)가 올 때까지 비활성</span>
+<div class="actions"><button type="button" class="btn btn-x" disabled><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"></path></svg>처리 중…</button></div></div>
+<div class="stack g8"><span class="sub">표 안 · 거르기 줄 작은 버튼 32</span>
+<div class="actions"><button type="button" class="btn btn-p btn-sm">조회</button><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>복사</button><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg>새 창으로 열기</button></div></div>
+<div class="stack g8"><span class="sub">거르기 칩 — 고른 칩은 주색 옅게</span>
+<div class="actions"><button type="button" class="chip on" aria-pressed="true">전체</button><button type="button" class="chip" aria-pressed="false">대기</button><button type="button" class="chip" aria-pressed="false">승인</button><button type="button" class="chip" aria-pressed="false">반려</button></div></div>
+<div class="row" style="gap:32px">
+<div class="stack g8"><span class="sub">둘 중 하나 고르기</span><div class="seg" role="group" aria-label="결제 환경 견본"><button type="button" class="on" aria-pressed="true">실결제</button><button type="button" aria-pressed="false">테스트 결제</button></div></div>
+<div class="stack g8"><span class="sub">켜고 끄기</span><div class="actions" style="gap:16px;align-items:center"><span class="actions" style="align-items:center"><button type="button" class="sw" role="switch" aria-checked="true" aria-label="영업중 견본 켜짐"></button><span style="font-size:13px">영업중</span></span><span class="actions" style="align-items:center"><button type="button" class="sw off" role="switch" aria-checked="false" aria-label="영업중 견본 꺼짐"></button><span style="font-size:13px">영업준비</span></span></div></div>
+</div>
+</section>
+
+<section class="card pad stack g16">
+<h3 class="h2">입력</h3>
+<div class="fields">
+<div><label class="lbl" for="d-id">아이디</label><input class="inp" id="d-id" type="text" placeholder="아이디를 입력하세요"></div>
+<div><label class="lbl" for="d-id-err">아이디</label><input class="inp inp-err" id="d-id-err" type="text" placeholder="아이디를 입력하세요" aria-invalid="true" aria-describedby="d-id-err-m"><p class="err" id="d-id-err-m">아이디를 입력해주세요.</p></div>
+<div><label class="lbl" for="d-store">업체</label><select class="inp" id="d-store"><option>전체 업체</option><option>스테이 리프 강남역점</option><option>스테이 리프 신촌점</option></select></div>
+<div><label class="lbl" for="d-q">검색</label><div class="search-box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input class="inp" id="d-q" type="search" placeholder="상호명 · 사업자등록번호" style="height:40px;font-size:14px"></div></div>
+<div><label class="lbl" for="d-month">시작 달</label><input class="inp num" id="d-month" type="month" value="2026-06"></div>
+<div><label class="lbl" for="d-biz">사업자등록번호</label><input class="inp inp-ro num" id="d-biz" type="text" value="120-88-45678" readonly><p class="hint">사업자등록번호는 바꿀 수 없습니다.</p></div>
+</div>
+<div><label class="lbl" for="d-reason">반려 사유</label><textarea class="inp" id="d-reason" placeholder="신청자가 내 신청 화면에서 이 사유를 봅니다."></textarea><p class="count">0 / 255</p></div>
+<p class="small">입력 높이 40 · 라벨은 위(13/700) · 자리표시 글자는 흐린 글자색 · 오류는 선 위험색 + 아래 13px 메시지(DTO 의 한국어 메시지 그대로).</p>
+</section>
+
+<section class="card pad stack g16">
+<h3 class="h2">상태 배지</h3>
+<div class="spec-row">
+<span class="sub">예약 상태</span><div class="badges"><span class="badge b-warn">결제 대기</span><span class="badge b-pri">예약 확정</span><span class="badge b-ok">이용 중</span><span class="badge b-neu">이용 완료</span><span class="badge b-bad">취소</span><span class="badge b-neu">결제 대기 만료</span></div>
+<span class="sub">호실 상태</span><div class="badges"><span class="badge b-ok">예약가능</span><span class="badge b-pri">예약완료</span><span class="badge b-solid">사용중</span><span class="badge b-warn">정비중</span><span class="badge b-bad">사용중지</span></div>
+<span class="sub">회원 상태</span><div class="badges"><span class="badge b-ok">정상</span><span class="badge b-bad">정지</span><span class="badge b-warn">탈퇴 대기</span><span class="badge b-neu">탈퇴</span></div>
+<span class="sub">업체 상태</span><div class="badges"><span class="badge b-ok">활성</span><span class="badge b-bad">영업중지</span><span class="badge b-neu">탈퇴</span></div>
+<span class="sub">입점 신청</span><div class="badges"><span class="badge b-warn">대기</span><span class="badge b-ok">승인</span><span class="badge b-bad">반려</span></div>
+<span class="sub">영업중 여부</span><div class="badges"><span class="badge b-ok">영업중</span><span class="badge b-neu">영업준비</span></div>
+<span class="sub">권한</span><div class="badges"><span class="badge b-pri">총괄관리자</span><span class="badge b-neu">관리자</span><span class="badge b-pri">총괄매니저</span><span class="badge b-neu">매니저</span></div>
+<span class="sub">결제 환경</span><div class="badges"><span class="badge b-neu">실결제</span><span class="badge b-warn">테스트 결제</span></div>
+<span class="sub">표시</span><div class="badges"><span class="badge b-warn">임시 비밀번호</span><span class="badge b-neu">미인증</span><span class="badge b-pri">대표</span><span class="badge b-neu">비공개</span></div>
+</div>
+<p class="small">둥근 알약 · 옅은 바탕 + 진한 글자 · 12/700. 사용중만 진한 바탕 + 흰 글자. 권한 · 상태 이름은 룩업 이름 그대로.</p>
+</section>
+</div>
+
+<section class="card list-card" style="max-width:1440px" aria-labelledby="d-list-t">
+<div class="pad stack g4" style="padding-bottom:16px"><h3 class="h2" id="d-list-t">거르기 줄 · 표 · 페이지 탭 · 빈 목록</h3><p class="sub">거르기 줄은 표 카드 위쪽에 붙인다. 표는 넓으면 상자 안에서만 가로로 밀린다. 이름 칸은 상세로 가는 링크. 페이지 탭은 응답 pagination 의 page_range · max_page 로 그린다.</p></div>
+<div class="filter" style="border-top:1px solid var(--line)">
+<div class="filter-group" role="group" aria-label="상태 견본"><span class="filter-label">상태</span><button type="button" class="chip on" aria-pressed="true">전체</button><button type="button" class="chip" aria-pressed="false">대기</button><button type="button" class="chip" aria-pressed="false">승인</button><button type="button" class="chip" aria-pressed="false">반려</button></div>
+<div class="search"><div class="search-box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input class="inp" id="d-fq" type="search" aria-label="검색어" placeholder="상호명 · 사업자등록번호"></div><button type="button" class="btn btn-p btn-sm">조회</button></div>
+</div>
+<div class="tbl-box"><table class="tbl">
+<thead><tr><th>상호명</th><th>사업자등록번호</th><th>대표자</th><th>상태</th><th>신청일시</th><th>처리일시</th></tr></thead>
+<tbody>
+<tr><td><a class="tlink" href="#A3-detail">무인텔 온담 홍대점</a></td><td>214-87-12345</td><td>박진우</td><td><span class="badge b-warn">대기</span></td><td>2026-11-09 21:14</td><td class="none">—</td></tr>
+<tr><td><a class="tlink" href="#A3-detail">코지룸 합정점</a></td><td>220-81-34567</td><td>최유나</td><td><span class="badge b-bad">반려</span></td><td>2026-11-06 16:40</td><td>2026-11-07 11:20</td></tr>
+</tbody>
+</table></div>
+<div class="list-foot"><span class="sub">총 14건 · 1 / 2쪽</span>
+<nav class="pager" aria-label="페이지 견본"><button type="button" class="pg" aria-label="이전 페이지" disabled><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button><button type="button" class="pg on" aria-current="page">1</button><button type="button" class="pg">2</button><button type="button" class="pg" aria-label="다음 페이지"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button></nav></div>
+<div class="empty" style="border-top:1px solid var(--line)"><svg class="ic" style="width:28px;height:28px;color:var(--faint)" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><p style="margin:0;font-weight:700">조건에 맞는 입점 신청이 없습니다.</p><p class="sub">빈 목록 — 거르기나 검색어를 바꿔 보세요.</p></div>
+</section>
+
+<div class="grid-2" style="max-width:1440px">
+<section class="card pad stack g12">
+<h3 class="h2">알림 띠</h3>
+<p class="sub">큐 API 결과와 화면 안내에 쓴다. 성공은 몇 초 뒤 사라지고, 오류는 닫을 때까지 남는다.</p>
+<div class="note n-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg><span>사업자등록증은 비공개 파일이라 열람 주소가 10분 뒤 닫힙니다. 열리지 않으면 이 화면을 새로고침하세요.</span></div>
+<div class="note n-ok"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg><span>입점을 승인했습니다.</span></div>
+<div class="note n-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.5 20h19z"></path><path d="M12 10v4"></path><path d="M12 17h.01"></path></svg><span>처리 결과를 기다리는 시간이 지나 화면을 다시 불러왔습니다. 바뀌지 않았다면 다시 시도하세요.</span></div>
+<div class="note n-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16.5h.01"></path></svg><span>사업자등록증 사진이 없어 승인할 수 없습니다.</span></div>
+<p class="small">정보 = 안내 · 성공 = done · 주의 = pending(그 화면의 조회 API 를 다시 부름) · 오류 = failed 의 message.</p>
+</section>
+
+<section class="card pad stack g12">
+<h3 class="h2">대화상자</h3>
+<p class="sub">되돌리기 어려운 동작 전에 띄운다. 어두운 막 위 가운데, 폭 440. 확인 버튼 이름은 동작 이름 그대로.</p>
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="d-dlg-t">
+<div class="dialog-head"><h4 class="h2" id="d-dlg-t">비밀번호를 초기화할까요?</h4><button type="button" class="btn btn-icon" aria-label="닫기"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+<div class="dialog-body"><p>임시 비밀번호를 만들어 010-4567-8901 로 SMS 를 보냅니다. 지금 비밀번호로는 더 이상 로그인할 수 없습니다.</p></div>
+<div class="dialog-foot"><button type="button" class="btn btn-s">취소</button><button type="button" class="btn btn-d">비밀번호 초기화</button></div>
+</div>
+</div>
+</section>
+</div>
+
+<section class="card pad stack g12" style="max-width:1440px">
+<h3 class="h2">표기 규칙</h3>
+<ul class="rules">
+<li>날짜 · 시각은 한국 시각 YYYY-MM-DD HH:mm(응답은 ISO 8601), 달은 YYYY-MM.</li>
+<li>금액은 천 단위 쉼표 + 원(18,000원). 표의 숫자 칸은 오른쪽 맞춤 · 고정폭 숫자.</li>
+<li>휴대폰 · 전화는 응답의 숫자를 010-1234-5678 · 02-555-0123 꼴로 끊어 보여 주고, 입력은 숫자만 받는다. 사업자등록번호는 120-88-45678 꼴.</li>
+<li>업체코드 · 검색 코드는 32자(영문 소문자 + 숫자)다. 목록은 앞 8자 + …(마우스를 올리면 전체), 상세는 전체 + 복사 버튼.</li>
+<li>값이 없으면(null) <span class="none">—</span>. 상태 · 종류 · 권한 이름은 룩업 이름 그대로.</li>
+<li>큐 API(승인 · 반려 · 상태 변경 · 영업중 · 정보 수정 · 초기화 · 이용 제한 · 비밀번호 변경)는 누른 버튼을 "처리 중…" 으로 막는다. done 이면 성공 띠 + 다시 조회, failed 면 message(입력 칸 오류는 그 칸 아래), pending 이면 그 화면의 조회 API 를 다시 부른다.</li>
+<li>목록은 page · size 로 부르고, 거르기를 바꾸면 1쪽부터 다시 부른다. 목록 행의 이름 칸은 상세로 가는 링크.</li>
+<li>401 이면 재발급 API 로 한 번 재발급하고 다시 부르고, 또 401 이면 돌아올 주소를 들고 로그인 화면으로 간다. 로그아웃 API 는 없다 — 저장한 토큰을 지운다.</li>
+</ul>
+</section>
+</section>
+
+<!-- ───────── 로그인 ───────── -->
+<section class="group" aria-labelledby="g-login-t">
+<h2 class="group-title" id="g-login-t">로그인</h2>
+
+<section class="screen" id="A1-login" aria-labelledby="A1-login-t">
+<h3 class="screen-title" id="A1-login-t">A1 로그인 — <span class="path">/admin/login</span></h3>
+<div class="frame">
+<div class="login">
+<div class="login-box">
+<div class="login-brand"><span class="brand-mark" style="width:36px;height:36px"><svg class="ic" style="width:20px;height:20px" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</div>
+<div class="card stack g20" style="padding:32px">
+<div class="stack g4"><h4 class="h1">관리자 로그인</h4><p class="sub">총괄관리자 · 관리자 계정으로 로그인합니다.</p></div>
+<div><label class="lbl" for="a1l-id">아이디</label><input class="inp" id="a1l-id" type="text" value="admin" autocomplete="username"></div>
+<div><label class="lbl" for="a1l-pw">비밀번호</label><input class="inp" id="a1l-pw" type="password" placeholder="비밀번호를 입력하세요" autocomplete="current-password"></div>
+<button type="button" class="btn btn-p btn-wide">로그인</button>
+<p class="sub" style="text-align:center">관리자 계정은 아이디 찾기 · 비밀번호 초기화를 제공하지 않습니다.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">로그인에 성공하면 토큰 · auth_id 를 저장하고, is_password_change_required 가 1 이면 /admin/password, 아니면 /admin(돌아올 주소가 있으면 그 주소)으로 간다.</p>
+<div class="state-grid">
+<div class="state">
+<span class="cap">입력 오류 — 비운 채 로그인</span>
+<div><label class="lbl" for="a1l-s1-id">아이디</label><input class="inp inp-err" id="a1l-s1-id" type="text" placeholder="아이디를 입력하세요" aria-invalid="true"><p class="err">아이디를 입력해주세요.</p></div>
+<div><label class="lbl" for="a1l-s1-pw">비밀번호</label><input class="inp inp-err" id="a1l-s1-pw" type="password" placeholder="비밀번호를 입력하세요" aria-invalid="true"><p class="err">비밀번호를 입력해주세요.</p></div>
+</div>
+<div class="state">
+<span class="cap">로그인 실패 — 404</span>
+<div class="note n-bad" role="alert"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16.5h.01"></path></svg><span>잘못된 로그인 정보입니다.</span></div>
+<p class="small">아이디 칸 위에 띄운다. 어느 칸이 틀렸는지 가르지 않는다(다른 그룹 계정도 같은 응답). 비밀번호 칸만 비운다.</p>
+</div>
+<div class="state">
+<span class="cap">정지 계정 — 403</span>
+<div class="note n-bad" role="alert"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span class="stack g4"><strong>이용이 제한된 계정입니다.</strong><span>사유: 보안 점검으로 계정 사용을 잠시 멈췄습니다.</span></span></div>
+<p class="small">실패 본문의 block_comment 를 "사유:" 뒤에 보여 준다. null 이면 첫 줄만.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section class="screen" id="A1-password" aria-labelledby="A1-password-t">
+<h3 class="screen-title" id="A1-password-t">A1 비밀번호 변경 — <span class="path">/admin/password</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-sm" href="#A1-password" aria-current="page" style="background:var(--primary-soft);border-color:var(--primary-soft);color:var(--primary-strong);font-weight:700">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<div class="stack g4"><h4 class="h1">비밀번호 변경</h4><p class="sub">지금 로그인한 관리자 계정(admin)의 비밀번호를 바꿉니다.</p></div>
+<div class="stack g16" style="max-width:560px">
+<div class="note n-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg><span>처음 로그인했습니다. 새 비밀번호로 바꾼 뒤 콘솔을 쓰세요.</span></div>
+<div class="card pad stack g20">
+<div><label class="lbl" for="a1p-cur">현재 비밀번호</label><input class="inp" id="a1p-cur" type="password" placeholder="지금 쓰는 비밀번호" autocomplete="current-password"></div>
+<div><label class="lbl" for="a1p-new">새 비밀번호</label><input class="inp" id="a1p-new" type="password" placeholder="새 비밀번호" autocomplete="new-password" aria-describedby="a1p-new-h"><p class="hint" id="a1p-new-h">8~20자, 영문과 숫자를 반드시 넣고, 특수문자는 !@#$%^&amp;* 만 쓸 수 있습니다.</p></div>
+<div class="actions" style="justify-content:flex-end"><button type="button" class="btn btn-p">비밀번호 변경</button></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">위 안내 띠는 로그인 결과 is_password_change_required 가 1 일 때만 보인다. 상단 바의 "비밀번호 변경" 으로 들어오면 띠 없이 같은 화면. 변경은 큐 API.</p>
+<div class="state-grid">
+<div class="state">
+<span class="cap">입력 오류 — 규칙에 맞지 않는 새 비밀번호</span>
+<div><label class="lbl" for="a1p-s1">새 비밀번호</label><input class="inp inp-err" id="a1p-s1" type="password" value="abcdefg" aria-invalid="true"><p class="err">비밀번호는 8~20자이며 영문과 숫자를 반드시 포함해야 합니다. (특수문자는 !@#$%^&amp;* 만 허용)</p></div>
+</div>
+<div class="state">
+<span class="cap">실패(failed) — 폼 위 오류 띠</span>
+<div class="note n-bad" role="alert"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16.5h.01"></path></svg><span>현재 비밀번호가 일치하지 않습니다.</span></div>
+<div class="note n-bad" role="alert"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16.5h.01"></path></svg><span>기존 비밀번호와 다른 비밀번호를 입력해주세요.</span></div>
+</div>
+<div class="state">
+<span class="cap">성공(done) — 대시보드로</span>
+<div class="note n-ok" role="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg><span>비밀번호를 변경했습니다.</span></div>
+<p class="small">띠를 보여 주고 /admin(대시보드)으로 보낸다. 두 칸은 비운다.</p>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+<!-- ───────── 대시보드 ───────── -->
+<section class="group" aria-labelledby="g-dash-t">
+<h2 class="group-title" id="g-dash-t">대시보드</h2>
+
+<section class="screen" id="A2-dashboard" aria-labelledby="A2-dashboard-t">
+<h3 class="screen-title" id="A2-dashboard-t">A2 대시보드 — <span class="path">/admin</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i on" href="#A2-dashboard" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<div class="stack g4"><h4 class="h1">대시보드</h4><p class="sub">2026-06 ~ 2026-11 · 실결제 · 한국 시각 달 기준 전체 업체 통계</p></div>
+
+<section class="card stack g16" aria-label="조회 조건" style="padding:16px 20px">
+<div class="row" style="gap:16px 24px;align-items:flex-end">
+<div class="stack g8"><span class="lbl" style="margin:0">기간</span>
+<div class="actions" style="align-items:center"><input class="inp num" id="a2-start" type="month" value="2026-06" aria-label="시작 달" style="width:160px"><span class="sub">~</span><input class="inp num" id="a2-end" type="month" value="2026-11" aria-label="끝 달" style="width:160px"></div></div>
+<div class="stack g8"><span class="lbl" style="margin:0">결제 환경</span><div class="seg" role="group" aria-label="결제 환경"><button type="button" class="on" aria-pressed="true">실결제</button><button type="button" aria-pressed="false">테스트 결제</button></div></div>
+<div class="stack g8"><span class="lbl" style="margin:0">업체 범위</span><div class="seg" role="group" aria-label="업체 범위"><button type="button" class="on" aria-pressed="true">활동 업체만</button><button type="button" aria-pressed="false">모든 업체</button></div></div>
+<button type="button" class="btn btn-p">조회</button>
+</div>
+<p class="small">기간을 비우면 최근 3개월, 한 번에 최대 12개월. 업체 범위는 아래 업체별 표에만 적용된다.</p>
+</section>
+
+<section class="kpis" aria-label="합계">
+<div class="card kpi"><span class="kpi-l">이용자 수</span><span class="kpi-v">1,904<span class="kpi-u"> 명</span></span><span class="kpi-d">이용 끝이 기간 안인 이용 완료 예약의 서로 다른 이용자</span></div>
+<div class="card kpi"><span class="kpi-l">이용 건수</span><span class="kpi-v">3,378<span class="kpi-u"> 건</span></span><span class="kpi-d">이용 끝이 기간 안인 이용 완료 예약 수</span></div>
+<div class="card kpi"><span class="kpi-l">결제액</span><span class="kpi-v">136,996,000<span class="kpi-u"> 원</span></span><span class="kpi-d">승인 시각이 기간 안인 결제 합(기본 · 연장)</span></div>
+<div class="card kpi"><span class="kpi-l">환불액</span><span class="kpi-v" style="color:var(--warn)">5,545,000<span class="kpi-u"> 원</span></span><span class="kpi-d">환불 신청 시각이 기간 안인 환불 합</span></div>
+<div class="card kpi"><span class="kpi-l">수익</span><span class="kpi-v" style="color:var(--primary-strong)">131,451,000<span class="kpi-u"> 원</span></span><span class="kpi-d">결제액 − 환불액(음수면 위험색 글자)</span></div>
+</section>
+
+<section class="card stack g16" style="padding:20px 24px 24px">
+<div class="title-row" style="align-items:center"><h5 class="h2">월별</h5>
+<div class="legend"><span><i style="background:var(--primary)"></i>수익</span><span><i style="background:var(--warn)"></i>환불액</span><span>막대 전체 높이 = 결제액</span></div></div>
+<div class="row">
+<figure style="flex:1 1 480px;min-width:0;margin:0">
+<svg class="chart" viewBox="0 0 640 256" role="img" aria-label="월별 결제액 막대그래프 — 2026-06 2,148만 원, 07 2,612만 원, 08 2,890만 원, 09 2,476만 원, 10 2,734만 원, 11 840만 원">
+<line class="g" x1="64" y1="20" x2="624" y2="20"></line>
+<line class="g" x1="64" y1="86.67" x2="624" y2="86.67"></line>
+<line class="g" x1="64" y1="153.33" x2="624" y2="153.33"></line>
+<line class="base" x1="64" y1="220" x2="624" y2="220"></line>
+<text class="ax-y" x="56" y="24">3,000만</text>
+<text class="ax-y" x="56" y="90.67">2,000만</text>
+<text class="ax-y" x="56" y="157.33">1,000만</text>
+<text class="ax-y" x="56" y="224">0</text>
+<rect class="p" x="93" y="82.6" width="36" height="137.4"></rect><rect class="w" x="93" y="76.8" width="36" height="5.8"></rect>
+<rect class="p" x="186" y="52.8" width="36" height="167.2"></rect><rect class="w" x="186" y="45.9" width="36" height="6.9"></rect>
+<rect class="p" x="279" y="35.4" width="36" height="184.6"></rect><rect class="w" x="279" y="27.3" width="36" height="8.1"></rect>
+<rect class="p" x="373" y="61.3" width="36" height="158.7"></rect><rect class="w" x="373" y="54.9" width="36" height="6.4"></rect>
+<rect class="p" x="466" y="45.1" width="36" height="174.9"></rect><rect class="w" x="466" y="37.7" width="36" height="7.4"></rect>
+<rect class="p" x="559" y="166.5" width="36" height="53.5"></rect><rect class="w" x="559" y="164" width="36" height="2.5"></rect>
+<text class="ax-x" x="111" y="242">2026-06</text>
+<text class="ax-x" x="204" y="242">2026-07</text>
+<text class="ax-x" x="297" y="242">2026-08</text>
+<text class="ax-x" x="391" y="242">2026-09</text>
+<text class="ax-x" x="484" y="242">2026-10</text>
+<text class="ax-x" x="577" y="242">2026-11</text>
+</svg>
+<figcaption class="small" style="font-size:12px;margin-top:4px">단위 원 · 세로축은 만 원. 이번 달(2026-11)은 오늘까지.</figcaption>
+</figure>
+<div style="flex:1 1 480px;min-width:0;border:1px solid var(--line);border-radius:8px;overflow:hidden">
+<div class="tbl-box"><table class="tbl tbl-tight">
+<thead><tr><th>달</th><th class="r">이용자 수</th><th class="r">이용 건수</th><th class="r">결제액</th><th class="r">환불액</th><th class="r">수익</th></tr></thead>
+<tbody>
+<tr><td>2026-06</td><td class="r">412</td><td class="r">538</td><td class="r">21,480,000</td><td class="r">864,000</td><td class="r">20,616,000</td></tr>
+<tr><td>2026-07</td><td class="r">488</td><td class="r">651</td><td class="r">26,115,000</td><td class="r">1,032,000</td><td class="r">25,083,000</td></tr>
+<tr><td>2026-08</td><td class="r">531</td><td class="r">702</td><td class="r">28,904,000</td><td class="r">1,210,000</td><td class="r">27,694,000</td></tr>
+<tr><td>2026-09</td><td class="r">476</td><td class="r">615</td><td class="r">24,760,000</td><td class="r">958,000</td><td class="r">23,802,000</td></tr>
+<tr><td>2026-10</td><td class="r">509</td><td class="r">668</td><td class="r">27,342,000</td><td class="r">1,104,000</td><td class="r">26,238,000</td></tr>
+<tr><td>2026-11</td><td class="r">162</td><td class="r">204</td><td class="r">8,395,000</td><td class="r">377,000</td><td class="r">8,018,000</td></tr>
+<tr class="total"><td>합계</td><td class="r">1,904</td><td class="r">3,378</td><td class="r">136,996,000</td><td class="r">5,545,000</td><td class="r">131,451,000</td></tr>
+</tbody>
+</table></div>
+<p class="small" style="padding:8px 12px;border-top:1px solid var(--line);font-size:12px">합계 이용자 수는 기간 전체에서 겹치는 이용자를 뺀 값이라 달별 합과 다르다. 활동 없는 달도 0 으로 나온다.</p>
+</div>
+</div>
+</section>
+
+<section class="card list-card">
+<div class="stack g4" style="padding:20px 24px 16px"><h5 class="h2">업체별</h5><p class="sub">수익 많은 순(같으면 상호명 순) · 기간 안 활동이 있는 업체만 · 이름을 누르면 업체 상세</p></div>
+<div class="tbl-box" style="border-top:1px solid var(--line)"><table class="tbl">
+<thead><tr><th>업체 이름</th><th>업체코드</th><th>상태</th><th class="r">이용자 수</th><th class="r">이용 건수</th><th class="r">결제액</th><th class="r">환불액</th><th class="r">수익</th></tr></thead>
+<tbody>
+<tr><td><a class="tlink" href="#A4-detail">스테이 리프 강남역점</a></td><td class="code" title="3f9c2a7e1b5d4c8f9a0e6b2d7c4f1a3e">3f9c2a7e…</td><td><span class="badge b-ok">활성</span></td><td class="r">241</td><td class="r">402</td><td class="r">16,830,000</td><td class="r">612,000</td><td class="r b">16,218,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">슬립인 서면점</a></td><td class="code" title="8b2e4f61c9a04d7e8f3b2c5a1d6e9f07">8b2e4f61…</td><td><span class="badge b-ok">활성</span></td><td class="r">205</td><td class="r">351</td><td class="r">14,925,000</td><td class="r">540,000</td><td class="r b">14,385,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">스테이 리프 신촌점</a></td><td class="code" title="c41d7a9e2f3b4e58a6c0d1f2e3b4a597">c41d7a9e…</td><td><span class="badge b-ok">활성</span></td><td class="r">198</td><td class="r">336</td><td class="r">13,460,000</td><td class="r">498,000</td><td class="r b">12,962,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">리프룸 잠실새내점</a></td><td class="code" title="5e0a3c8d7b1f4a2e9c6d8b0f1a2c3e4d">5e0a3c8d…</td><td><span class="badge b-ok">활성</span></td><td class="r">176</td><td class="r">297</td><td class="r">12,118,000</td><td class="r">455,000</td><td class="r b">11,663,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">슬립인 동성로점</a></td><td class="code" title="a7f3e1c5d9b24f6e8a0c3d5b7e9f1a2c">a7f3e1c5…</td><td><span class="badge b-ok">활성</span></td><td class="r">160</td><td class="r">268</td><td class="r">10,742,000</td><td class="r">402,000</td><td class="r b">10,340,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">스테이 모아 수원역점</a></td><td class="code" title="2c9e5b7a1d3f4e6c8b0a2d4f6e8c0b1a">2c9e5b7a…</td><td><span class="badge b-ok">활성</span></td><td class="r">142</td><td class="r">241</td><td class="r">9,655,000</td><td class="r">371,000</td><td class="r b">9,284,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">무인텔 하루 대전역점</a></td><td class="code" title="d8b1f3a5c7e94b2d6f8a0c2e4b6d8f0a">d8b1f3a5…</td><td><span class="badge b-bad">영업중지</span></td><td class="r">131</td><td class="r">219</td><td class="r">8,804,000</td><td class="r">610,000</td><td class="r b">8,194,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">코지룸 서현점</a></td><td class="code" title="61e3c5a7b9d14f2e8c0a6b4d2f8e0c9b">61e3c5a7…</td><td><span class="badge b-ok">활성</span></td><td class="r">118</td><td class="r">196</td><td class="r">7,930,000</td><td class="r">288,000</td><td class="r b">7,642,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">온담 스테이 전주한옥점</a></td><td class="code" title="f0a2c4e6b8d14a3c5e7b9d1f3a5c7e9b">f0a2c4e6…</td><td><span class="badge b-bad">영업중지</span></td><td class="r">97</td><td class="r">158</td><td class="r">6,512,000</td><td class="r">245,000</td><td class="r b">6,267,000</td></tr>
+<tr><td><a class="tlink" href="#A4-detail">리프룸 광안리점</a></td><td class="code" title="9d7b5f3a1c8e4d6b2f0a8c6e4b2d0f1c">9d7b5f3a…</td><td><span class="badge b-neu">탈퇴</span></td><td class="r">84</td><td class="r">139</td><td class="r">5,560,000</td><td class="r">214,000</td><td class="r b">5,346,000</td></tr>
+</tbody>
+</table></div>
+<div class="list-foot"><span class="sub">총 21곳 · 1 / 3쪽</span>
+<nav class="pager" aria-label="업체별 페이지"><button type="button" class="pg" aria-label="이전 페이지" disabled><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button><button type="button" class="pg on" aria-current="page">1</button><button type="button" class="pg">2</button><button type="button" class="pg">3</button><button type="button" class="pg" aria-label="다음 페이지"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button></nav></div>
+</section>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<div class="state-grid">
+<div class="state">
+<span class="cap">기간 입력 오류</span>
+<div class="note n-bad" role="alert"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16.5h.01"></path></svg><span>시작 월을 YYYY-MM 으로 입력해주세요.</span></div>
+<p class="small">validation_errors 의 start_month · end_month 메시지는 그 달 칸 아래에. 그 밖의 failed 는 조건 줄 아래 띠로.</p>
+</div>
+<div class="state">
+<span class="cap">수익이 음수인 달 · 업체</span>
+<p style="margin:0;font-size:24px;font-weight:700;color:var(--bad)" class="num">−320,000<span class="kpi-u"> 원</span></p>
+<p class="small">환불이 결제보다 많으면 수익이 음수다. 앞에 − 를 붙이고 위험색 글자로.</p>
+</div>
+<div class="state">
+<span class="cap">업체별 — 활동 없음</span>
+<div class="empty" style="padding:24px 8px"><p style="margin:0;font-weight:700">기간 안에 활동한 업체가 없습니다.</p><p class="sub">업체 범위를 "모든 업체" 로 바꾸면 0 인 업체도 나온다.</p></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+<!-- ───────── 입점 신청 · 업체 ───────── -->
+<section class="group" aria-labelledby="g-store-t">
+<h2 class="group-title" id="g-store-t">입점 신청 · 업체</h2>
+
+<section class="screen" id="A3-list" aria-labelledby="A3-list-t">
+<h3 class="screen-title" id="A3-list-t">A3 입점 신청 목록 — <span class="path">/admin/store-applications</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i on" href="#A3-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<div class="stack g4"><h4 class="h1">입점 신청</h4><p class="sub">이용자가 보낸 입점 신청을 보고 승인 · 반려합니다. 신청일 최신순.</p></div>
+<section class="card list-card" aria-label="입점 신청 목록">
+<div class="filter">
+<div class="filter-group" role="group" aria-label="신청 상태"><span class="filter-label">상태</span><button type="button" class="chip on" aria-pressed="true">전체</button><button type="button" class="chip" aria-pressed="false">대기</button><button type="button" class="chip" aria-pressed="false">승인</button><button type="button" class="chip" aria-pressed="false">반려</button></div>
+<div class="search"><div class="search-box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input class="inp" id="a3l-q" type="search" aria-label="검색어" placeholder="상호명 · 사업자등록번호"></div><button type="button" class="btn btn-p btn-sm">조회</button></div>
+</div>
+<div class="tbl-box"><table class="tbl">
+<thead><tr><th>번호</th><th>상호명</th><th>사업자등록번호</th><th>대표자</th><th>상태</th><th>신청일시</th><th>처리일시</th><th>만든 업체</th></tr></thead>
+<tbody>
+<tr><td class="none">14</td><td><a class="tlink" href="#A3-detail">무인텔 온담 홍대점</a></td><td>214-87-12345</td><td>박진우</td><td><span class="badge b-warn">대기</span></td><td>2026-11-09 21:14</td><td class="none">—</td><td class="none">—</td></tr>
+<tr><td class="none">13</td><td><a class="tlink" href="#A3-detail">코지룸 연남점</a></td><td>105-86-23456</td><td>문가람</td><td><span class="badge b-warn">대기</span></td><td>2026-11-08 10:02</td><td class="none">—</td><td class="none">—</td></tr>
+<tr><td class="none">12</td><td><a class="tlink" href="#A3-detail">코지룸 합정점</a></td><td>220-81-34567</td><td>최유나</td><td><span class="badge b-bad">반려</span></td><td>2026-11-06 16:40</td><td>2026-11-07 11:20</td><td class="none">—</td></tr>
+<tr><td class="none">11</td><td><a class="tlink" href="#A3-detail">스테이 리프 강남역점</a></td><td>120-88-45678</td><td>김현석</td><td><span class="badge b-ok">승인</span></td><td>2026-11-03 09:15</td><td>2026-11-04 14:05</td><td><a class="tlink" href="#A4-detail">업체 보기</a></td></tr>
+<tr><td class="none">10</td><td><a class="tlink" href="#A3-detail">온담 스테이 망원점</a></td><td>101-82-56789</td><td>정하은</td><td><span class="badge b-warn">대기</span></td><td>2026-11-02 18:27</td><td class="none">—</td><td class="none">—</td></tr>
+<tr><td class="none">9</td><td><a class="tlink" href="#A3-detail">슬립인 서면점</a></td><td>602-85-67890</td><td>강서진</td><td><span class="badge b-ok">승인</span></td><td>2026-10-29 13:50</td><td>2026-10-30 10:12</td><td><a class="tlink" href="#A4-detail">업체 보기</a></td></tr>
+<tr><td class="none">8</td><td><a class="tlink" href="#A3-detail">스테이 모아 건대점</a></td><td>206-87-78901</td><td>윤서아</td><td><span class="badge b-bad">반려</span></td><td>2026-10-27 08:41</td><td>2026-10-28 17:33</td><td class="none">—</td></tr>
+<tr><td class="none">7</td><td><a class="tlink" href="#A3-detail">무인텔 하루 대전역점</a></td><td>305-86-89012</td><td>한지호</td><td><span class="badge b-ok">승인</span></td><td>2026-10-24 22:05</td><td>2026-10-25 15:47</td><td><a class="tlink" href="#A4-detail">업체 보기</a></td></tr>
+<tr><td class="none">6</td><td><a class="tlink" href="#A3-detail">리프룸 잠실새내점</a></td><td>215-88-90123</td><td>오민서</td><td><span class="badge b-ok">승인</span></td><td>2026-10-20 11:11</td><td>2026-10-21 09:30</td><td><a class="tlink" href="#A4-detail">업체 보기</a></td></tr>
+<tr><td class="none">5</td><td><a class="tlink" href="#A3-detail">포레스트룸 일산점</a></td><td>128-81-01234</td><td>신예준</td><td><span class="badge b-bad">반려</span></td><td>2026-10-18 20:36</td><td>2026-10-19 10:48</td><td class="none">—</td></tr>
+</tbody>
+</table></div>
+<div class="list-foot"><span class="sub">총 14건 · 1 / 2쪽</span>
+<nav class="pager" aria-label="페이지"><button type="button" class="pg" aria-label="이전 페이지" disabled><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button><button type="button" class="pg on" aria-current="page">1</button><button type="button" class="pg">2</button><button type="button" class="pg" aria-label="다음 페이지"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button></nav></div>
+</section>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">번호는 pagination.content_start_number 부터 1씩 내려간다. 상태 칩 · 검색어를 바꾸면 1쪽부터 다시 부른다(store_application_state_id · keyword · page). 승인된 신청만 "업체 보기"(store_id) 가 있다.</p>
+<div class="state-grid">
+<div class="state"><span class="cap">빈 목록</span><div class="empty" style="padding:24px 8px"><p style="margin:0;font-weight:700">조건에 맞는 입점 신청이 없습니다.</p><p class="sub">상태를 "전체" 로 바꾸거나 검색어를 지워 보세요.</p></div></div>
+</div>
+</div>
+</section>
+
+<section class="screen" id="A3-detail" aria-labelledby="A3-detail-t">
+<h3 class="screen-title" id="A3-detail-t">A3 입점 신청 상세 — <span class="path">/admin/store-applications/[store_application_id]</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i on" href="#A3-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<a class="back" href="#A3-list"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>입점 신청 목록</a>
+<div class="title-row">
+<div class="stack g4" style="min-width:0">
+<div class="title-line"><h4 class="h1">무인텔 온담 홍대점</h4><span class="badge b-warn">대기</span></div>
+<p class="sub num">신청일시 2026-11-09 21:14 · 처리일시 —</p>
+</div>
+<div class="actions"><button type="button" class="btn btn-d" style="padding:0 20px">반려</button><button type="button" class="btn btn-p" style="padding:0 20px">승인</button></div>
+</div>
+<div class="note n-info"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5"></path><path d="M12 8h.01"></path></svg><span>승인하면 업체와 업체 총관리자 계정(아이디 ondam_hongdae, 신청 때 정한 비밀번호)이 만들어지고, 대표자 휴대폰 010-2345-6789 로 승인 SMS 가 갑니다. 대기 중인 신청만 승인 · 반려할 수 있습니다.</span></div>
+
+<div class="row">
+<section class="card pad stack g16 col-2">
+<h5 class="h2">신청 내용</h5>
+<dl class="dl">
+<dt>상호명</dt><dd>무인텔 온담 홍대점</dd>
+<dt>사업자등록번호</dt><dd>214-87-12345</dd>
+<dt>대표자명</dt><dd>박진우</dd>
+<dt>대표자 휴대폰</dt><dd>010-2345-6789</dd>
+<dt>업체 총관리자 아이디</dt><dd class="code" style="font-size:13px">ondam_hongdae</dd>
+<dt>업체 연락처</dt><dd>02-332-4567</dd>
+<dt>주소</dt><dd>서울특별시 마포구 어울마당로 123</dd>
+<dt>상세주소</dt><dd>3층 ~ 5층</dd>
+<dt>위도 · 경도</dt><dd>37.553612 · 126.922734</dd>
+<dt>신청 메모</dt><dd>객실 18개, 시간 이용 · 1박으로 운영할 예정입니다. 문 잠금장치는 QR 확인이 되는 제품으로 바꿨습니다.</dd>
+</dl>
+</section>
+<div class="col-1 stack g24">
+<section class="card pad stack g16">
+<h5 class="h2">신청자</h5>
+<dl class="dl narrow">
+<dt>이름</dt><dd>박진우</dd>
+<dt>닉네임</dt><dd>홍대밤산책</dd>
+<dt>휴대폰</dt><dd>010-2345-6789</dd>
+</dl>
+<a class="link-more" href="#A6-detail">이용자 상세 보기<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></a>
+</section>
+<section class="card pad stack g16">
+<h5 class="h2">처리</h5>
+<dl class="dl narrow">
+<dt>상태</dt><dd><span class="badge b-warn">대기</span></dd>
+<dt>처리일시</dt><dd class="none">—</dd>
+<dt>업체코드</dt><dd class="none">— <span style="font-size:12px">(승인 뒤 생김)</span></dd>
+<dt>반려 사유</dt><dd class="none">—</dd>
+</dl>
+</section>
+</div>
+</div>
+
+<section class="card pad stack g20">
+<h5 class="h2">업체 정보 파일</h5>
+<div class="stack g12">
+<div class="title-line" style="gap:8px"><h6 class="h3">사업자등록증</h6><span class="badge b-neu">비공개</span></div>
+<div class="row" style="gap:20px">
+<div class="ph ph-doc"><svg class="ic" style="width:24px;height:24px" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>사업자등록증</div>
+<div class="stack g12" style="flex:1 1 280px;min-width:0">
+<dl class="dl narrow small-text">
+<dt>파일명</dt><dd>사업자등록증_온담홍대점.jpg</dd>
+<dt>형식</dt><dd>image/jpeg</dd>
+<dt>등록일시</dt><dd>2026-11-09 21:16</dd>
+</dl>
+<a class="btn btn-s btn-sm" href="#A3-detail" style="align-self:flex-start"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg>새 창으로 열기</a>
+<p class="sub">비공개 파일이라 열람 주소가 10분 뒤 닫힙니다. 열리지 않으면 이 화면을 새로고침하세요(상세를 열 때마다 새 주소를 받는다).</p>
+</div>
+</div>
+</div>
+<div class="divider"></div>
+<div class="stack g12">
+<div class="title-line" style="gap:8px"><h6 class="h3">업체 사진</h6><span class="sub">4장 · 정렬 순서대로 · 공개</span></div>
+<div class="photos">
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>외관_정면.jpg</figcaption></figure>
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>로비_무인키오스크.jpg</figcaption></figure>
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>복도_3층.jpg</figcaption></figure>
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>객실_스탠다드.jpg</figcaption></figure>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">승인 · 반려는 큐 API — 누른 버튼이 "처리 중…" 으로 막히고, done 이면 상세를 다시 부른다.</p>
+<div class="state-grid">
+<div class="state state-wide" style="padding:0;border:0;background:transparent">
+<span class="cap">반려 → 사유 대화상자</span>
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="a3d-dlg-t">
+<div class="dialog-head"><h5 class="h2" id="a3d-dlg-t">입점 신청 반려</h5><button type="button" class="btn btn-icon" aria-label="닫기"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+<div class="dialog-body">
+<p>무인텔 온담 홍대점 신청을 반려합니다. 사유는 신청자가 내 신청 화면에서 봅니다.</p>
+<div><label class="lbl" for="a3d-reason">반려 사유 <span class="req">*</span></label><textarea class="inp" id="a3d-reason">사업자등록증의 상호명과 신청 상호명이 다릅니다. 확인 후 다시 신청해 주세요.</textarea><p class="count">43 / 255</p></div>
+<p style="font-size:13px">비우고 누르면 칸 아래에 위험색으로 "반려 사유를 입력해주세요."</p>
+</div>
+<div class="dialog-foot"><button type="button" class="btn btn-s">취소</button><button type="button" class="btn btn-d">반려하기</button></div>
+</div>
+</div>
+</div>
+<div class="state-wide stack g16" style="flex:1 1 440px;min-width:0">
+<div class="state">
+<span class="cap">승인 성공(done) — 결과 store_id · store_code 표시 자리</span>
+<div class="note n-ok" role="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg><span class="stack g4" style="min-width:0"><strong>입점을 승인했습니다. 대표자 휴대폰으로 승인 SMS 를 보냈습니다.</strong><span class="on-surface">업체코드 <span class="code" style="overflow-wrap:anywhere">7a4c9e2b5d1f4e8a9c3b6d0e2f5a8c1d</span></span><span class="on-surface">업체 관리자 콘솔 로그인 주소 <span class="code" style="overflow-wrap:anywhere">https://&lt;프론트 주소&gt;/manager/7a4c9e2b5d1f4e8a9c3b6d0e2f5a8c1d/login</span></span></span></div>
+<div class="actions"><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>업체코드 복사</button><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>로그인 주소 복사</button><a class="btn btn-p btn-sm" href="#A4-detail">업체 상세로</a></div>
+<p class="small">로그인 주소는 프론트 주소 + /manager/&lt;store_code&gt;/login 으로 화면에서 만든다. 업체 총관리자에게 이 주소를 알려 준다.</p>
+<p class="small">다시 부른 상세는 상태 승인 · 처리일시 · 업체코드가 채워지고, 승인 · 반려 버튼은 사라진다.</p>
+</div>
+<div class="state">
+<span class="cap">사업자등록증이 없는 신청</span>
+<div class="note n-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.5 20h19z"></path><path d="M12 10v4"></path><path d="M12 17h.01"></path></svg><span>사업자등록증이 없어 승인할 수 없습니다. 신청자가 내 신청 화면에서 사업자등록증을 올린 뒤 승인하세요.</span></div>
+<div class="actions"><button type="button" class="btn btn-d" style="padding:0 20px">반려</button><button type="button" class="btn btn-x" disabled style="padding:0 20px">승인</button></div>
+<p class="small">files 에 BUSINESS_LICENSE 가 없으면 승인을 막는다. 서버도 400 "사업자등록증 사진이 없어 승인할 수 없습니다." 를 돌려준다. 신청자(applicant)가 null 이면 신청자 칸에 "신청자 정보 없음" 을 쓰고, 승인은 400 "신청자 정보를 찾을 수 없어 승인할 수 없습니다."</p>
+</div>
+<div class="state">
+<span class="cap">이미 처리된 신청 — 반려</span>
+<div class="title-line"><span style="font-size:16px;font-weight:700">코지룸 합정점</span><span class="badge b-bad">반려</span></div>
+<dl class="dl narrow small-text">
+<dt>처리일시</dt><dd>2026-11-07 11:20</dd>
+<dt>반려 사유</dt><dd>업체 연락처로 연결되지 않습니다. 연락 가능한 번호로 다시 신청해 주세요.</dd>
+</dl>
+<p class="small">대기가 아니면 승인 · 반려 버튼을 숨긴다(서버는 400 "대기 중인 입점 신청만 처리할 수 있습니다.").</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<section class="screen" id="A4-list" aria-labelledby="A4-list-t">
+<h3 class="screen-title" id="A4-list-t">A4 업체 목록 — <span class="path">/admin/stores</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i on" href="#A4-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<div class="stack g4"><h4 class="h1">업체</h4><p class="sub">입점 승인으로 만들어진 업체입니다. 등록일 최신순. 영업중지 · 탈퇴 업체는 이용자 지도에 나오지 않습니다.</p></div>
+<section class="card list-card" aria-label="업체 목록">
+<div class="filter">
+<div class="filter-group" role="group" aria-label="업체 상태"><span class="filter-label">상태</span><button type="button" class="chip on" aria-pressed="true">전체</button><button type="button" class="chip" aria-pressed="false">활성</button><button type="button" class="chip" aria-pressed="false">영업중지</button><button type="button" class="chip" aria-pressed="false">탈퇴</button></div>
+<div class="search"><div class="search-box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input class="inp" id="a4l-q" type="search" aria-label="검색어" placeholder="상호명 · 사업자등록번호 · 대표자명"></div><button type="button" class="btn btn-p btn-sm">조회</button></div>
+</div>
+<div class="tbl-box"><table class="tbl">
+<thead><tr><th>업체코드</th><th>상호명</th><th>사업자등록번호</th><th>대표자</th><th>전화</th><th>주소</th><th>영업중</th><th>상태</th></tr></thead>
+<tbody>
+<tr><td class="code" title="3f9c2a7e1b5d4c8f9a0e6b2d7c4f1a3e">3f9c2a7e…</td><td><a class="tlink" href="#A4-detail">스테이 리프 강남역점</a></td><td>120-88-45678</td><td>김현석</td><td>02-555-0123</td><td class="wrap">서울특별시 강남구 강남대로 123</td><td><span class="badge b-ok">영업중</span></td><td><span class="badge b-ok">활성</span></td></tr>
+<tr><td class="code" title="8b2e4f61c9a04d7e8f3b2c5a1d6e9f07">8b2e4f61…</td><td><a class="tlink" href="#A4-detail">슬립인 서면점</a></td><td>602-85-67890</td><td>강서진</td><td>051-802-3344</td><td class="wrap">부산광역시 부산진구 중앙대로 456</td><td><span class="badge b-ok">영업중</span></td><td><span class="badge b-ok">활성</span></td></tr>
+<tr><td class="code" title="d8b1f3a5c7e94b2d6f8a0c2e4b6d8f0a">d8b1f3a5…</td><td><a class="tlink" href="#A4-detail">무인텔 하루 대전역점</a></td><td>305-86-89012</td><td>한지호</td><td>042-253-7788</td><td class="wrap">대전광역시 동구 중앙로 78</td><td><span class="badge b-neu">영업준비</span></td><td><span class="badge b-bad">영업중지</span></td></tr>
+<tr><td class="code" title="5e0a3c8d7b1f4a2e9c6d8b0f1a2c3e4d">5e0a3c8d…</td><td><a class="tlink" href="#A4-detail">리프룸 잠실새내점</a></td><td>215-88-90123</td><td>오민서</td><td>02-418-5566</td><td class="wrap">서울특별시 송파구 백제고분로 210</td><td><span class="badge b-ok">영업중</span></td><td><span class="badge b-ok">활성</span></td></tr>
+<tr><td class="code" title="61e3c5a7b9d14f2e8c0a6b4d2f8e0c9b">61e3c5a7…</td><td><a class="tlink" href="#A4-detail">코지룸 서현점</a></td><td>144-81-22334</td><td>배준영</td><td>031-707-8899</td><td class="wrap">경기도 성남시 분당구 황새울로 335</td><td><span class="badge b-neu">영업준비</span></td><td><span class="badge b-ok">활성</span></td></tr>
+<tr><td class="code" title="c41d7a9e2f3b4e58a6c0d1f2e3b4a597">c41d7a9e…</td><td><a class="tlink" href="#A4-detail">스테이 리프 신촌점</a></td><td>110-86-24680</td><td>이도윤</td><td>02-363-7890</td><td class="wrap">서울특별시 서대문구 연세로 50</td><td><span class="badge b-ok">영업중</span></td><td><span class="badge b-ok">활성</span></td></tr>
+<tr><td class="code" title="2c9e5b7a1d3f4e6c8b0a2d4f6e8c0b1a">2c9e5b7a…</td><td><a class="tlink" href="#A4-detail">스테이 모아 수원역점</a></td><td>124-87-11223</td><td>문채린</td><td>031-245-6677</td><td class="wrap">경기도 수원시 팔달구 덕영대로 901</td><td><span class="badge b-ok">영업중</span></td><td><span class="badge b-ok">활성</span></td></tr>
+<tr><td class="code" title="a7f3e1c5d9b24f6e8a0c3d5b7e9f1a2c">a7f3e1c5…</td><td><a class="tlink" href="#A4-detail">슬립인 동성로점</a></td><td>503-86-33445</td><td>서지안</td><td>053-422-1122</td><td class="wrap">대구광역시 중구 동성로 88</td><td><span class="badge b-ok">영업중</span></td><td><span class="badge b-ok">활성</span></td></tr>
+<tr><td class="code" title="f0a2c4e6b8d14a3c5e7b9d1f3a5c7e9b">f0a2c4e6…</td><td><a class="tlink" href="#A4-detail">온담 스테이 전주한옥점</a></td><td>402-85-44556</td><td>임도현</td><td>063-285-3344</td><td class="wrap">전북특별자치도 전주시 완산구 태조로 40</td><td><span class="badge b-neu">영업준비</span></td><td><span class="badge b-bad">영업중지</span></td></tr>
+<tr><td class="code" title="9d7b5f3a1c8e4d6b2f0a8c6e4b2d0f1c">9d7b5f3a…</td><td><a class="tlink" href="#A4-detail">리프룸 광안리점</a></td><td class="code" title="DELETE_e4b7c2a9d1f34e6b8a0c5d7f9e1b3a5c">DELETE_e4b7c2a9…</td><td>조은우</td><td>051-755-9900</td><td class="wrap">부산광역시 수영구 광안해변로 177</td><td><span class="badge b-neu">영업준비</span></td><td><span class="badge b-neu">탈퇴</span></td></tr>
+</tbody>
+</table></div>
+<div class="list-foot"><span class="sub">총 23곳 · 1 / 3쪽</span>
+<nav class="pager" aria-label="페이지"><button type="button" class="pg" aria-label="이전 페이지" disabled><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button><button type="button" class="pg on" aria-current="page">1</button><button type="button" class="pg">2</button><button type="button" class="pg">3</button><button type="button" class="pg" aria-label="다음 페이지"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button></nav></div>
+</section>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">영업중 칸은 is_open(1 영업중 · 0 영업준비). 탈퇴 업체의 사업자등록번호는 DELETE_&lt;store_id&gt; 로 바뀌어 오므로 흐린 고정폭 글자로 줄여 보여 준다. 거르기는 store_state_id · keyword · page.</p>
+<div class="state-grid">
+<div class="state"><span class="cap">빈 목록</span><div class="empty" style="padding:24px 8px"><p style="margin:0;font-weight:700">조건에 맞는 업체가 없습니다.</p><p class="sub">상태를 "전체" 로 바꾸거나 검색어를 지워 보세요.</p></div></div>
+</div>
+</div>
+</section>
+
+<section class="screen" id="A4-detail" aria-labelledby="A4-detail-t">
+<h3 class="screen-title" id="A4-detail-t">A4 업체 상세 — <span class="path">/admin/stores/[store_id]</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i on" href="#A4-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<a class="back" href="#A4-list"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>업체 목록</a>
+<div class="title-row">
+<div class="stack g8" style="min-width:0">
+<div class="title-line"><h4 class="h1">스테이 리프 강남역점</h4><span class="badge b-ok">활성</span><span class="badge b-ok">영업중</span></div>
+<div class="title-line" style="gap:8px"><span class="sub">업체코드</span><span class="code" style="overflow-wrap:anywhere">3f9c2a7e1b5d4c8f9a0e6b2d7c4f1a3e</span><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>복사</button></div>
+<div class="title-line" style="gap:8px"><span class="sub">업체 관리자 콘솔 로그인 주소</span><span class="code" style="overflow-wrap:anywhere">https://&lt;프론트 주소&gt;/manager/3f9c2a7e1b5d4c8f9a0e6b2d7c4f1a3e/login</span><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>로그인 주소 복사</button></div>
+<p class="sub num">등록 2026-11-04 14:05 · 수정 2026-11-08 09:40</p>
+</div>
+<a class="btn btn-s" href="#A5-list">이 업체의 업체 관리자<svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></a>
+</div>
+
+<div class="row">
+<section class="card pad stack g20 col-2" aria-labelledby="a4d-info-t">
+<div class="stack g4"><h5 class="h2" id="a4d-info-t">업체 정보</h5><p class="sub">상호명 · 대표자 · 연락처 · 주소 · 좌표를 고칩니다. 사업자등록번호는 바꾸지 않습니다.</p></div>
+<div class="fields">
+<div><label class="lbl" for="a4d-name">상호명 <span class="req">*</span></label><input class="inp" id="a4d-name" type="text" value="스테이 리프 강남역점"></div>
+<div><label class="lbl" for="a4d-biz">사업자등록번호</label><input class="inp inp-ro num" id="a4d-biz" type="text" value="120-88-45678" readonly><p class="hint">사업자등록번호는 바꿀 수 없습니다.</p></div>
+<div><label class="lbl" for="a4d-owner">대표자명 <span class="req">*</span></label><input class="inp" id="a4d-owner" type="text" value="김현석"></div>
+<div><label class="lbl" for="a4d-phone">업체 연락처 <span class="req">*</span></label><input class="inp num" id="a4d-phone" type="text" inputmode="numeric" value="025550123"><p class="hint">숫자만 8~11자리</p></div>
+<div class="span-all"><label class="lbl" for="a4d-addr">주소 <span class="req">*</span></label><input class="inp" id="a4d-addr" type="text" value="서울특별시 강남구 강남대로 123"></div>
+<div class="span-all"><label class="lbl" for="a4d-addr2">상세주소</label><input class="inp" id="a4d-addr2" type="text" value="리프빌딩 4층 ~ 9층"><p class="hint">비우고 저장하면 지워집니다.</p></div>
+<div><label class="lbl" for="a4d-lat">위도 <span class="req">*</span></label><input class="inp num" id="a4d-lat" type="text" inputmode="decimal" value="37.497942"></div>
+<div><label class="lbl" for="a4d-lng">경도 <span class="req">*</span></label><input class="inp num" id="a4d-lng" type="text" inputmode="decimal" value="127.027621"></div>
+</div>
+<div class="actions" style="justify-content:flex-end"><button type="button" class="btn btn-p">정보 저장</button></div>
+</section>
+
+<div class="col-1 stack g24">
+<section class="card pad stack g16" aria-labelledby="a4d-state-t">
+<div class="title-line" style="justify-content:space-between"><h5 class="h2" id="a4d-state-t">업체 상태</h5><span class="badge b-ok">활성</span></div>
+<fieldset class="radio-list" style="margin:0;padding:0;border:0">
+<legend class="vh">바꿀 상태</legend>
+<label class="radio on"><input type="radio" name="a4d-state" value="ACTIVE" checked><span><strong>활성</strong><span>이용자 지도에 나오고 예약을 받습니다.</span></span></label>
+<label class="radio"><input type="radio" name="a4d-state" value="SUSPEND"><span><strong>영업중지</strong><span>지도에서 빠집니다. 사유는 업체 관리자의 내 업체 화면에 보입니다.</span></span></label>
+<label class="radio"><input type="radio" name="a4d-state" value="LEAVE"><span><strong>탈퇴</strong><span>되돌릴 수 없습니다. 이 업체의 업체 관리자 계정이 모두 정지됩니다.</span></span></label>
+</fieldset>
+<div><label class="lbl" for="a4d-suspend">정지 사유</label><textarea class="inp" id="a4d-suspend" placeholder="영업중지를 고를 때만 남습니다." disabled></textarea><p class="count">0 / 255</p></div>
+<div class="actions" style="justify-content:flex-end"><button type="button" class="btn btn-x" disabled>상태 변경</button></div>
+<p class="small">지금 상태와 다른 값을 고르면 누를 수 있다.</p>
+</section>
+<section class="card pad stack g12" aria-labelledby="a4d-open-t">
+<h5 class="h2" id="a4d-open-t">영업중</h5>
+<div class="title-line" style="gap:12px"><button type="button" class="sw" role="switch" aria-checked="true" aria-labelledby="a4d-open-l"></button><span id="a4d-open-l" style="font-weight:700">영업중</span></div>
+<p class="small">끄면 영업시간 · 연중무휴와 관계없이 영업중이 아닌 것(영업준비)으로 보입니다. 바로 저장됩니다.</p>
+</section>
+</div>
+</div>
+
+<div class="row">
+<section class="card pad stack g16 col-1" aria-labelledby="a4d-rule-t">
+<div class="stack g4"><h5 class="h2" id="a4d-rule-t">운영 규정</h5><p class="sub">업체 관리자가 내 업체 설정에서 바꿉니다. 여기서는 읽기만.</p></div>
+<dl class="dl" style="grid-template-columns:150px minmax(0,1fr)">
+<dt>24시간 연중무휴</dt><dd>아니오 (요일별 영업시간을 씀)</dd>
+<dt>정비시간</dt><dd>30분</dd>
+<dt>예약 가능 시작</dt><dd>이용 시작 72시간 전부터</dd>
+<dt>100% 환불 마감</dt><dd>이용 시작 120분 전까지</dd>
+<dt>마감 뒤 환불 비율</dt><dd>50%</dd>
+<dt>업체 소개</dt><dd>강남역 11번 출구에서 걸어서 3분. 직원 없이 QR 로 문을 열고 들어오는 무인 객실입니다.</dd>
+</dl>
+</section>
+<section class="card pad stack g20 col-2" aria-labelledby="a4d-file-t">
+<h5 class="h2" id="a4d-file-t">업체 정보 파일</h5>
+<div class="row" style="gap:20px">
+<div class="ph ph-doc" style="width:120px;height:156px"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path></svg>사업자등록증</div>
+<div class="stack g8" style="flex:1 1 240px;min-width:0">
+<div class="title-line" style="gap:8px"><h6 class="h3">사업자등록증</h6><span class="badge b-neu">비공개</span></div>
+<p class="small">사업자등록증_리프강남.pdf · application/pdf · 2026-11-03 09:18</p>
+<a class="btn btn-s btn-sm" href="#A4-detail" style="align-self:flex-start"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-9 9"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path></svg>새 창으로 열기</a>
+<p class="small">열람 주소는 10분 동안만 열립니다. 지나면 화면을 새로고침하세요.</p>
+</div>
+</div>
+<div class="divider"></div>
+<div class="stack g12">
+<div class="title-line" style="gap:8px"><h6 class="h3">업체 사진</h6><span class="sub">5장 · 첫 장(정렬 0)이 대표 · 공개</span></div>
+<div class="photos" style="grid-template-columns:repeat(auto-fill,minmax(140px,1fr))">
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption><span class="badge b-pri">대표</span>외관.jpg</figcaption></figure>
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>로비.jpg</figcaption></figure>
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>스탠다드_더블.jpg</figcaption></figure>
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>디럭스_더블.jpg</figcaption></figure>
+<figure><div class="ph ph-photo"><svg class="ic" style="width:22px;height:22px" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 17-5-5-9 8"></path></svg>업체 사진</div><figcaption>욕실.jpg</figcaption></figure>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">정보 저장 · 상태 변경 · 영업중은 각각 큐 API — 끝나면 상세를 다시 부른다. 같은 상태로 바꾸면 400 "이미 같은 상태입니다."</p>
+<div class="state-grid">
+<div class="state">
+<span class="cap">영업중지로 바꾸기 — 사유 입력</span>
+<label class="radio on"><input type="radio" name="a4d-s1" value="SUSPEND" checked><span><strong>영업중지</strong><span>지도에서 빠집니다. 사유는 업체 관리자의 내 업체 화면에 보입니다.</span></span></label>
+<div><label class="lbl" for="a4d-s1-r">정지 사유</label><textarea class="inp" id="a4d-s1-r">소방 점검 결과 보완이 필요해 영업을 멈춥니다. 보완 확인 뒤 다시 엽니다.</textarea><p class="count">42 / 255</p></div>
+<div class="actions" style="justify-content:flex-end"><button type="button" class="btn btn-p">상태 변경</button></div>
+</div>
+<div class="state" style="padding:0;border:0;background:transparent">
+<span class="cap">탈퇴를 고르고 상태 변경 → 확인 대화상자</span>
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="a4d-dlg-t">
+<div class="dialog-head"><h5 class="h2" id="a4d-dlg-t">업체를 탈퇴 처리할까요?</h5><button type="button" class="btn btn-icon" aria-label="닫기"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+<div class="dialog-body"><p>스테이 리프 강남역점을 탈퇴 처리합니다. 되돌릴 수 없고, 이 업체의 업체 관리자 계정이 모두 정지되며, 이용자 지도에서 빠집니다.</p></div>
+<div class="dialog-foot"><button type="button" class="btn btn-s">취소</button><button type="button" class="btn btn-d">탈퇴 처리</button></div>
+</div>
+</div>
+</div>
+<div class="state">
+<span class="cap">영업중지 업체의 머리</span>
+<div class="title-line"><span style="font-size:18px;font-weight:700">무인텔 하루 대전역점</span><span class="badge b-bad">영업중지</span><span class="badge b-neu">영업준비</span></div>
+<div class="note n-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6"></path><path d="M12 16.5h.01"></path></svg><span><strong>영업중지 사유</strong> · 객실 위생 민원이 이어져 점검이 끝날 때까지 영업을 멈춥니다.</span></div>
+<p class="small">suspend_comment 가 null 이면 띠를 숨긴다.</p>
+</div>
+<div class="state">
+<span class="cap">탈퇴 업체 — 읽기만</span>
+<div class="note n-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.5 20h19z"></path><path d="M12 10v4"></path><path d="M12 17h.01"></path></svg><span>탈퇴한 업체는 바꿀 수 없습니다. 정보 · 상태 · 영업중 칸을 모두 잠근다.</span></div>
+<div class="actions"><button type="button" class="btn btn-x" disabled>정보 저장</button><button type="button" class="btn btn-x" disabled>상태 변경</button></div>
+</div>
+<div class="state">
+<span class="cap">정보 저장 — 입력 오류</span>
+<div><label class="lbl" for="a4d-s5">업체 연락처 <span class="req">*</span></label><input class="inp inp-err num" id="a4d-s5" type="text" value="02-555-0123" aria-invalid="true"><p class="err">업체 연락처를 숫자만 정확히 입력해주세요.</p></div>
+<div><label class="lbl" for="a4d-s5b">위도 <span class="req">*</span></label><input class="inp inp-err num" id="a4d-s5b" type="text" value="137.4979" aria-invalid="true"><p class="err">위도가 올바르지 않습니다.</p></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+<!-- ───────── 계정 관리 ───────── -->
+<section class="group" aria-labelledby="g-acct-t">
+<h2 class="group-title" id="g-acct-t">계정 관리</h2>
+
+<section class="screen" id="A5-list" aria-labelledby="A5-list-t">
+<h3 class="screen-title" id="A5-list-t">A5 업체 관리자 목록 — <span class="path">/admin/managers</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i on" href="#A5-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<div class="stack g4"><h4 class="h1">업체 관리자</h4><p class="sub">모든 업체의 업체 총관리자(총괄매니저) · 업체 관리자(매니저) 계정입니다. 등록 최신순.</p></div>
+<section class="card list-card" aria-label="업체 관리자 목록">
+<div class="filter">
+<div class="filter-group"><label class="filter-label" for="a5l-store">업체</label><select class="inp" id="a5l-store"><option>전체 업체</option><option>스테이 리프 강남역점</option><option>슬립인 서면점</option><option>리프룸 잠실새내점</option><option>스테이 리프 신촌점</option></select></div>
+<div class="filter-group" role="group" aria-label="권한"><span class="filter-label">권한</span><button type="button" class="chip on" aria-pressed="true">전체</button><button type="button" class="chip" aria-pressed="false">총괄매니저</button><button type="button" class="chip" aria-pressed="false">매니저</button></div>
+<div class="filter-group" role="group" aria-label="상태"><span class="filter-label">상태</span><button type="button" class="chip on" aria-pressed="true">전체</button><button type="button" class="chip" aria-pressed="false">정상</button><button type="button" class="chip" aria-pressed="false">정지</button></div>
+<div class="search"><div class="search-box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input class="inp" id="a5l-q" type="search" aria-label="검색어" placeholder="상호명 · 업체코드 · 아이디 · 이름 · 휴대폰"></div><button type="button" class="btn btn-p btn-sm">조회</button></div>
+</div>
+<div class="tbl-box"><table class="tbl">
+<thead><tr><th>업체</th><th>업체코드</th><th>아이디</th><th>이름</th><th>휴대폰</th><th>권한</th><th>상태</th><th>등록일시</th></tr></thead>
+<tbody>
+<tr><td>스테이 리프 강남역점</td><td class="code" title="3f9c2a7e1b5d4c8f9a0e6b2d7c4f1a3e">3f9c2a7e…</td><td class="code" style="font-size:13px">gn_front01</td><td><a class="tlink" href="#A5-detail">이서연</a></td><td>010-4567-8901</td><td><span class="badge b-neu">매니저</span></td><td><span class="badge b-ok">정상</span></td><td>2026-11-06 10:20</td></tr>
+<tr><td>스테이 리프 강남역점</td><td class="code" title="3f9c2a7e1b5d4c8f9a0e6b2d7c4f1a3e">3f9c2a7e…</td><td class="code" style="font-size:13px">gangnam_head</td><td><a class="tlink" href="#A5-detail">김현석</a></td><td>010-3456-7890</td><td><span class="badge b-pri">총괄매니저</span></td><td><span class="badge b-ok">정상</span></td><td>2026-11-04 14:05</td></tr>
+<tr><td>슬립인 서면점</td><td class="code" title="8b2e4f61c9a04d7e8f3b2c5a1d6e9f07">8b2e4f61…</td><td class="code" style="font-size:13px">sm_night</td><td><a class="tlink" href="#A5-detail">박재훈</a></td><td class="none">—</td><td><span class="badge b-neu">매니저</span></td><td><span class="badge b-ok">정상</span></td><td>2026-11-01 18:44</td></tr>
+<tr><td>리프룸 잠실새내점</td><td class="code" title="5e0a3c8d7b1f4a2e9c6d8b0f1a2c3e4d">5e0a3c8d…</td><td class="code" style="font-size:13px">js_staff2</td><td><a class="tlink" href="#A5-detail">최우진</a></td><td>010-8901-2345</td><td><span class="badge b-neu">매니저</span></td><td><span class="badge b-bad">정지</span></td><td>2026-10-31 11:02</td></tr>
+<tr><td>슬립인 서면점</td><td class="code" title="8b2e4f61c9a04d7e8f3b2c5a1d6e9f07">8b2e4f61…</td><td class="code" style="font-size:13px">seomyeon_head</td><td><a class="tlink" href="#A5-detail">강서진</a></td><td>010-5678-9012</td><td><span class="badge b-pri">총괄매니저</span></td><td><span class="badge b-ok">정상</span></td><td>2026-10-30 10:12</td></tr>
+<tr><td><span class="cell-2">무인텔 하루 대전역점<span class="badge b-bad">영업중지</span></span></td><td class="code" title="d8b1f3a5c7e94b2d6f8a0c2e4b6d8f0a">d8b1f3a5…</td><td class="code" style="font-size:13px">haru_daejeon</td><td><a class="tlink" href="#A5-detail">한지호</a></td><td>010-6789-0123</td><td><span class="badge b-pri">총괄매니저</span></td><td><span class="badge b-ok">정상</span></td><td>2026-10-25 15:47</td></tr>
+<tr><td>리프룸 잠실새내점</td><td class="code" title="5e0a3c8d7b1f4a2e9c6d8b0f1a2c3e4d">5e0a3c8d…</td><td class="code" style="font-size:13px">jamsil_head</td><td><a class="tlink" href="#A5-detail">오민서</a></td><td>010-7890-1234</td><td><span class="badge b-pri">총괄매니저</span></td><td><span class="cell-2"><span class="badge b-ok">정상</span><span class="badge b-warn">임시 비밀번호</span></span></td><td>2026-10-21 09:30</td></tr>
+<tr><td>코지룸 서현점</td><td class="code" title="61e3c5a7b9d14f2e8c0a6b4d2f8e0c9b">61e3c5a7…</td><td class="code" style="font-size:13px">seohyeon_head</td><td><a class="tlink" href="#A5-detail">배준영</a></td><td>010-2233-4455</td><td><span class="badge b-pri">총괄매니저</span></td><td><span class="badge b-ok">정상</span></td><td>2026-09-18 13:26</td></tr>
+<tr><td>스테이 리프 신촌점</td><td class="code" title="c41d7a9e2f3b4e58a6c0d1f2e3b4a597">c41d7a9e…</td><td class="code" style="font-size:13px">sinchon_head</td><td><a class="tlink" href="#A5-detail">이도윤</a></td><td>010-9012-3456</td><td><span class="badge b-pri">총괄매니저</span></td><td><span class="badge b-ok">정상</span></td><td>2026-09-02 16:10</td></tr>
+<tr><td><span class="cell-2">리프룸 광안리점<span class="badge b-neu">탈퇴</span></span></td><td class="code" title="9d7b5f3a1c8e4d6b2f0a8c6e4b2d0f1c">9d7b5f3a…</td><td class="code" style="font-size:13px">gwangalli_head</td><td><a class="tlink" href="#A5-detail">조은우</a></td><td>010-1122-3344</td><td><span class="badge b-pri">총괄매니저</span></td><td><span class="badge b-bad">정지</span></td><td>2026-07-14 11:38</td></tr>
+</tbody>
+</table></div>
+<div class="list-foot"><span class="sub">총 41명 · 1 / 5쪽</span>
+<nav class="pager" aria-label="페이지"><button type="button" class="pg" aria-label="이전 페이지" disabled><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button><button type="button" class="pg on" aria-current="page">1</button><button type="button" class="pg">2</button><button type="button" class="pg">3</button><button type="button" class="pg">4</button><button type="button" class="pg">5</button><button type="button" class="pg" aria-label="다음 페이지"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button></nav></div>
+</section>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">업체 고르기 상자는 업체 목록 API 를 all_search_yn=Y 로 불러 채운다. 거르기는 store_id · auth_id · state_id · keyword · page. 업체가 활성이 아니면 업체 이름 옆에 업체 상태 배지, is_password_change_required 가 1 이면 "임시 비밀번호" 배지.</p>
+<div class="state-grid">
+<div class="state"><span class="cap">A4 업체 상세의 "이 업체의 업체 관리자" 로 들어올 때</span><p class="small">업체 고르기 상자에 그 업체가 골라진 채(store_id) 1쪽을 부른다.</p></div>
+<div class="state"><span class="cap">빈 목록</span><div class="empty" style="padding:24px 8px"><p style="margin:0;font-weight:700">조건에 맞는 업체 관리자가 없습니다.</p><p class="sub">거르기를 풀거나 검색어를 지워 보세요.</p></div></div>
+</div>
+</div>
+</section>
+
+<section class="screen" id="A5-detail" aria-labelledby="A5-detail-t">
+<h3 class="screen-title" id="A5-detail-t">A5 업체 관리자 상세 — <span class="path">/admin/managers/[user_id]</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i on" href="#A5-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i" href="#A6-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<a class="back" href="#A5-list"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>업체 관리자 목록</a>
+<div class="stack g4">
+<div class="title-line"><h4 class="h1">이서연</h4><span class="badge b-neu">매니저</span><span class="badge b-ok">정상</span></div>
+<p class="sub">아이디 gn_front01 · 스테이 리프 강남역점</p>
+</div>
+<div class="row">
+<section class="card pad stack g16 col-2" aria-labelledby="a5d-info-t">
+<h5 class="h2" id="a5d-info-t">계정 정보</h5>
+<dl class="dl">
+<dt>업체</dt><dd><span class="cell-2"><a class="tlink" href="#A4-detail">스테이 리프 강남역점</a><span class="badge b-ok">활성</span></span></dd>
+<dt>업체코드</dt><dd><span class="cell-2" style="flex-wrap:wrap"><span class="code" style="overflow-wrap:anywhere">3f9c2a7e1b5d4c8f9a0e6b2d7c4f1a3e</span><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>복사</button></span></dd>
+<dt>아이디</dt><dd class="code" style="font-size:13px">gn_front01</dd>
+<dt>이름</dt><dd>이서연</dd>
+<dt>휴대폰</dt><dd>010-4567-8901</dd>
+<dt>성별</dt><dd>여</dd>
+<dt>생년월일</dt><dd>1996-04-12</dd>
+<dt>권한</dt><dd>매니저(업체 관리자)</dd>
+<dt>상태</dt><dd><span class="badge b-ok">정상</span></dd>
+<dt>정지 사유</dt><dd class="none">—</dd>
+<dt>비밀번호 변경 필요</dt><dd>아니오</dd>
+<dt>등록일시</dt><dd>2026-11-06 10:20</dd>
+</dl>
+</section>
+<section class="card pad stack g16 col-1" aria-labelledby="a5d-reset-t">
+<h5 class="h2" id="a5d-reset-t">비밀번호 초기화</h5>
+<p style="margin:0">임시 비밀번호를 만들어 이 계정의 휴대폰 <span class="num" style="font-weight:700">010-4567-8901</span> 로 SMS 를 보냅니다. 업체 관리자는 다음 로그인 때 비밀번호를 바꿔야 합니다.</p>
+<button type="button" class="btn btn-d" style="align-self:flex-start"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"></circle><path d="m11 12 9-9"></path><path d="m17 6 3 3"></path></svg>비밀번호 초기화</button>
+<ul class="rules small" style="padding-left:18px">
+<li>휴대폰 번호가 없는 계정 · 탈퇴한 업체의 계정은 초기화할 수 없습니다.</li>
+<li>정지 계정도 초기화는 되지만 로그인은 계속 막힙니다.</li>
+<li>계정 정보 · 정지는 그 업체의 업체 총관리자가 업체 관리자 콘솔에서 바꿉니다.</li>
+</ul>
+</section>
+</div>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">초기화는 큐 API — 확인 대화상자를 거쳐 부르고, done 이면 상세를 다시 부른다(비밀번호 변경 필요 → 예).</p>
+<div class="state-grid">
+<div class="state" style="padding:0;border:0;background:transparent">
+<span class="cap">초기화 확인 대화상자</span>
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="a5d-dlg-t">
+<div class="dialog-head"><h5 class="h2" id="a5d-dlg-t">비밀번호를 초기화할까요?</h5><button type="button" class="btn btn-icon" aria-label="닫기"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+<div class="dialog-body"><p>이서연(gn_front01)의 임시 비밀번호를 만들어 010-4567-8901 로 SMS 를 보냅니다. 지금 비밀번호로는 더 이상 로그인할 수 없습니다.</p></div>
+<div class="dialog-foot"><button type="button" class="btn btn-s">취소</button><button type="button" class="btn btn-d">비밀번호 초기화</button></div>
+</div>
+</div>
+</div>
+<div class="state">
+<span class="cap">성공(done)</span>
+<div class="note n-ok" role="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg><span>임시 비밀번호를 010-4567-8901 로 보냈습니다.</span></div>
+<dl class="dl narrow small-text" style="grid-template-columns:120px minmax(0,1fr)"><dt>비밀번호 변경 필요</dt><dd><span class="cell-2">예<span class="badge b-warn">임시 비밀번호</span></span></dd></dl>
+</div>
+<div class="state">
+<span class="cap">휴대폰이 없는 계정 — 박재훈(sm_night)</span>
+<button type="button" class="btn btn-x" disabled style="align-self:flex-start">비밀번호 초기화</button>
+<p class="small">휴대폰 번호가 등록되지 않은 계정입니다. 그 업체의 업체 총관리자가 휴대폰 번호를 넣은 뒤 초기화할 수 있습니다.</p>
+</div>
+<div class="state">
+<span class="cap">탈퇴한 업체의 계정 — 조은우(gwangalli_head)</span>
+<button type="button" class="btn btn-x" disabled style="align-self:flex-start">비밀번호 초기화</button>
+<p class="small">탈퇴한 업체의 계정입니다. 업체 칸에 탈퇴 배지, 상태는 정지.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section class="screen" id="A6-list" aria-labelledby="A6-list-t">
+<h3 class="screen-title" id="A6-list-t">A6 이용자 목록 — <span class="path">/admin/users</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i on" href="#A6-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<div class="stack g4"><h4 class="h1">이용자</h4><p class="sub">SNS 로 가입한 이용자입니다. 가입 최신순.</p></div>
+<section class="card list-card" aria-label="이용자 목록">
+<div class="filter">
+<div class="filter-group" role="group" aria-label="회원 상태"><span class="filter-label">상태</span><button type="button" class="chip on" aria-pressed="true">전체</button><button type="button" class="chip" aria-pressed="false">정상</button><button type="button" class="chip" aria-pressed="false">정지</button><button type="button" class="chip" aria-pressed="false">탈퇴 대기</button><button type="button" class="chip" aria-pressed="false">탈퇴</button></div>
+<div class="filter-group"><label class="filter-label" for="a6l-sns">SNS</label><select class="inp" id="a6l-sns" style="min-width:140px"><option>전체 SNS</option><option>카카오</option><option>네이버</option><option>구글</option><option>애플</option><option>페이스북</option><option>라인</option></select></div>
+<div class="search"><div class="search-box"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg><input class="inp" id="a6l-q" type="search" aria-label="검색어" placeholder="이름 · 닉네임 · 휴대폰 · 검색 코드"></div><button type="button" class="btn btn-p btn-sm">조회</button></div>
+</div>
+<div class="tbl-box"><table class="tbl">
+<thead><tr><th>검색 코드</th><th>닉네임</th><th>이름</th><th>휴대폰</th><th>SNS</th><th>상태</th><th>가입일시</th></tr></thead>
+<tbody>
+<tr><td class="code" title="0e2c4a6b8d1f3e5c7a9b2d4f6e8a0c3b">0e2c4a6b…</td><td><a class="tlink" href="#A6-detail">새벽기차</a></td><td>정민지</td><td><span class="badge b-neu">미인증</span></td><td>카카오</td><td><span class="badge b-ok">정상</span></td><td>2026-11-10 08:12</td></tr>
+<tr><td class="code" title="3b1f9d7c5a3e4b2f0d8c6a4e2b0f8d6c">3b1f9d7c…</td><td><a class="tlink" href="#A6-detail">오늘도퇴근</a></td><td>임수빈</td><td>010-6420-1357</td><td>네이버</td><td><span class="badge b-ok">정상</span></td><td>2026-11-09 23:40</td></tr>
+<tr><td class="code" title="b3d5f7a9c1e34b6d8f0a2c4e6b8d0f2a">b3d5f7a9…</td><td><a class="tlink" href="#A6-detail">홍대밤산책</a></td><td>박진우</td><td>010-2345-6789</td><td>카카오</td><td><span class="badge b-ok">정상</span></td><td>2026-11-02 19:05</td></tr>
+<tr><td class="code" title="4a6c8e0b2d4f6a8c1e3b5d7f9a2c4e6b">4a6c8e0b…</td><td><a class="tlink" href="#A6-detail">밤산책러</a></td><td>이준서</td><td>010-2468-1357</td><td>네이버</td><td><span class="badge b-ok">정상</span></td><td>2026-10-28 14:22</td></tr>
+<tr><td class="code" title="6f8d0b2e4c6a8f1d3b5e7c9a1f3d5b7e">6f8d0b2e…</td><td><a class="tlink" href="#A6-detail">주말여행자</a></td><td>한서윤</td><td>010-9753-1086</td><td>카카오</td><td><span class="badge b-warn">탈퇴 대기</span></td><td>2026-10-15 09:47</td></tr>
+<tr><td class="code" title="e5c3a1f9d7b54e2c0a8f6d4b2e0c8a6f">e5c3a1f9…</td><td><a class="tlink" href="#A6-detail">짐만맡겨요</a></td><td>최현수</td><td>010-3579-2468</td><td>네이버</td><td><span class="badge b-bad">정지</span></td><td>2026-09-30 21:03</td></tr>
+<tr><td class="code" title="8e6c4a2f0d8b6e4c2a0f8d6b4e2c0a8f">8e6c4a2f…</td><td><a class="tlink" href="#A6-detail">출장러</a></td><td>송도현</td><td>010-7531-8642</td><td>카카오</td><td><span class="badge b-ok">정상</span></td><td>2026-09-21 07:58</td></tr>
+<tr><td class="code" title="7c1e9a3f5b2d4e6c8a0f1b3d5e7c9a2b">7c1e9a3f…</td><td><a class="tlink" href="#A6-detail">여행하는고양이</a></td><td>김하늘</td><td>010-1234-5678</td><td>카카오</td><td><span class="badge b-ok">정상</span></td><td>2026-08-14 10:15</td></tr>
+<tr><td class="code" title="1b3d5f7e9c2a4b6d8f0e2c4a6b8d0f2e">1b3d5f7e…</td><td><a class="tlink" href="#A6-detail">노을맛집</a></td><td>윤재희</td><td>010-8642-9753</td><td>네이버</td><td><span class="badge b-ok">정상</span></td><td>2026-07-30 16:31</td></tr>
+<tr><td class="code" title="c7a5e3b1f9d74c2a0e8b6f4d2a0c8e6b">c7a5e3b1…</td><td><a class="tlink" href="#A6-detail">느린걸음</a></td><td>장예린</td><td class="none">—</td><td>카카오</td><td><span class="badge b-neu">탈퇴</span></td><td>2026-06-11 12:20</td></tr>
+</tbody>
+</table></div>
+<div class="list-foot"><span class="sub">총 1,284명 · 1 / 129쪽</span>
+<nav class="pager" aria-label="페이지"><button type="button" class="pg" aria-label="이전 페이지" disabled><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button><button type="button" class="pg on" aria-current="page">1</button><button type="button" class="pg">2</button><button type="button" class="pg">3</button><button type="button" class="pg">4</button><button type="button" class="pg">5</button><button type="button" class="pg">6</button><button type="button" class="pg">7</button><button type="button" class="pg">8</button><button type="button" class="pg">9</button><button type="button" class="pg">10</button><button type="button" class="pg" aria-label="다음 페이지"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button></nav></div>
+</section>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">휴대폰이 null 이면 is_phone_verified 가 0(미인증)일 때 "미인증" 배지, 탈퇴면 —. SNS 고르기는 6종 모두 받지만 지금 가입은 카카오 · 네이버만. 거르기는 state_id · sns_id · keyword · page.</p>
+<div class="state-grid">
+<div class="state"><span class="cap">빈 목록</span><div class="empty" style="padding:24px 8px"><p style="margin:0;font-weight:700">조건에 맞는 이용자가 없습니다.</p><p class="sub">거르기를 풀거나 검색어를 지워 보세요.</p></div></div>
+</div>
+</div>
+</section>
+
+<section class="screen" id="A6-detail" aria-labelledby="A6-detail-t">
+<h3 class="screen-title" id="A6-detail-t">A6 이용자 상세 — <span class="path">/admin/users/[user_id]</span></h3>
+<div class="frame">
+<div class="top">
+<a class="brand" href="#A2-dashboard"><span class="brand-mark"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21"></path><path d="M3 21h18"></path><path d="M14.5 12h.01"></path></svg></span>roomless 관리자</a>
+<div class="acct"><span class="acct-id">admin</span><span class="badge b-pri">총괄관리자</span><a class="btn btn-s btn-sm" href="#A1-password">비밀번호 변경</a><a class="btn btn-s btn-sm" href="#A1-login">로그아웃</a></div>
+</div>
+<div class="shell">
+<nav class="side" aria-label="관리자 메뉴">
+<ul>
+<li><a class="nav-i" href="#A2-dashboard"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>대시보드</a></li>
+<li><a class="nav-i" href="#A3-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3.5h6v3H9z"></path><path d="M9 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H15"></path><path d="m9 14 2 2 4-4"></path></svg>입점 신청</a></li>
+<li><a class="nav-i" href="#A4-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v10h16V10"></path><path d="M3 10l2-6h14l2 6z"></path><path d="M10 20v-5h4v5"></path></svg>업체</a></li>
+<li><a class="nav-i" href="#A5-list"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><path d="M16 5h5M16 9h5M18 13h3"></path></svg>업체 관리자</a></li>
+<li><a class="nav-i on" href="#A6-list" aria-current="page"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"></path><circle cx="17" cy="9" r="2.5"></circle><path d="M17 14.5c2.4 0 4 1.6 4.5 4.5"></path></svg>이용자</a></li>
+</ul>
+</nav>
+<div class="main">
+<a class="back" href="#A6-list"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg>이용자 목록</a>
+<div class="stack g4">
+<div class="title-line"><h4 class="h1">여행하는고양이</h4><span class="badge b-ok">정상</span></div>
+<p class="sub num">김하늘 · 카카오로 가입 · 가입 2026-08-14 10:15</p>
+</div>
+
+<div class="row">
+<section class="card pad stack g16 col-2" aria-labelledby="a6d-info-t">
+<h5 class="h2" id="a6d-info-t">회원 정보</h5>
+<dl class="dl">
+<dt>검색 코드</dt><dd><span class="cell-2" style="flex-wrap:wrap"><span class="code" style="overflow-wrap:anywhere">7c1e9a3f5b2d4e6c8a0f1b3d5e7c9a2b</span><button type="button" class="btn btn-s btn-sm"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h8"></path></svg>복사</button></span></dd>
+<dt>닉네임</dt><dd>여행하는고양이</dd>
+<dt>이름</dt><dd>김하늘</dd>
+<dt>성별</dt><dd>여</dd>
+<dt>생년월일</dt><dd>1995-03-21</dd>
+<dt>휴대폰</dt><dd>010-1234-5678 <span class="sub" style="display:inline">· 인증 2026-08-14 10:22</span></dd>
+<dt>가입 SNS</dt><dd>카카오</dd>
+<dt>상태</dt><dd><span class="badge b-ok">정상</span></dd>
+<dt>이용 제한 사유</dt><dd class="none">—</dd>
+<dt>탈퇴 예정</dt><dd class="none">—</dd>
+<dt>가입일시</dt><dd>2026-08-14 10:15</dd>
+</dl>
+</section>
+<section class="card pad stack g16 col-1" aria-labelledby="a6d-block-t">
+<h5 class="h2" id="a6d-block-t">이용 제한</h5>
+<p style="margin:0">이용을 제한하면 로그인과 이미 한 예약의 이용은 되고, <strong>새 예약 · 연장만</strong> 막힙니다. 제한 사유는 이용자 화면에 보입니다.</p>
+<div><label class="lbl" for="a6d-reason">이용 제한 사유</label><textarea class="inp" id="a6d-reason" placeholder="이용자에게 보일 사유(선택)"></textarea><p class="count">0 / 255</p></div>
+<button type="button" class="btn btn-d" style="align-self:flex-end">이용 제한</button>
+</section>
+</div>
+
+<section class="stack g12" aria-labelledby="a6d-sum-t">
+<h5 class="h2" id="a6d-sum-t">예약 요약</h5>
+<div class="kpis" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+<div class="card kpi"><span class="kpi-l">전체</span><span class="kpi-v">23<span class="kpi-u"> 건</span></span></div>
+<div class="card kpi"><span class="kpi-l">진행 중</span><span class="kpi-v" style="color:var(--primary-strong)">2<span class="kpi-u"> 건</span></span><span class="kpi-d">결제 대기 · 예약 확정 · 이용 중</span></div>
+<div class="card kpi"><span class="kpi-l">이용 완료</span><span class="kpi-v">18<span class="kpi-u"> 건</span></span></div>
+<div class="card kpi"><span class="kpi-l">취소</span><span class="kpi-v" style="color:var(--bad)">3<span class="kpi-u"> 건</span></span></div>
+</div>
+<p class="small" style="font-size:12px">결제 대기 만료는 세지 않는다.</p>
+</section>
+
+<section class="card list-card" aria-labelledby="a6d-hist-t">
+<div class="stack g4" style="padding:20px 24px 16px"><h5 class="h2" id="a6d-hist-t">예약 이력</h5><p class="sub">이용 시작 최신순 · 결제 대기 만료 제외</p></div>
+<div class="tbl-box" style="border-top:1px solid var(--line)"><table class="tbl">
+<thead><tr><th>이용 기간</th><th>업체</th><th>객실 그룹 · 호실</th><th>상품</th><th class="r">합계 금액</th><th>상태</th><th>취소</th><th>예약일시</th></tr></thead>
+<tbody>
+<tr><td>2026-11-14 15:00 ~ 18:00</td><td><a class="tlink" href="#A4-detail">스테이 리프 강남역점</a></td><td>스탠다드 더블 · 301호</td><td>시간 이용</td><td class="r">18,000원</td><td><span class="badge b-pri">예약 확정</span></td><td class="none">—</td><td>2026-11-09 20:31</td></tr>
+<tr><td>2026-11-09 15:00 ~ 11-11 11:00</td><td><a class="tlink" href="#A4-detail">스테이 리프 신촌점</a></td><td>디럭스 트윈 · 502호</td><td>연박</td><td class="r">118,000원</td><td><span class="badge b-ok">이용 중</span></td><td class="none">—</td><td>2026-11-03 13:12</td></tr>
+<tr><td>2026-11-02 13:00 ~ 16:00</td><td><a class="tlink" href="#A4-detail">리프룸 잠실새내점</a></td><td>스탠다드 · 205호</td><td>시간 이용</td><td class="r">21,000원</td><td><span class="badge b-neu">이용 완료</span></td><td class="none">—</td><td>2026-11-02 10:44</td></tr>
+<tr><td>2026-10-25 15:00 ~ 10-26 11:00</td><td><a class="tlink" href="#A4-detail">슬립인 서면점</a></td><td>오션뷰 더블 · 1203호</td><td>1박</td><td class="r">72,000원</td><td><span class="badge b-neu">이용 완료</span></td><td class="none">—</td><td>2026-10-20 22:05</td></tr>
+<tr><td>2026-10-18 20:00 ~ 23:00</td><td><a class="tlink" href="#A4-detail">스테이 리프 강남역점</a></td><td>스탠다드 더블 · 305호</td><td>시간 이용</td><td class="r">18,000원</td><td><span class="badge b-bad">취소</span></td><td>이용자 · 2026-10-18 17:42</td><td>2026-10-17 21:50</td></tr>
+<tr><td>2026-10-11 15:00 ~ 10-12 11:00</td><td><a class="tlink" href="#A4-detail">스테이 리프 신촌점</a></td><td>스탠다드 · 401호</td><td>1박</td><td class="r">55,000원</td><td><span class="badge b-neu">이용 완료</span></td><td class="none">—</td><td>2026-10-05 09:18</td></tr>
+<tr><td>2026-10-04 14:00 ~ 18:00</td><td><a class="tlink" href="#A4-detail">무인텔 하루 대전역점</a></td><td>스탠다드 · 203호</td><td>시간 이용</td><td class="r">24,000원</td><td><span class="badge b-neu">이용 완료</span></td><td class="none">—</td><td>2026-10-04 11:02</td></tr>
+<tr><td>2026-09-27 15:00 ~ 09-28 11:00</td><td><a class="tlink" href="#A4-detail">스테이 리프 강남역점</a></td><td>디럭스 더블 · 702호</td><td>1박</td><td class="r">69,000원</td><td><span class="badge b-bad">취소</span></td><td>업체 · 2026-09-26 10:05</td><td>2026-09-21 19:47</td></tr>
+<tr><td>2026-09-20 12:00 ~ 15:00</td><td><a class="tlink" href="#A4-detail">리프룸 잠실새내점</a></td><td>스탠다드 · 208호</td><td>시간 이용</td><td class="r">21,000원</td><td><span class="badge b-neu">이용 완료</span></td><td class="none">—</td><td>2026-09-20 08:55</td></tr>
+<tr><td>2026-09-13 15:00 ~ 09-14 11:00</td><td><a class="tlink" href="#A4-detail">슬립인 동성로점</a></td><td>스탠다드 트윈 · 802호</td><td>1박</td><td class="r">58,000원</td><td><span class="badge b-neu">이용 완료</span></td><td class="none">—</td><td>2026-09-08 14:26</td></tr>
+</tbody>
+</table></div>
+<div class="list-foot"><span class="sub">총 23건 · 1 / 3쪽</span>
+<nav class="pager" aria-label="예약 이력 페이지"><button type="button" class="pg" aria-label="이전 페이지" disabled><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button><button type="button" class="pg on" aria-current="page">1</button><button type="button" class="pg">2</button><button type="button" class="pg">3</button><button type="button" class="pg" aria-label="다음 페이지"><svg class="ic ic-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button></nav></div>
+</section>
+</div>
+</div>
+</div>
+<div class="states">
+<h4 class="states-title">같은 화면의 다른 상태</h4>
+<p class="small">이용 제한 · 해제는 큐 API(state_id BLOCK · ACTIVE, block_comment) — done 이면 상세를 다시 부른다. 바뀌는 사이 상태가 달라졌으면 400 "회원 상태가 바뀌었습니다. 다시 확인해주세요."</p>
+<div class="state-grid">
+<div class="state">
+<span class="cap">이용 제한 중 — 해제</span>
+<div class="title-line"><span style="font-size:18px;font-weight:700">짐만맡겨요</span><span class="badge b-bad">정지</span></div>
+<div class="note n-bad"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg><span><strong>이용 제한 사유</strong> · 객실 비품 파손이 되풀이되어 새 예약을 막았습니다.</span></div>
+<p class="small">이용 제한 칸 대신 해제 버튼을 둔다. 해제하면 사유는 지워진다.</p>
+<button type="button" class="btn btn-p" style="align-self:flex-start">제한 해제</button>
+</div>
+<div class="state">
+<span class="cap">탈퇴 대기 · 탈퇴 — 바꿀 수 없음</span>
+<div class="title-line"><span style="font-size:18px;font-weight:700">주말여행자</span><span class="badge b-warn">탈퇴 대기</span></div>
+<dl class="dl narrow small-text"><dt>탈퇴 예정</dt><dd>2026-11-24 09:47:00</dd></dl>
+<div class="note n-warn"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.5 20h19z"></path><path d="M12 10v4"></path><path d="M12 17h.01"></path></svg><span>탈퇴 대기 · 탈퇴 회원은 상태를 바꿀 수 없습니다.</span></div>
+<button type="button" class="btn btn-x" disabled style="align-self:flex-start">이용 제한</button>
+</div>
+<div class="state">
+<span class="cap">이용 제한 성공(done)</span>
+<div class="note n-ok" role="status"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12 3 3 5-6"></path></svg><span>이용을 제한했습니다. 이 이용자는 새 예약 · 연장을 할 수 없습니다.</span></div>
+<p class="small">다시 부른 상세는 상태 정지 · 이용 제한 사유가 채워진다. 사유 칸은 255자를 넘기면 "이용 제한 사유는 255자 이내로 입력해주세요."</p>
+</div>
+<div class="state">
+<span class="cap">예약 이력 없음</span>
+<div class="empty" style="padding:24px 8px"><p style="margin:0;font-weight:700">아직 예약이 없습니다.</p><p class="sub">예약 요약은 모두 0 건.</p></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+
+</div>
