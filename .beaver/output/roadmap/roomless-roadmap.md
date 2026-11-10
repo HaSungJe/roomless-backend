@@ -2,7 +2,7 @@
 
 ## Direction
 
-게이트웨이 + 서비스 MSA 위에서, 총관리자가 입점을 승인한 업체가 층별 호실 · 객실 그룹 · 그룹별 상품(대실 · 숙박)을 운영하고, 이용자는 지도에서 업체를 찾아 호실과 시간대를 골라 예약 · 결제한 뒤 QR 로 입장해 이용 · 연장한다. 업체(store)는 입점 신청 · 상태 · 소개를 가진 새 모델로 처음부터 다시 만든다. 방향은 언제든 바뀔 수 있다.
+게이트웨이 + 서비스 MSA 위에서, 총관리자가 입점을 승인한 업체가 층별 호실 · 객실 그룹 · 그룹별 상품(대실 · 숙박)을 운영하고, 이용자는 지도에서 업체를 찾아 호실과 시간대를 골라 예약 · 결제한 뒤 QR 로 입장해 이용 · 연장한다. 업체(store)는 입점 신청 · 상태 · 소개를 가진 새 모델로 처음부터 다시 만든다. 방향은 언제든 바뀔 수 있다. 백엔드 API 가 갖춰져, 다음은 프론트(Next.js — 별도 저장소)가 바로 개발을 시작할 수 있도록 화면 지도 · 화면별 API · 인계 문서 · 화면 설계 아티팩트를 정리해 넘기고, 스토리 테스트는 그 뒤로 미룬다(사용자 결정 2026-11-10).
 
 ## 한눈에 보는 흐름
 
@@ -47,8 +47,13 @@ flowchart LR
   P10 --> P20
   P17 --> P21["Phase 21 · 통계 (1)"]:::done
   P19 --> P21
-  P17 --> P24["Phase 24 · 스토리 테스트 (2)"]:::todo
-  P18 --> P24
+  P21 --> P27["Phase 27 · 프론트 인계 자료 (3)"]:::todo
+  P22 --> P27
+  P26 --> P27
+  P27 --> P28["Phase 28 · 화면 설계 아티팩트 (3)"]:::todo
+  P28 --> P29["Phase 29 · 스토리 테스트 (2)"]:::todo
+  P17 --> P29
+  P18 --> P29
   P6 -. 동시 가능 .- P7
   P6 -. 동시 가능 .- P8
   P13 -. 동시 가능 .- P14
@@ -83,17 +88,20 @@ flowchart LR
 - Phase 20 — 관리자 계정 관리 · 유닛 2개 · 의존: Phase 6, 10 · 푼다: — · 파일 집합: apps/admin-service/src/{user(새 — 이용자 관리),manager(업체 관리자 관리)}, apps/user-service/src/{user,reservation}(이용 제한 이용자), apps/gateway/src/api/v1/admin-service/{user,manager}, libs/contracts/src/{user,manager}, README.md, AGENTS.md, docs/ · done
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · done
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(modules/api-log — 미들웨어 · 로그 전용 적재), apps/scheduler(api-log), libs/database(api-log-partition · typeorm.config · migrations), libs/common(예외 필터) · done
-- Phase 23 — 캐시(Redis) · 유닛 3개 · dropped — 측정 전 캐시는 효율보다 복잡도가 커서 만들지 않음(사용자 결정 2026-11-10)
-- Phase 24 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18 · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
+- Phase 23 — 캐시(Redis) · 유닛 3개 · todo
+- Phase 27 — 프론트 인계 자료 · 유닛 3개 · 의존: Phase 21, 22, 26 · 푼다: Phase 28 · 파일 집합: 프론트 인계 문서(화면 지도 · 화면별 API · 인계 문서 — 위치는 Phase 27 기획에서), README.md · todo
+- Phase 28 — 화면 설계 아티팩트 · 유닛 3개 · 의존: Phase 27 · 푼다: Phase 29 · 파일 집합: 화면 설계 아티팩트(이용자 · 업체 관리자 · 총관리자 — claude.ai 아티팩트), 인계 문서의 링크 · todo
+- Phase 29 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18, 28 · 프론트 화면 개발(별도 저장소) · 푼다: — · 파일 집합: test/story(시나리오 · 실행기), scripts, package.json, compose(테스트 DB 초기화), docs/guides, README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: 진행 중 없음 · Next up: Phase 24
+지금: 진행 중 없음 · Next up: Phase 27
 
 ## 지금 할 일
-Phase 24 스토리 테스트 시작하기
-- #104 스토리 시나리오
-- #105 스토리 자동 실행
+Phase 27 프론트 인계 자료 시작하기
+- #125 화면 지도
+- #126 화면별 API 정리
+- #127 인계 문서
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) · `USER_WEB_URL`(이용자 프론트 주소 — scheduler QR 확인 링크 SMS · admin-service 이용 중 취소 요청 승인 링크, 비면 링크 SMS 안 보냄 · 취소 요청 503) · AWS 키는 scheduler 에도 넘어간다(QR 링크 SMS — SNS 권한) · `BCRYPT_CODE` 는 user-service · admin-service 가 같은 값(문 시크릿 확인 · 업체 총관리자 비밀번호 해시를 Phase 25 부터 user-service 도 한다) · `DATABASE_URL` 은 이제 gateway 에도 넘어간다(Phase 22 API 로그 — compose 필수값, 값은 그대로) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
@@ -123,7 +131,7 @@ Phase 24 스토리 테스트 시작하기
 
 - **문 · 기기** — 도어락 · 문 쪽 QR 리더 프로그램(타 업체)은 업체 몫이고, 문을 여닫는 것도 그 프로그램이 한다. 우리는 호실 문마다 QR 정보 · 열림/닫힘 · 마지막 시각을 Redis 에 두고 문 열기(QR) · 닫기 API 만 연다. 전등 · 에어컨 등 기기 제어 · 기기 플랫폼 연동은 하지 않는다 (사용자 결정 2026-11-01 · Phase 14).
 - **AWS 리소스 세팅** — IAM · S3 버킷 · SMS 샌드박스 해제 · 지출 한도는 사용자가 `docs/guides/aws-setup.md` 대로 한다. 코드는 처음부터 실제 연동이다(mock 없음). 이메일 · 알림톡 · 푸시는 쓰지 않는다.
-- **프론트엔드** — 관리자 페이지 · 이용자 페이지(Next.js)는 별도 레포.
+- **프론트엔드** — 관리자 페이지 · 이용자 페이지(Next.js)는 별도 레포. Next.js 앱 하나에 경로 세 묶음 — 이용자 `/`(지도 · 업체 상세 · 객실 그룹 · 예약 가능 시간은 로그인 없이) · 업체 관리자 `/manager` · 총관리자 · 관리자 `/admin`(사용자 결정 2026-11-10). API 타입은 게이트웨이 Swagger(`/swagger-json`)에서 생성한다. 이 트랙은 인계 자료(Phase 27 · 28)까지 만든다.
 - **후순위(별도 기획)** — Phases & Units 끝의 "후순위" 표.
 
 ## Phases & Units
@@ -508,10 +516,30 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 
 무효화 원칙은 `.beaver/memory/cache.md` 에 있다 — 캐시한 데이터를 바꾸는 쓰기(정지 · 탈퇴 · 수정 …)는 그 키도 함께 고친다. 캐시를 다시 도입할 때 적용한다(Phase 23 dropped 2026-11-10).
 
-### Phase 24 — 스토리 테스트 (전체 흐름 시나리오 · 자동 실행) · depends: Phase 17, Phase 18
+### Phase 27 — 프론트 인계 자료 (화면 지도 · 화면별 API · 인계 문서) · depends: Phase 21, Phase 22, Phase 26
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 104 | 스토리 시나리오 | 서비스 전체 흐름을 한 번에 따라가는 이야기 — ① 회원가입 → 입점 신청 → 총관리자 승인 ② 업체 로그인 → 객실 그룹 · 호실 · 상품(업체 상품 설정 · 그룹 상품 · 기간 가격) 등록 ③ 회원가입 → 객실 검색 → 예약. 단계마다 요청 · 기대 응답 · 다음 단계로 넘길 값(토큰 · ID)을 적는다 | 외부 연동 통과 방법(SNS 가입 · SMS 인증번호 · S3 업로드 · 토스 결제 — mock 어댑터 금지 규칙과 함께), 시나리오 형식(코드 · 문서) | 69, 77 | todo |
+| 125 | 화면 지도 | 이용자 `/` · 업체 관리자 `/manager` · 총관리자 `/admin` 의 화면 목록 · 경로 · 로그인 필요 여부(이용자 공개 화면 구분) · 화면 이동 흐름(예약 → 토스 결제 → 결과, SMS 링크로 들어오는 `/reservation/<id>` · 취소 동의, 이용 제한 · 탈퇴 대기 안내, 첫 로그인 비밀번호 변경) | 경로 이름 · 화면 묶음 | — | todo |
+| 126 | 화면별 API 정리 | 화면마다 쓰는 게이트웨이 API · 요청 · 응답 · 실패 본문, 큐 경로(SSE accepted → done · failed · pending) 처리, 그룹별 토큰 · 재발급 · 401, 결제(결제창 orderId = `payment_id` → 결제 확인), 사진 올리기(업로드 주소에 PUT), Swagger 타입 생성 | 문서 형식(화면 단위 표 · Swagger 링크) | 125 | todo |
+| 127 | 인계 문서 | 프론트 세션에 그대로 넘길 시작 문서 — 저장소 구성(Next.js 앱 하나 · 경로 세 묶음), 환경 변수(게이트웨이 주소 · 토스 클라이언트 키 등), 백엔드 쪽 설정(`CORS_ORIGINS` · `USER_WEB_URL`), 화면 지도 · API 정리 · 아티팩트 링크, 백엔드에 API 를 요청하는 절차 | 위치(백엔드 docs · 아티팩트) | 125, 126 | todo |
+
+**Expected entry points**: 프론트 인계 문서(화면 지도 · 화면별 API · 시작 문서) — 백엔드 코드는 바꾸지 않는다.
+
+### Phase 28 — 화면 설계 아티팩트 · depends: Phase 27
+| # | Unit | Goal | Key decision | Depends | Status |
+|---|------|------|--------------|---------|--------|
+| 128 | 이용자 화면 설계 | 모바일 — 지도 · 주변 업체 · 업체 상세 · 객실 그룹 · 예약(상품 · 날짜 · 시간대 · 호수) · 결제 결과 · 내 예약 · 예약 1건(QR) · 취소 동의 · 로그인 · 가입 · 마이페이지(탈퇴 · 철회) · 입점 신청 | 충실도(와이어프레임 · 눌러 보는 시안) · 디자인 시스템 | 125 | todo |
+| 129 | 업체 관리자 콘솔 설계 | PC — 로그인(업체코드) · 대시보드(내 업체 통계) · 예약 현황(업체 취소 · 호실 이동 · 이용 중 취소 요청) · 객실(상품 설정 · 그룹 · 기간 가격 · 호실 · 문) · 내 업체 설정 · 업체 관리자 관리 | 128 과 같은 디자인 시스템 | 125 | todo |
+| 130 | 총관리자 콘솔 설계 | PC — 로그인 · 대시보드(전체 통계) · 입점 신청(승인 · 반려) · 업체 · 업체 관리자 계정 · 이용자(이용 제한) | 129 와 콘솔 틀 공유 | 125 | todo |
+
+**Expected entry points**: claude.ai 아티팩트(영역별 화면 설계) — 링크는 Phase 27 인계 문서에 모은다.
+
+### Phase 29 — 스토리 테스트 (전체 흐름 시나리오 · 자동 실행) · depends: Phase 17, Phase 18, Phase 28 (+ 프론트 화면 개발 — 별도 저장소)
+
+> Phase 24 에서 옮김(사용자 결정 2026-11-10) — 프론트 인계 자료 · 화면 설계 · 프론트 화면 개발 뒤에 화면 흐름에 맞춰 다시 기획한다.
+| # | Unit | Goal | Key decision | Depends | Status |
+|---|------|------|--------------|---------|--------|
+| 104 | 스토리 시나리오 | 서비스 전체 흐름을 한 번에 따라가는 이야기 — ① 회원가입 → 입점 신청 → 총관리자 승인 ② 업체 로그인 → 객실 그룹 · 호실 · 상품(업체 상품 설정 · 그룹 상품 · 기간 가격) 등록 ③ 회원가입 → 객실 검색 → 예약. 단계마다 요청 · 기대 응답 · 다음 단계로 넘길 값(토큰 · ID)을 적는다 | 외부 연동 통과 방법(SNS 가입 · SMS 인증번호 · S3 업로드 · 토스 결제 — mock 어댑터 금지 규칙과 함께), 시나리오 형식(코드 · 문서) | 69, 77, 130 | todo |
 | 105 | 스토리 자동 실행 | PostgreSQL 을 초기화하고 마이그레이션 + 시드만 넣은 상태에서 시작해, 게이트웨이 공개 API 로 시나리오를 순서대로 실행 · 단계별 판정(큐 경로는 SSE done · failed) · 결과 보고까지 명령 하나로 | 실행 도구(Vitest e2e · 별도 스크립트), DB 초기화 방식(전용 DB · compose 프로필), 실행 주체 = 사용자(서버 · 인프라 기동은 사용자 몫 — Claude 는 띄우지 않는다), CI 여부 | 104 | todo |
 
 **Expected entry points**: `npm run test:story`(가칭 — DB 초기화 → 시드 → 시나리오 실행 → 보고) · `test/story/`(시나리오 · 실행기) · `docs/guides/story-test.md`. 단위 spec(`npm test` — 실 DB · 브로커 · 외부 IO 금지)과는 따로 둔다(사용자 요청 2026-10-31).
@@ -525,8 +553,8 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 110/112 units done (24/25 phases)
-**Next up**: Phase 24 스토리 테스트 — 의존(Phase 17) 모두 완료
+**Progress**: 110/118 units done (24/27 phases)
+**Next up**: Phase 27 프론트 인계 자료 — 의존(Phase 21) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
 
@@ -584,7 +612,7 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 
 ## Notes / Risks
 
-- **스토리 테스트(Phase 24)와 실행 규칙** — 실제 서버 · DB · 브로커를 띄워야 해서 단위 spec(실 DB · 외부 IO 금지)과 따로 두고, 실행은 사용자가 한다(AGENTS.md — 서버 · 인프라 기동은 사용자 몫). 외부 연동(SNS · SMS · S3 · 토스)을 mock 어댑터 없이 어떻게 통과시킬지가 기획의 핵심이다.
+- **스토리 테스트(Phase 29 — Phase 24 에서 옮김)와 실행 규칙** — 실제 서버 · DB · 브로커를 띄워야 해서 단위 spec(실 DB · 외부 IO 금지)과 따로 두고, 실행은 사용자가 한다(AGENTS.md — 서버 · 인프라 기동은 사용자 몫). 외부 연동(SNS · SMS · S3 · 토스)을 mock 어댑터 없이 어떻게 통과시킬지가 기획의 핵심이다.
 - **마이그레이션 Phase 는 동시에 돌리지 않는다** — `libs/database/src/migrations.ts`(MIGRATIONS) · `entities.ts`(ENTITIES) 를 같이 고친다(Phase 4 · 8 · 12 · 14 · 16 · 22).
 - **배타 제약과 오프라인 검사** — 풀렸다(Phase 12): PGlite 에 `btree_gist` contrib 를 실어 `db:check` · `db:generate` 가 돈다(기간 가격 `EXC_RoomGroupPlanPrice_…`). Phase 16 `t_reservation` 의 점유 구간 배타 제약도 같은 확장을 쓴다. 운영 DB 는 적용 계정에 확장 생성 권한이 필요하다.
 - **캐시와 회원 상태** — 로그인 회원 확인을 캐시하면 정지 · 탈퇴 회원이 TTL 동안 통과할 수 있다. 상태를 바꾸는 쓰기마다 키를 지우는 지점을 Phase 23 기획에서 빠짐없이 정한다(Phase 23 dropped 2026-11-10 — 캐시가 없어 지금은 해당 없음). Redis 는 새 인프라(compose 묶음 · `.env` 접속정보 · 세팅 가이드)다.
