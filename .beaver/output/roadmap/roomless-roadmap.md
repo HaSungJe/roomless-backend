@@ -47,7 +47,7 @@ flowchart LR
   P10 --> P20
   P17 --> P21["Phase 21 · 통계 (1)"]:::done
   P19 --> P21
-  P21 --> P27["Phase 27 · 프론트 인계 자료 (7)"]:::inprog
+  P21 --> P27["Phase 27 · 프론트 인계 자료 (7)"]:::done
   P22 --> P27
   P26 --> P27
   P27 --> P29["Phase 29 · 스토리 테스트 (2)"]:::todo
@@ -88,19 +88,17 @@ flowchart LR
 - Phase 21 — 통계 · 유닛 1개 · 의존: Phase 17, 19 · 푼다: — · 파일 집합: apps/admin-service/src/stats(새 도메인), apps/gateway/src/api/v1/admin-service/stats, libs/contracts/src/stats, README.md, AGENTS.md, docs/ · done
 - Phase 22 — api-log · 유닛 1개 · 의존: Phase 1 · 푼다: — · 파일 집합: apps/gateway(modules/api-log — 미들웨어 · 로그 전용 적재), apps/scheduler(api-log), libs/database(api-log-partition · typeorm.config · migrations), libs/common(예외 필터) · done
 - Phase 23 — 캐시(Redis) · 유닛 3개 · todo
-- Phase 27 — 프론트 인계 자료 · 유닛 7개 · 의존: Phase 21, 22, 26 · 푼다: Phase 29 · 파일 집합: .beaver/output/frontend/(지침서 · 아티팩트 원본 · 수정 요청), claude.ai 화면 설계 아티팩트 3개, apps/user-service/src/user · apps/gateway/src/api/v1/user-service/user · libs/contracts/src/user(내 정보 API), AGENTS.md, README.md, docs/api.md · in-progress
+- Phase 27 — 프론트 인계 자료 · 유닛 7개 · 의존: Phase 21, 22, 26 · 푼다: Phase 29 · 파일 집합: .beaver/output/frontend/(지침서 · 아티팩트 원본 · 수정 요청), claude.ai 화면 설계 아티팩트 3개, apps/user-service/src/user · apps/gateway/src/api/v1/user-service/user · libs/contracts/src/user(내 정보 API), AGENTS.md, README.md, docs/api.md · done
 - Phase 29 — 스토리 테스트 · 유닛 2개 · 의존: Phase 17, 18, 27 · 프론트 화면 개발(별도 저장소) · 푼다: — · 파일 집합: 스토리 테스트 지침 문서(Claude in Chrome 세션용 — 시나리오 · 조작 지침 · 시작 상태 · 결과 보고 양식), README.md · todo
 
 동시 가능: Phase 9·Phase 12 · Phase 9·Phase 22 (지금 바로 — Phase 12 · 22 는 둘 다 마이그레이션을 더해 서로는 함께 돌리지 않는다) / Phase 13·Phase 14 / Phase 15·Phase 18 / Phase 18·Phase 19 — 마이그레이션을 추가하는 Phase 끼리는 `MIGRATIONS` 등록 파일이 겹쳐 동시에 돌리지 않는다(Phase 4 · 8 · 12 · 16 · 22).
 
-지금: Phase 27 진행 중 · Next up: Phase 27
+지금: 진행 중 없음 · Next up: Phase 29
 
 ## 지금 할 일
-Phase 27 프론트 인계 자료 — 화면 설계 아티팩트 + 지침서
-- #125 화면 목록과 주소 · #126 API 목록과 호출 방식 · #127 화면 구성과 쓰는 API
-- #128 이용자 · #129 업체 관리자 · #130 관리자 화면 설계 아티팩트(지침서에 링크)
-- #131 내 정보 API(`GET /api/v1/user-service/user/me`) — 마이페이지
-- build 완료 — report: `.beaver/output/report/frontend/frontend-handoff-report.md` → /beaver:ship
+Phase 29 스토리 테스트 시작하기
+- #104 스토리 시나리오 · 조작 지침
+- #105 실행 준비 · 결과 보고
 - ok → 다음
 - 사용자 — `.env`: `RABBITMQ_ADMIN_SERVICE_PASSWORD` · `REDIS_PASSWORD` · `REDIS_URL`(gateway · user-service · admin-service · scheduler 모두 — 비밀번호는 `REDIS_PASSWORD` 와 같게) · `TOSS_SECRET_KEY`(토스 테스트 키 `test_sk_…` — user-service · scheduler, 비면 예약 · 결제 요청만 503) · `AWS_S3_PUBLIC_URL`(CloudFront 주소) · `USER_WEB_URL`(이용자 프론트 주소 — scheduler QR 확인 링크 SMS · admin-service 이용 중 취소 요청 승인 링크, 비면 링크 SMS 안 보냄 · 취소 요청 503) · AWS 키는 scheduler 에도 넘어간다(QR 링크 SMS — SNS 권한) · `BCRYPT_CODE` 는 user-service · admin-service 가 같은 값(문 시크릿 확인 · 업체 총관리자 비밀번호 해시를 Phase 25 부터 user-service 도 한다) · `DATABASE_URL` 은 이제 gateway 에도 넘어간다(Phase 22 API 로그 — compose 필수값, 값은 그대로) — `.env.example` 참고
 - 사용자 — AWS: CloudFront 배포 + OAC, 버킷 정책은 `store/*` 만 · 퍼블릭 액세스 차단 4항목 켬(docs/guides/aws-setup.md 1 · 5단계)
@@ -518,13 +516,13 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 ### Phase 27 — 프론트 인계 자료 (화면 설계 아티팩트 + 지침서 — Phase 28 을 합침) · depends: Phase 21, Phase 22, Phase 26
 | # | Unit | Goal | Key decision | Depends | Status |
 |---|------|------|--------------|---------|--------|
-| 125 | 화면 목록과 주소 | 이용자 `/` · 업체 관리자 `/manager` · 총관리자 `/admin` 의 화면 25개 · 주소 · 로그인 필요 여부(이용자 공개 화면 구분), 고정 주소 2개(SMS 링크가 여는 `/reservation/<id>` · 취소 동의) | 주소 이름 · 화면 묶음 | — | in-progress |
-| 126 | API 목록과 호출 방식 | 공개 API 107개(메서드 · 주소 · 동기/큐 · 로그인 · 요청 · 응답 DTO · 하는 일)와 호출 방식(그룹별 토큰 · 재발급 · 큐 SSE accepted → done · failed · pending · 실패 본문 · 파일 올리기), DTO 사본(`libs/contracts` DTO 에서 Swagger 데코레이터만 뺌 — `class-validator` 검증 · 한국어 메시지 그대로) | 문서 형식, DTO 사본 만드는 법(임시 스크립트) | 125 | in-progress |
-| 127 | 화면 구성과 쓰는 API | 화면마다 시안 위치 · 구성(덩어리 → API · 필드) · 들어올 때 부르는 API · 버튼별 API 순서 · 결과 처리 · 화면 주의(로드맵 사용자 할 일의 '프론트' 줄을 옮김), 이후 기능 변경의 프론트 수정 요청 규칙(`changes/` — AGENTS.md · 메모리). 서버 구성 · 환경 설정은 싣지 않는다(사용자 결정 2026-11-10) | 화면 단위 문서 모양 | 125, 126 | in-progress |
-| 128 | 이용자 화면 설계 | 모바일 — 지도 · 주변 업체 · 업체 상세 · 객실 그룹 · 예약(상품 · 날짜 · 시간대 · 호수) · 결제 결과 · 내 예약 · 예약 1건(QR) · 취소 동의 · 로그인 · 가입 · 마이페이지(탈퇴 · 철회) · 입점 신청 | 충실도 — 색 · 글꼴 · 실제 문구까지 갖춘 정적 시안(상태별 화면), 디자인 시스템 없음 → 세 아티팩트 공통 토큰 | 125, 127 | in-progress |
-| 129 | 업체 관리자 콘솔 설계 | PC — 로그인(업체코드) · 대시보드(내 업체 통계) · 예약 현황(업체 취소 · 호실 이동 · 이용 중 취소 요청) · 객실(상품 설정 · 그룹 · 기간 가격 · 호실 · 문) · 내 업체 설정 · 업체 관리자 관리 | 128 과 같은 토큰 | 125, 127 | in-progress |
-| 130 | 총관리자 콘솔 설계 | PC — 로그인 · 대시보드(전체 통계) · 입점 신청(승인 · 반려) · 업체 · 업체 관리자 계정 · 이용자(이용 제한) | 129 와 콘솔 틀 공유 | 125, 127 | in-progress |
-| 131 | 내 정보 조회 | 이용자 본인의 회원 정보(닉네임 · SNS · 휴대폰 · 인증 여부 · 성별 · 생년월일 · 가입일 · 회원 상태 · 이용 제한 사유 · 탈퇴 예정 시각)를 읽는 API `GET /api/v1/user-service/user/me` — 마이페이지 · 앱을 다시 열 때. 인계 문서를 쓰다 없음을 발견해 이번 Phase 에 넣음(사용자 결정 2026-11-10) | 조회만(기존 `findUser`) | 125 | in-progress |
+| 125 | 화면 목록과 주소 | 이용자 `/` · 업체 관리자 `/manager` · 총관리자 `/admin` 의 화면 25개 · 주소 · 로그인 필요 여부(이용자 공개 화면 구분), 고정 주소 2개(SMS 링크가 여는 `/reservation/<id>` · 취소 동의) | 주소 이름 · 화면 묶음 | — | done(28efaa7) |
+| 126 | API 목록과 호출 방식 | 공개 API 107개(메서드 · 주소 · 동기/큐 · 로그인 · 요청 · 응답 DTO · 하는 일)와 호출 방식(그룹별 토큰 · 재발급 · 큐 SSE accepted → done · failed · pending · 실패 본문 · 파일 올리기), DTO 사본(`libs/contracts` DTO 에서 Swagger 데코레이터만 뺌 — `class-validator` 검증 · 한국어 메시지 그대로) | 문서 형식, DTO 사본 만드는 법(임시 스크립트) | 125 | done(28efaa7) |
+| 127 | 화면 구성과 쓰는 API | 화면마다 시안 위치 · 구성(덩어리 → API · 필드) · 들어올 때 부르는 API · 버튼별 API 순서 · 결과 처리 · 화면 주의(로드맵 사용자 할 일의 '프론트' 줄을 옮김), 이후 기능 변경의 프론트 수정 요청 규칙(`changes/` — AGENTS.md · 메모리). 서버 구성 · 환경 설정은 싣지 않는다(사용자 결정 2026-11-10) | 화면 단위 문서 모양 | 125, 126 | done(28efaa7) |
+| 128 | 이용자 화면 설계 | 모바일 — 지도 · 주변 업체 · 업체 상세 · 객실 그룹 · 예약(상품 · 날짜 · 시간대 · 호수) · 결제 결과 · 내 예약 · 예약 1건(QR) · 취소 동의 · 로그인 · 가입 · 마이페이지(탈퇴 · 철회) · 입점 신청 | 충실도 — 색 · 글꼴 · 실제 문구까지 갖춘 정적 시안(상태별 화면), 디자인 시스템 없음 → 세 아티팩트 공통 토큰 | 125, 127 | done(28efaa7) |
+| 129 | 업체 관리자 콘솔 설계 | PC — 로그인(업체코드) · 대시보드(내 업체 통계) · 예약 현황(업체 취소 · 호실 이동 · 이용 중 취소 요청) · 객실(상품 설정 · 그룹 · 기간 가격 · 호실 · 문) · 내 업체 설정 · 업체 관리자 관리 | 128 과 같은 토큰 | 125, 127 | done(28efaa7) |
+| 130 | 총관리자 콘솔 설계 | PC — 로그인 · 대시보드(전체 통계) · 입점 신청(승인 · 반려) · 업체 · 업체 관리자 계정 · 이용자(이용 제한) | 129 와 콘솔 틀 공유 | 125, 127 | done(28efaa7) |
+| 131 | 내 정보 조회 | 이용자 본인의 회원 정보(닉네임 · SNS · 휴대폰 · 인증 여부 · 성별 · 생년월일 · 가입일 · 회원 상태 · 이용 제한 사유 · 탈퇴 예정 시각)를 읽는 API `GET /api/v1/user-service/user/me` — 마이페이지 · 앱을 다시 열 때. 인계 문서를 쓰다 없음을 발견해 이번 Phase 에 넣음(사용자 결정 2026-11-10) | 조회만(기존 `findUser`) | 125 | done(28efaa7) |
 
 **Expected entry points**: 화면 설계 아티팩트 3개(claude.ai Design — 이용자 · 업체 관리자 · 관리자) + 지침서 `.beaver/output/frontend/`(README 목차 · screens.md 화면 목록과 구성 · api.md API 목록 · dto/ · design/ 아티팩트 원본 · changes/ 수정 요청). 새 API 하나 — 내 정보 `GET /api/v1/user-service/user/me`(#131). Phase 28(화면 설계 아티팩트)은 이 Phase 로 합쳤다 — 프론트가 아티팩트 + 지침서를 함께 보고 만든다(사용자 결정 2026-11-10).
 
@@ -548,8 +546,8 @@ build 완료 — report: `.beaver/output/report/api-log/api-log-report.md`. 마�
 | — | 특정 날짜 특별영업 | 그 날만 영업시간을 바꾼다(임시휴무는 일시 예약불가 #98 로 당겼다) | — | Phase 11 | 후순위 |
 | — | 서비스별 DB 분리 | 경계가 안정된 뒤 | — | — | 후순위 |
 
-**Progress**: 110/119 units done (24/26 phases)
-**Next up**: Phase 27 프론트 인계 자료 — 의존(Phase 21) 모두 완료
+**Progress**: 117/119 units done (25/26 phases)
+**Next up**: Phase 29 스토리 테스트 — 의존(Phase 17) 모두 완료
 
 함께 시작할 수 있는 것: 관리자 계정 관리(Phase 20) · api-log(Phase 22)도 의존이 끝났고 Phase 17 과 파일이 겹치지 않는다. Phase 17 이 마이그레이션을 더하게 되면 22 와는 동시에 돌리지 않는다.
 
