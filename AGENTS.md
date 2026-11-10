@@ -8,6 +8,7 @@ roomless-backend — 무인 객실 대여 서비스 백엔드. 규칙은 지금 
 
 ## ⚠️ 주의사항
 
+- **응답은 한국어로만** — 사용자에게 보이는 모든 글(진행 안내 · 보고 · 질문 · 긴 설명 · 표 · 웹 검색 요약 · 출처 설명)은 한국어로 쓴다. 영어 스킬 본문 · 도구 출력 · 검색 결과를 읽은 직후의 긴 보고에서 특히 영어로 새기 쉬우니, 보내기 전에 언어를 확인한다. 코드 · 명령 · 파일명 · 라이브러리 이름 · URL 같은 고유명사만 영어 그대로 둔다(사용자 결정 2026-11-10).
 - **서버 · 인프라 기동은 반드시 사용자가 직접 실행** — `npm run start:*` / `nest start` / `npm run docker:*`(network · postgres · rabbitmq · user-service · scheduler · gateway · infra · up — `docker compose up` · `docker network create`) 를 Claude 가 실행하지 않는다. `docker compose config` 검증 · `docker build` 는 해도 된다(컨테이너를 띄우지 않음).
 - **DB 마이그레이션 적용 · 배포는 사용자 몫** — `npm run db:migrate` · `db:revert` 와 Docker 의 migrate 컨테이너는 실제 DB 를 바꾸므로 Claude 가 실행하지 않는다. 운영 반영도 사용자 몫이다. 엔티티(`libs/database/src/entities/**`)를 바꾸면 Claude 는 엔티티 수정 + 마이그레이션 파일 생성(`npm run db:generate -- <Name>` — DB 없이 PGlite 로 계산) + `npm run db:check` 까지만 한다([docs/data-layer.md](docs/data-layer.md) 마이그레이션 절).
 - **스키마 반영을 구현 차단 조건으로 걸지 않는다** — 기획의 사전 조건(Prerequisites)에 "DB 스키마 반영" 을 build 를 막는 항목으로 두지 않는다. build · 테스트는 DB 없이 통과하므로 막을 이유가 없다.
